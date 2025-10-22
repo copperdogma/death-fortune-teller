@@ -38,6 +38,7 @@ UARTController *uartController = nullptr;
 ThermalPrinter *thermalPrinter = nullptr;
 FingerSensor *fingerSensor = nullptr;
 FortuneGenerator *fortuneGenerator = nullptr;
+SkullAudioAnimator *skullAudioAnimator = nullptr;
 SDCardContent sdCardContent;
 bool isPrimary = true;
 String initializationAudioPath;
@@ -130,6 +131,11 @@ void setup() {
     } else {
         Serial.printf("Initialization audio discovered: %s\n", initializationAudioPath.c_str());
     }
+
+    // Temporarily override startup audio with a longer skit so we can observe jaw synchronization.
+    const char *JAW_SYNC_TEST_AUDIO = "/audio/Skit - imitations.wav";
+    Serial.printf("🔬 Jaw sync test override: %s\n", JAW_SYNC_TEST_AUDIO);
+    initializationAudioPath = JAW_SYNC_TEST_AUDIO;
     
     // Initialize other components
     audioPlayer = new AudioPlayer(*sdCardManager);
@@ -144,12 +150,33 @@ void setup() {
         if (filePath.equals(initializationAudioPath)) {
             initializationPlayed = true;
         }
+        if (skullAudioAnimator) {
+            skullAudioAnimator->setPlaybackEnded(filePath);
+        }
+    });
+    audioPlayer->setAudioFramesProvidedCallback([](const String &filePath, const Frame *frames, int32_t frameCount) {
+        if (skullAudioAnimator && frameCount > 0) {
+            unsigned long playbackTime = audioPlayer->getPlaybackTime();
+            skullAudioAnimator->processAudioFrames(frames, frameCount, filePath, playbackTime);
+        }
     });
     bluetoothController = new BluetoothController();
     uartController = new UARTController();
     thermalPrinter = new ThermalPrinter(PRINTER_TX_PIN, PRINTER_RX_PIN);
     fingerSensor = new FingerSensor(CAP_SENSE_PIN);
     fortuneGenerator = new FortuneGenerator();
+
+    const int servoMinDegrees = 0;
+    const int servoMaxDegrees = 80;
+    skullAudioAnimator = new SkullAudioAnimator(isPrimary, servoController, lightController, sdCardContent.skits, *sdCardManager,
+                                                servoMinDegrees, servoMaxDegrees);
+    skullAudioAnimator->setSpeakingStateCallback([](bool isSpeaking) {
+        if (isSpeaking) {
+            lightController.setEyeBrightness(LightController::BRIGHTNESS_MAX);
+        } else {
+            lightController.setEyeBrightness(LightController::BRIGHTNESS_DIM);
+        }
+    });
     Serial.println("✅ All components initialized successfully!");
     
     // Initialize Bluetooth A2DP

@@ -165,6 +165,18 @@ int32_t IRAM_ATTR AudioPlayer::provideAudioFrames(Frame *frame, int32_t frame_co
         memset(frame, 0, bytesRequested);
     }
 
+    AudioFramesProvidedCallback framesCallback = nullptr;
+    String currentFilePath;
+    portENTER_CRITICAL_ISR(&m_bufferMux);
+    framesCallback = m_audioFramesProvidedCallback;
+    currentFilePath = m_currentPlayingFilePath;
+    portEXIT_CRITICAL_ISR(&m_bufferMux);
+
+    if (framesCallback && frame_count > 0)
+    {
+        framesCallback(currentFilePath, frame, frame_count);
+    }
+
     return frame_count;
 }
 
