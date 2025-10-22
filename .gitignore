@@ -1,0 +1,10 @@
+.pio/
+.vscode/
+.cursor/
+.DS_Store
+__pycache__/
+*.pyc
+*.swp
+*.swo
+*.tmp
+*.log

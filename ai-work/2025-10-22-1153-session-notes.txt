@@ -1,0 +1,195 @@
+================================================================================
+DEATH-FORTUNE-TELLER / SESSION LOG
+================================================================================
+Timestamp (local) : 2025-10-22 11:53-12:00 PDT (approx)
+Environment       : macOS host, PlatformIO CLI, no network access, workspace-write
+AI Agent          : Codex (GPT-5-based) without persistent memory across restarts
+Document Purpose  : Full context snapshot so future session can resume seamlessly
+================================================================================
+
+1. PROJECT OVERVIEW & CURRENT GOAL
+----------------------------------
+Project: "death-fortune-teller" (ESP32 animatronic skeleton). Uses ESP32 (Arduino
+framework, PlatformIO) with Bluetooth A2DP audio playback, SD card, servo, etc.
+
+Immediate Objective: Make the ESP32 play the initialization WAV file
+("/audio/Initialized - Secondary.wav") over Bluetooth immediately after the JBL
+Flip 6 speaker connects. Playback currently fails; firmware crashes with
+InstrFetchProhibited (PC 0x00080A7D) exactly when the A2DP stack enters
+ESP_A2D_AUDIO_STATE_STARTED. Need to eliminate crash and enable audio playback.
+
+Previous success reference: The legacy TwoSkulls Arduino project (living in
+`TwoSkulls/`) performs this successfully; this PlatformIO port does not.
+
+Constraints:
+- No internet/Web access in this session (explicit attempts confirmed disabled).
+- Must avoid printing/logging from Bluetooth audio ISR (cache disabled).
+- PlatformIO build in release mode; uses ESP32-A2DP library (git submodule from
+  pschatzmann). STL mutex/queue usage may be problematic in ISR context.
+
+================================================================================
+
+2. SESSION SUMMARY (WHAT HAPPENED TODAY)
+---------------------------------------
+Initial state (as inherited from prior work):
+- Bluetooth connection callback debouncing already fixed (issue from earlier
+  conversation). Connection detection works (speaker chirp, logs show state=2,
+  retries stop).
+- However, initialization audio never plays. After connection, ES P32 repeatedly
+  retries; eventually the A2DP audio state transitions to STARTED and the device
+  immediately crashes with InstrFetchProhibited. Crash occurs before any playback
+  logs or callback output appear.
+
+During this session we attempted the following iterative fixes:
+
+2.1 Callback Plumbing Adjustments
+- Replaced lambda/std::function registration with raw function pointer callback
+  plus context pointer in `BluetoothController`. Mirrored structure used by the
+  working TwoSkulls sketch (i.e., `a2dp_source.start(name, callback)`).
+- Added IRAM_ATTR to the thunk bridging from the ESP32-A2DP callback into the
+  `AudioPlayer` instance.
+- Updated `BluetoothController` to store callback pointer/context and invoke it
+  directly, avoiding dynamic dispatch.
+
+2.2 Audio Player ISR Safety Measures
+- Marked `AudioPlayer::provideAudioFrames` IRAM_ATTR.
+- Removed Serial logging from `provideAudioFrames` and the Bluetooth callback to
+  avoid flash access when cache is disabled.
+- Moved SD card `fillBuffer()` operations out of the callback into a new
+  `AudioPlayer::update()` method (called once per loop) so ISR path no longer
+  performs file I/O or heavy operations.
+
+2.3 Additional Safety Tweaks
+- Added `esp_attr.h` includes where IRAM_ATTR is used.
+- Verified with `xtensa-esp32-elf-nm` that the thunk and provideAudioFrames now
+  reside at 0x400815xx (i.e., should be in IRAM text segment).
+- Rebuilt firmware multiple times (`pio run`), each build succeeded, but runtime
+  crash persisted exactly when A2DP reports `STARTED`.
+
+2.4 Attempted Logging & Analysis
+- Observed serial logs for multiple runs. Consistent pattern:
+    • Bluetooth connection established successfully.
+    • After some time, audio state changes to STARTED.
+    • Immediately triggers InstrFetchProhibited (PC 0x00080A80 / 0x00080A7D).
+- `firmware.map` lookup: address 0x400d80a8 corresponds to `BluetoothA2DPSource`
+  destructor (in flash). Crash indicates CPU tried to execute flash code while
+  cache disabled (common when ISR path touches non-IRAM code).
+
+================================================================================
+
+3. CURRENT CODE STATE
+---------------------
+Files modified this session:
+- `src/bluetooth_controller.h`
+- `src/bluetooth_controller.cpp`
+- `src/audio_player.h`
+- `src/audio_player.cpp`
+- `src/main.cpp`
+
+Key code characteristics now:
+- `BluetoothController::initializeA2DP` registers callback via function pointer
+  + context; stored in members `m_audioProviderCallback` and `m_audioProviderContext`.
+- `AudioPlayer::provideAudioFrames` is IRAM_ATTR, minimal logging, no SD access.
+- `AudioPlayer::update()` refills the circular buffer from the main loop.
+- ISR thunk `provideAudioFramesThunk` (IRAM_ATTR) lives near top of `main.cpp` and
+  calls `AudioPlayer::provideAudioFrames`.
+- Main loop now calls `audioPlayer->update()` each tick.
+- Despite these changes, crash persists (panic traces in log section below).
+
+There is *no* additional instrumentation in the callback and no pending files
+waiting to be saved. Build succeeds (`pio run`) with flash ~36.7% full.
+
+================================================================================
+
+4. LOG SNIPPETS (REPRESENTATIVE)
+--------------------------------
+Example run (2025-10-22 11:45):
+```
+...
+🔗 Bluetooth speaker connected. initPlayed=false, isAudioPlaying=false, hasQueued=false
+🎬 Priming initialization audio after Bluetooth connect
+...
+🎧 A2DP audio state changed: STARTED
+Guru Meditation Error: Core 0 panic'ed (InstrFetchProhibited)
+PC: 0x00080a7d => inside BluetoothA2DPSource callback chain
+Backtrace includes provideAudioFramesThunk -> AudioPlayer::provideAudioFrames
+```
+
+Backtraces repeatedly list the same path:
+```
+0x00080a7d: ???                        (in flash, likely destructor stub)
+0x400d3e9b: provideAudioFramesThunk
+0x400d2beb: BluetoothController::staticDataCallback
+0x4019dc6d: BluetoothA2DPSource::get_audio_data
+...
+```
+
+All panics occur immediately on `ESP_A2D_AUDIO_STATE_STARTED` transition.
+
+================================================================================
+
+5. ROOT CAUSE HYPOTHESIS
+------------------------
+Even with IRAM_ATTR on `provideAudioFrames`, there are still flash-resident
+instructions executed while cache is disabled. Potential culprits:
+- `std::lock_guard` / `std::mutex` inside `provideAudioFrames` (still present).
+  The mutex implementation lives in libstdc++ (flash). Even entering a critical
+  section likely dereferences flash function pointers -> crash.
+- `std::queue` operations (push/pop) are still used when queueing/starting files.
+  Although not executed in ISR, there may be scenario where queue access occurs
+  during callback due to context pointer; needs verification.
+- SkullAudioAnimator callbacks (`setAudioFramesProvidedCallback`) remain active;
+  these call into heavy C++ code from the ISR path.
+
+TwoSkulls likely avoided this by (1) not using `std::mutex`/`std::queue` inside
+ISR, (2) running under Arduino with certain cache workaround defaults, or (3)
+processing audio from a simpler static buffer without STL.
+
+================================================================================
+
+6. ACTION ITEMS FOR NEXT SESSION (ORDERED)
+------------------------------------------
+1. **Eliminate std::mutex / std::queue from the ISR path.**
+   - Replace with simple ring buffer managed via `portMUX_TYPE` spinlock or
+     disable interrupts during read/write (or temporarily skip locking to test).
+   - Ensure ISR only manipulates plain arrays and integers.
+
+2. **Disable SkullAudioAnimator and other callbacks that touch audio frames.**
+   - Comment out `setAudioFramesProvidedCallback` usage until playback works.
+   - Confirm ISR does nothing but serve data from circular buffer.
+
+3. **Verify IRAM placement thoroughly.**
+   - Use `xtensa-esp32-elf-nm -n firmware.elf | grep <symbol>` to confirm all
+     functions in the ISR call chain (thunk, provideAudioFrames, helper functions)
+     appear in the 0x4008xxxx range (IRAM). If any are in 0x400Dxxxx, they remain
+     in flash and must be moved.
+
+4. **Compare PlatformIO build flags to Arduino IDE (TwoSkulls).**
+   - Specifically look for `CONFIG_SPIRAM_CACHE_WORKAROUND` or other sdkconfig
+     differences that place libstdc++ in IRAM. (Requires web access or review of
+     TwoSkulls build logs; defer until network is available.)
+
+5. **Once local fixes applied, retest** with speaker on and capture new logs.
+
+6. **After web access is enabled**, research:
+   - “ESP32 A2DP InstrFetchProhibited cache disabled mutex”
+   - “ESP32 IRAM_ATTR std::mutex”
+   - “ESP32-A2DP provide data callback requirements”
+   - Check if ESP-IDF’s `CONFIG_BTDM_CTRL_BR_EDR_SCO_DATA_PATH_EFF` or similar
+     configs affect callback requirements.
+
+================================================================================
+
+7. REMINDERS / MISC
+-------------------
+- PlatformIO command used: `pio run` (build only). No uploads attempted.
+- Serial logs captured via PlatformIO monitor (see snippet above); speaker is JBL
+  Flip 6.
+- Web access is still disabled; new session will likely require browsing to find
+  definitive guidance.
+- All relevant code changes are present in the repo; no untracked artifacts.
+- This document was created at `/Users/cam/Documents/Projects/death-fortune-teller/ai-work/2025-10-22-1153-session-notes.txt`.
+
+================================================================================
+END OF SESSION NOTES
+================================================================================
