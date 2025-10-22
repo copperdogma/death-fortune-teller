@@ -37,6 +37,8 @@ BluetoothController::BluetoothController() {
     m_connectionStateStable = false;
     m_audioProviderCallback = nullptr;
     m_audioProviderContext = nullptr;
+    m_mediaStartPending = false;
+    m_mediaStartDeadlineMs = 0;
     s_instance = this; // Set static instance
 }
 
@@ -113,6 +115,8 @@ void BluetoothController::update() {
             m_lastRetryTime = currentTime;
         }
     }
+
+    processMediaStart();
 }
 
 void BluetoothController::setConnectionStateChangeCallback(std::function<void(int)> callback) {
@@ -172,6 +176,8 @@ void BluetoothController::onConnectionStateChanged(esp_a2d_connection_state_t st
             Serial.println("🔄 Connection state unchanged: Connected");
         }
 
+        requestMediaStart(200);
+
         if (m_connectionStateChangeCallback) {
             m_connectionStateChangeCallback((int)state);
         }
@@ -214,6 +220,12 @@ void BluetoothController::onAudioStateChanged(esp_a2d_audio_state_t state, void 
             break;
     }
     Serial.printf("🎧 A2DP audio state changed: %s\n", stateStr);
+
+    if (state == ESP_A2D_AUDIO_STATE_STARTED) {
+        m_mediaStartPending = false;
+    } else if (state == ESP_A2D_AUDIO_STATE_STOPPED && m_a2dpConnected) {
+        requestMediaStart(250);
+    }
 }
 
 void BluetoothController::onVolumeChanged(uint8_t volume) {
@@ -302,4 +314,46 @@ void BluetoothController::logBondedDevices() {
         Serial.println("⚠️ Failed to read bonded device list.");
     }
     delete[] devices;
+}
+
+void BluetoothController::requestMediaStart(uint32_t delayMs) {
+    unsigned long scheduled = millis() + delayMs;
+    if (m_mediaStartPending) {
+        if (scheduled < m_mediaStartDeadlineMs) {
+            m_mediaStartDeadlineMs = scheduled;
+        }
+        return;
+    }
+    m_mediaStartPending = true;
+    m_mediaStartDeadlineMs = scheduled;
+}
+
+void BluetoothController::processMediaStart() {
+    if (!m_mediaStartPending || !a2dp_source) {
+        return;
+    }
+    if (!m_a2dpConnected) {
+        m_mediaStartPending = false;
+        return;
+    }
+    unsigned long now = millis();
+    if ((long)(now - m_mediaStartDeadlineMs) < 0) {
+        return;
+    }
+
+    esp_err_t checkResult = esp_a2d_media_ctrl(ESP_A2D_MEDIA_CTRL_CHECK_SRC_RDY);
+    if (checkResult != ESP_OK && checkResult != ESP_ERR_INVALID_STATE) {
+        Serial.printf("⚠️ MEDIA_CTRL_CHECK_SRC_RDY failed: %s\n", esp_err_to_name(checkResult));
+        m_mediaStartDeadlineMs = now + 200;
+        return;
+    }
+
+    esp_err_t startResult = esp_a2d_media_ctrl(ESP_A2D_MEDIA_CTRL_START);
+    if (startResult == ESP_OK) {
+        Serial.println("▶️ Requested A2DP media start");
+        m_mediaStartPending = false;
+    } else {
+        Serial.printf("⚠️ MEDIA_CTRL_START failed: %s\n", esp_err_to_name(startResult));
+        m_mediaStartDeadlineMs = now + 200;
+    }
 }

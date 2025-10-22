@@ -85,6 +85,11 @@ private:
     static void staticAudioStateChanged(esp_a2d_audio_state_t state, void *remote_bda);
     static bool ssidMatchCallback(const char *ssid, esp_bd_addr_t address, int rssi);
     void logBondedDevices();
+    void requestMediaStart(uint32_t delayMs = 100);
+    void processMediaStart();
+
+    bool m_mediaStartPending;
+    unsigned long m_mediaStartDeadlineMs;
 };
 
 #endif // BLUETOOTH_CONTROLLER_H
