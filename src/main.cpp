@@ -163,7 +163,7 @@ void setup() {
                           initializationPlayed ? "true" : "false",
                           isPlaying ? "true" : "false",
                           hasQueue ? "true" : "false");
-            if (!initializationPlayed && audioPlayer && !audioPlayer->isAudioPlaying() && !audioPlayer->hasQueuedAudio()) {
+            if (!initializationPlayed && audioPlayer && !initializationQueued) {
                 Serial.println("🎬 Priming initialization audio after Bluetooth connect");
                 audioPlayer->playNext(initializationAudioPath);
                 initializationQueued = true;

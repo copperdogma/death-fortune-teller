@@ -3,6 +3,9 @@
 
 #include <Arduino.h>
 #include "BluetoothA2DPSource.h"
+#include "esp_bt_defs.h"
+#include "esp_gap_bt_api.h"
+#include "esp_log.h"
 
 class BluetoothController {
 public:
@@ -80,6 +83,8 @@ private:
     static void staticConnectionStateChanged(esp_a2d_connection_state_t state, void *remote_bda);
     static int32_t staticDataCallback(Frame *data, int32_t len);
     static void staticAudioStateChanged(esp_a2d_audio_state_t state, void *remote_bda);
+    static bool ssidMatchCallback(const char *ssid, esp_bd_addr_t address, int rssi);
+    void logBondedDevices();
 };
 
 #endif // BLUETOOTH_CONTROLLER_H

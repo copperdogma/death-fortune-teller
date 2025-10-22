@@ -8,3 +8,5 @@ NOTE: This file is for the user to write notes to the AI for it to investigate/r
 - ✅ can we set up the esp32 so we can monitor the esp32's serial output wirelessly? → **PLANNED** - See [ESP32 Wireless Features Plan](.cursor/plans/esp32-wireless-ota-upload-58791e9e.plan.md) (Phase 2: Remote Serial Monitor)
 
 - 20251022: Codex got the base code working in platformio! But it removed the frame hooks that, I think, were used by the audio analysis code that was used to drive the servo (and eye) animations. That's probably the next most important thing, as it might be a dealbreaker for this codebase and we'd have to revert to the TwoSkulls codebase and start over.
+
+- We need to remove the TwoSkulls folder once we have everything we need from there. It was just our working baseline, but we're free to rewrite 100% of it.

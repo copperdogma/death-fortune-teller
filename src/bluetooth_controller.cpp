@@ -1,6 +1,25 @@
 #include "bluetooth_controller.h"
 #include "esp_bt.h"
 #include "esp_a2dp_api.h"
+#include "esp_bt_device.h"
+#include "esp_err.h"
+#include "esp_log.h"
+#include <cstring>
+#include <cstdio>
+
+namespace {
+constexpr const char *kLogTag = "BluetoothController";
+
+String formatAddress(const uint8_t *addr) {
+    if (!addr) {
+        return String("??:??:??:??:??:??");
+    }
+    char buffer[18];
+    snprintf(buffer, sizeof(buffer), "%02X:%02X:%02X:%02X:%02X:%02X",
+             addr[0], addr[1], addr[2], addr[3], addr[4], addr[5]);
+    return String(buffer);
+}
+} // namespace
 
 // Static instance pointer
 BluetoothController *BluetoothController::s_instance = nullptr;
@@ -13,7 +32,7 @@ BluetoothController::BluetoothController() {
     m_volume = 50;
     m_retryingConnection = false;
     m_lastRetryTime = 0;
-    m_retryInterval = 5000; // 5 seconds between retries
+    m_retryInterval = 5000; // align with library heartbeat
     m_lastConnectionStateChange = 0;
     m_connectionStateStable = false;
     m_audioProviderCallback = nullptr;
@@ -41,8 +60,13 @@ void BluetoothController::initializeA2DP(const String &speaker_name, AudioProvid
     a2dp_source->set_on_audio_state_changed(staticAudioStateChanged, this);
     a2dp_source->set_default_bt_mode(ESP_BT_MODE_BTDM);
     a2dp_source->set_auto_reconnect(true);
+    a2dp_source->set_ssid_callback(ssidMatchCallback);
+
+    esp_log_level_set("BT_APP", ESP_LOG_INFO);
+    esp_log_level_set("BT_AV", ESP_LOG_INFO);
+
+    logBondedDevices();
     
-    // Also try to get connection state directly
     Serial.println("🔍 Checking initial A2DP connection state...");
     
     // Start A2DP source
@@ -76,12 +100,15 @@ void BluetoothController::update() {
         lastConnectionCheck = currentTime;
     }
     
-    // Handle connection retry logic - only retry if we're actually disconnected
+    // Allow the library to restart discovery if needed
     if (m_retryingConnection && !m_a2dpConnected && !m_connectionStateStable) {
         if (currentTime - m_lastRetryTime >= m_retryInterval) {
             Serial.printf("🔄 Retrying A2DP connection to: %s\n", m_speaker_name.c_str());
             if (a2dp_source) {
-                a2dp_source->start(m_speaker_name.c_str());
+                esp_a2d_connection_state_t state = a2dp_source->get_connection_state();
+                if (state == ESP_A2D_CONNECTION_STATE_DISCONNECTED) {
+                    a2dp_source->start(m_speaker_name.c_str());
+                }
             }
             m_lastRetryTime = currentTime;
         }
@@ -132,6 +159,10 @@ void BluetoothController::onConnectionStateChanged(esp_a2d_connection_state_t st
     if (isConnectedState) {
         m_lastConnectionStateChange = currentTime;
         m_a2dpConnected = true;
+
+        if (remote_bda) {
+            Serial.printf("🤝 Connected to %s\n", formatAddress(reinterpret_cast<uint8_t *>(remote_bda)).c_str());
+        }
 
         if (!wasConnected) {
             Serial.println("🔗 A2DP Connected!");
@@ -210,6 +241,27 @@ void BluetoothController::staticAudioStateChanged(esp_a2d_audio_state_t state, v
     }
 }
 
+bool BluetoothController::ssidMatchCallback(const char *ssid, esp_bd_addr_t address, int rssi) {
+    if (!s_instance) {
+        return false;
+    }
+    if (!ssid) {
+        return false;
+    }
+    String reported(ssid);
+    reported.trim();
+
+    String target = s_instance->m_speaker_name;
+    target.trim();
+
+    bool match = reported.equalsIgnoreCase(target);
+    if (match) {
+        Serial.printf("🔎 Found target speaker %s (RSSI %d)\n", ssid, rssi);
+        Serial.printf("🔗 Cached address %s\n", formatAddress(address).c_str());
+    }
+    return match;
+}
+
 void BluetoothController::startConnectionRetry() {
     m_retryingConnection = true;
     m_lastRetryTime = millis();
@@ -228,13 +280,26 @@ bool BluetoothController::isRetryingConnection() const {
 void BluetoothController::checkConnectionState() {
     if (!a2dp_source) return;
     
-    // Try to get the actual connection state from the A2DP source
-    // The ESP32-A2DP library might have a method to check connection state
-    // For now, we'll assume if we're not retrying, we might be connected
     if (!m_retryingConnection && !m_a2dpConnected) {
-        // This might indicate we should check if we're actually connected
         Serial.println("🔍 Checking if A2DP is actually connected...");
-        // We could add logic here to detect if audio is being streamed
-        // or if the connection is actually established
     }
+}
+
+void BluetoothController::logBondedDevices() {
+    int count = esp_bt_gap_get_bond_device_num();
+    if (count <= 0) {
+        Serial.println("ℹ️ No bonded Bluetooth devices recorded.");
+        return;
+    }
+
+    esp_bd_addr_t *devices = new esp_bd_addr_t[count];
+    if (esp_bt_gap_get_bond_device_list(&count, devices) == ESP_OK) {
+        Serial.printf("ℹ️ Bonded devices (%d):\n", count);
+        for (int i = 0; i < count; ++i) {
+            Serial.printf("   • %s\n", formatAddress(devices[i]).c_str());
+        }
+    } else {
+        Serial.println("⚠️ Failed to read bonded device list.");
+    }
+    delete[] devices;
 }
