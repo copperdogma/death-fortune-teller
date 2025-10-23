@@ -1,0 +1,73 @@
+🛜 Startup log (70 lines):
+[1155 ms] I/LoggingManager: LoggingManager initialized (capacity=2000, startup=500)
+[1156 ms] I/Main: 💀 Death starting…
+[1757 ms] I/Servo: Initializing servo on pin 15 (min: 0, max: 80)
+[1757 ms] D/Servo: Servo animation init: 0 (min) degrees
+[1768 ms] D/Servo: Servo animation init: 80 (max) degrees
+[2269 ms] I/Servo: Servo animation init complete; resetting to 0 degrees
+[2779 ms] I/SDCard: Mounted successfully
+[2779 ms] I/Main: SD card mounted successfully
+[2838 ms] I/SDCard: Required file '/audio/Initialized - Primary.wav' found
+[2852 ms] I/SDCard: Required file '/audio/Initialized - Secondary.wav' found
+[3876 ms] I/SDCard: Processing 11 skits
+[3950 ms] I/SDCard: Processed skit 'Skit - favourite movie.wav' (12 lines)
+[4023 ms] I/SDCard: Processed skit 'Skit - fear exam.wav' (10 lines)
+[4106 ms] I/SDCard: Processed skit 'Skit - ju jubes.wav' (12 lines)
+[4188 ms] I/SDCard: Processed skit 'Skit - pumpkin flowers.wav' (16 lines)
+[4279 ms] I/SDCard: Processed skit 'Skit - spears.wav' (10 lines)
+[4343 ms] I/SDCard: Processed skit 'Skit - milkshakes.wav' (8 lines)
+[4384 ms] I/SDCard: Processed skit 'Skit - names.wav' (15 lines)
+[4448 ms] I/SDCard: Processed skit 'Skit - skin cream.wav' (4 lines)
+[4532 ms] I/SDCard: Processed skit 'Skit - plastic monsters.wav' (17 lines)
+[4622 ms] I/SDCard: Processed skit 'Skit - imitations.wav' (7 lines)
+[4720 ms] I/SDCard: Processed skit 'Skit - Starbucks.wav' (9 lines)
+[4723 ms] I/ConfigManager: 📄 Reading configuration file:
+[4725 ms] D/ConfigManager:   role: secondary
+[4726 ms] D/ConfigManager:   speaker_name: JBL Flip 6
+[4737 ms] D/ConfigManager:   speaker_volume: 60
+[4738 ms] D/ConfigManager:   ultrasonic_trigger_distance: 300
+[4739 ms] D/ConfigManager:   wifi_ssid: Aluminum Falcon
+[4750 ms] D/ConfigManager:   wifi_password: [SET]
+[4751 ms] D/ConfigManager:   ota_hostname: death-fortune-teller
+[4752 ms] D/ConfigManager:   ota_password: [SET]
+[4752 ms] I/Main: Configuration loaded successfully
+[4763 ms] I/State: Role configured as SECONDARY
+[4763 ms] I/Audio: 🎵 Initialization audio discovered: /audio/Initialized - Secondary.wav
+[4774 ms] I/Audio: 🔬 Jaw sync test override: /audio/Skit - imitations.wav
+[4774 ms] I/Main: ✅ All components initialized successfully
+[4785 ms] I/WiFi: 🛜 Checking Wi-Fi configuration…
+[4785 ms] I/WiFi:    SSID: Aluminum Falcon
+[4786 ms] I/WiFi:    Password: [SET]
+[4786 ms] I/WiFi:    OTA Hostname: death-fortune-teller
+[4796 ms] I/WiFi:    OTA Password: [SET]
+[4796 ms] I/WiFi: Initializing Wi-Fi manager
+[4797 ms] I/WiFiManager: Starting connection to 'Aluminum Falcon'
+[4808 ms] D/WiFiManager: Connection attempt 1/10
+[4923 ms] I/WiFi: Wi-Fi manager started, attempting connection…
+[4924 ms] W/Bluetooth: ⚠️ Failed to read bonded device list.
+[4934 ms] I/Bluetooth: 🔍 Checking initial A2DP connection state...
+[5358 ms] I/Bluetooth: ✅ A2DP Bluetooth initialized: JBL Flip 6
+[5358 ms] I/Bluetooth: 🔄 Starting A2DP connection retry...
+[5406 ms] D/AudioPlayer: Added file to queue: /audio/Skit - imitations.wav
+[5417 ms] I/Audio: 🎵 Queued initialization audio: /audio/Skit - imitations.wav
+[5417 ms] I/Main: 🎉 Death initialized successfully
+[5487 ms] I/FingerSensor: Starting finger sensor calibration...
+[5535 ms] I/WiFiManager: Connected successfully
+[5535 ms] I/WiFiManager: IP address: 192.168.86.29
+[5536 ms] I/WiFiManager: Hostname: death-fortune-teller
+[5546 ms] I/WiFi: 🛜 Connected! SSID: Aluminum Falcon, IP: 192.168.86.29
+[5548 ms] I/RemoteDebug: Telnet server started on 23 (connect with: telnet 192.168.86.29 23)
+[5559 ms] I/RemoteDebug: 🛜 Telnet server started on port 23 (telnet 192.168.86.29 23)
+[5570 ms] I/OTAManager: Initializing with hostname 'death-fortune-teller'
+[5570 ms] I/OTAManager: Password authentication enabled
+[5587 ms] I/OTAManager: Ready for updates on port 3232
+[5587 ms] I/OTA: 🔄 OTA manager started (port 3232)
+[5588 ms] I/OTA: 🔐 OTA password protection enabled
+[5610 ms] I/Main: Status: Free mem: 40060 bytes, A2DP connected: false, Retrying: true, Audio playing: false, Init queued: true, Init played: false, 🛜 WiFi: connected (192.168.86.29)
+[6465 ms] I/RemoteDebug: Telnet client connected from 192.168.86.28
+[6681 ms] D/FingerSensor: Calibration progress: 100 samples
+[7493 ms] I/FingerSensor: Finger sensor calibrated - baseline: 44, threshold: -6
+[10359 ms] I/Bluetooth: 🔄 Retrying A2DP connection to: JBL Flip 6
+[10429 ms] I/Main: Status: Free mem: 38372 bytes, A2DP connected: false, Retrying: true, Audio playing: false, Init queued: true, Init played: false, 🛜 WiFi: connected (192.168.86.29)
+[15359 ms] I/Bluetooth: 🔄 Retrying A2DP connection to: JBL Flip 6
+[15429 ms] I/Main: Status: Free mem: 30748 bytes, A2DP connected: false, Retrying: true, Audio playing: false, Init queued: true, Init played: false, 🛜 WiFi: connected (192.168.86.29)

@@ -228,7 +228,7 @@ fortunes_json=/printer/fortunes_littlekid.json
 We will build skull firmware with PlatformIO (Arduino framework).
 	•	Initial board target: esp32dev (classic ESP32)
 	•	If memory/link issues appear, switch to esp-wrover-kit and enable PSRAM (-DBOARD_HAS_PSRAM).
-	•	Partitions: use Huge App (3 MB app).
+	•	Partitions: use custom `fortune_ota.csv` (dual 1.7 MB OTA slots + 512 KB SPIFFS log area).
 	•	ESP32 Arduino core: match your known-good (≈ 2.0.17). Choose a platform-espressif32 version that maps to this core; freeze after bring-up.
 	•	Libraries: ESP32-A2DP, arduinoFFT, SD (+ any WAV decoder used in TwoSkulls).
 	•	Monitor: monitor_speed = 115200.
@@ -281,7 +281,7 @@ Option 2: Live mix (two PCM streams; analyze speech; more code).
 	•	Printer power dips → ≥3 A 5 V rail + local bulk cap; short, thick leads; separate return path.
 	•	A2DP latency/BT hiccups → keep assets modest; avoid excessive CPU spikes during print; PSRAM if needed.
 	•	Audio channeling for jaw → prefer stereo trick; fall back to live mix if needed.
-	•	Core/partition mismatch → lock Huge App + known-good core once stable.
+	•	Core/partition mismatch → lock `fortune_ota.csv` + known-good core once stable.
 
 ⸻
 

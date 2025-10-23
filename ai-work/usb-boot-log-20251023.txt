@@ -1,0 +1,75 @@
+ets Jul 29 2019 12:21:46
+
+rst:0x1 (POWERON_RESET),boot:0x1b (SPI_FAST_FLASH_BOOT)
+configsip: 0, SPIWP:0xee
+clk_drv:0x00,q_drv:0x00,d_drv:0x00,cs0_drv:0x00,hd_drv:0x00,wp_drv:0x00
+mode:DIO, clock div:2
+load:0x3fff0030,len:1184
+load:0x40078000,len:13192
+load:0x40080400,len:3028
+entry 0x400805e4
+ets Jul 29 2019 12:21:46
+
+rst:0x1 (POWERON_RESET),boot:0x1b (SPI_FAST_FLASH_BOOT)
+configsip: 0, SPIWP:0xee
+clk_drv:0x00,q_drv:0x00,d_drv:0x00,cs0_drv:0x00,hd_drv:0x00,wp_drv:0x00
+mode:DIO, clock div:2
+load:0x3fff0030,len:1184
+load:0x40078000,len:13192
+load:0x40080400,len:3028
+entry 0x400805e4
+E (656) esp_core_dump_flash: No core dump partition found!
+E (656) esp_core_dump_flash: No core dump partition found!
+Setup Serial pre-logging
+I/LoggingManager: LoggingManager initialized (capacity=2000, startup=500)
+I/Main: 💀 Death starting…
+I/Servo: Initializing servo on pin 15 (min: 0, max: 80)
+D/Servo: Servo animation init: 0 (min) degrees
+D/Servo: Servo animation init: 80 (max) degrees
+I/Servo: Servo animation init complete; resetting to 0 degrees
+I/SDCard: Mounted successfully
+I/Main: SD card mounted successfully
+I/SDCard: Required file '/audio/Initialized - Primary.wav' found
+I/SDCard: Required file '/audio/Initialized - Secondary.wav' found
+I/SDCard: Processing 11 skits
+I/SDCard: Processed skit 'Skit - favourite movie.wav' (12 lines)
+I/SDCard: Processed skit 'Skit - fear exam.wav' (10 lines)
+I/SDCard: Processed skit 'Skit - ju jubes.wav' (12 lines)
+I/SDCard: Processed skit 'Skit - pumpkin flowers.wav' (16 lines)
+I/SDCard: Processed skit 'Skit - spears.wav' (10 lines)
+I/SDCard: Processed skit 'Skit - milkshakes.wav' (8 lines)
+I/SDCard: Processed skit 'Skit - names.wav' (15 lines)
+I/SDCard: Processed skit 'Skit - skin cream.wav' (4 lines)
+I/SDCard: Processed skit 'Skit - plastic monsters.wav' (17 lines)
+I/SDCard: Processed skit 'Skit - imitations.wav' (7 lines)
+I/SDCard: Processed skit 'Skit - Starbucks.wav' (9 lines)
+I/ConfigManager: 📄 Reading configuration file:
+D/ConfigManager:   role: secondary
+D/ConfigManager:   speaker_name: JBL Flip 6
+D/ConfigManager:   speaker_volume: 60
+D/ConfigManager:   ultrasonic_trigger_distance: 300
+D/ConfigManager:   wifi_ssid: Aluminum Falcon
+D/ConfigManager:   wifi_password: [SET]
+D/ConfigManager:   ota_hostname: death-fortune-teller
+D/ConfigManager:   ota_password: [SET]
+I/Main: Configuration loaded successfully
+I/State: Role configured as SECONDARY
+I/Audio: 🎵 Initialization audio discovered: /audio/Initialized - Secondary.wav
+I/Audio: 🔬 Jaw sync test override: /audio/Skit - imitations.wav
+I/Main: ✅ All components initialized successfully
+I/WiFi: 🛜 Checking Wi-Fi configuration…
+I/WiFi:    SSID: Aluminum Falcon
+I/WiFi:    Password: [SET]
+I/WiFi:    OTA Hostname: death-fortune-teller
+I/WiFi:    OTA Password: [SET]
+I/WiFi: Initializing Wi-Fi manager
+I/WiFiManager: Starting connection to 'Aluminum Falcon'
+D/WiFiManager: Connection attempt 1/10
+I/WiFi: Wi-Fi manager started, attempting connection…
+W/Bluetooth: ⚠️ Failed to read bonded device list.
+I/Bluetooth: 🔍 Checking initial A2DP connection state...
+I/Bluetooth: ✅ A2DP Bluetooth initialized: JBL Flip 6
+I/Bluetooth: 🔄 Starting A2DP connection retry...
+D/AudioPlayer: Added file to queue: /audio/Skit - imitations.wav
+I/Audio: 🎵 Queued initialization audio: /audio/Skit - imitations.wav
+I/Main: 🎉 Death initialized successfully

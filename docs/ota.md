@@ -6,6 +6,7 @@
 - OTA automatically pauses audio playback and Bluetooth retries; both resume after the update finishes or aborts.
 
 ## Requirements
+- Device must be powered on and connected to your network. If you are unsure, verify via USB console first or ensure the ESP32 has booted into OTA mode before triggering uploads.
 - SD card `/config/config.txt` must contain:
   ```ini
   wifi_ssid=YourNetwork
@@ -62,4 +63,3 @@
 - If OTA reports `Host ... Not Found`, ensure the ESP32 is on Wi-Fi and reachable (ping or `python scripts/telnet_command.py status`).
 - Telnet tasks exiting with retry warnings indicate the board is offline; reset or reconnect Wi-Fi, then rerun.
 - Serial fallback: use `python - <<'PY' ...` snippets (`/ai-work/ota-logging.md`) to grab 115200 baud logs when OTA/Telnet is unavailable.
-

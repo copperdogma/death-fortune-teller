@@ -20,7 +20,7 @@ This project is based on the TwoSkulls codebase but adapted for a single skull w
 ### ESP32 Board Configuration
 - **Board**: ESP32-WROVER or ESP32-WROOM
 - **Framework**: Arduino
-- **Partition Scheme**: `huge_app.csv` (3MB for large applications)
+- **Partition Scheme**: `partitions/fortune_ota.csv` (dual 1.7 MB OTA slots + 512 KB SPIFFS log storage)
 
 ### Pin Assignments
 ```cpp
@@ -69,6 +69,7 @@ const int PRINTER_RX_PIN = 20;  // Thermal printer RX pin
 - **Default**: `115200` baud (slow but reliable)
 
 #### Upload Process
+0. **Hardware sanity check:** Confirm the ESP32 is powered and connected over USB (or OTA-ready) before proceeding. If it is unplugged, plug it in now.
 1. **Always stop monitoring first:**
    ```bash
    lsof /dev/cu.usbserial-*
@@ -80,9 +81,9 @@ const int PRINTER_RX_PIN = 20;  // Thermal printer RX pin
    pio run --target upload
    ```
 
-3. **Monitor output:**
+3. **Monitor output:** (serial runs at 115200 baud)
    ```bash
-   cat /dev/cu.usbserial-10
+   pio device monitor -b 115200
    ```
 
 #### OTA (Over-the-Air) Quick Start
@@ -101,8 +102,8 @@ framework = arduino
 monitor_speed = 115200
 upload_speed = 460800
 
-; Partition scheme for large app (3MB)
-board_build.partitions = huge_app.csv
+; Partition scheme with dual 1.7 MB OTA slots + 512 KB SPIFFS log storage
+board_build.partitions = partitions/fortune_ota.csv
 
 ; Libraries
 lib_deps = 
