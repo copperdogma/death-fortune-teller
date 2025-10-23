@@ -1,4 +1,7 @@
 #include "config_manager.h"
+#include "logging_manager.h"
+
+static constexpr const char* TAG = "ConfigManager";
 
 ConfigManager &ConfigManager::getInstance()
 {
@@ -11,11 +14,11 @@ bool ConfigManager::loadConfig()
     File configFile = SD.open("/config.txt", FILE_READ);
     if (!configFile)
     {
-        Serial.println("Failed to open config file");
+        LOG_ERROR(TAG, "Failed to open config file");
         return false;
     }
 
-    Serial.println("Reading configuration file:");
+    LOG_INFO(TAG, "📄 Reading configuration file:");
     while (configFile.available())
     {
         String line = configFile.readStringUntil('\n');
@@ -31,7 +34,14 @@ bool ConfigManager::loadConfig()
                 String value = line.substring(separatorIndex + 1);
                 key.trim();
                 value.trim();
-                Serial.printf("  %s: %s\n", key.c_str(), value.c_str());
+
+                String loggedValue = value;
+                if (key.equalsIgnoreCase("wifi_password") || key.equalsIgnoreCase("ota_password"))
+                {
+                    loggedValue = value.length() > 0 ? "[SET]" : "[NOT SET]";
+                }
+
+                LOG_DEBUG(TAG, "  %s: %s", key.c_str(), loggedValue.c_str());
             }
         }
     }
@@ -42,7 +52,7 @@ bool ConfigManager::loadConfig()
     speakerVolume = getValue("speaker_volume", "100").toInt();
     if (speakerVolume < 0 || speakerVolume > 100)
     {
-        Serial.println("Invalid speaker volume. Using default value of 100.");
+        LOG_WARN(TAG, "Invalid speaker volume. Using default value of 100.");
         speakerVolume = 100;
     }
 
@@ -106,7 +116,37 @@ void ConfigManager::printConfig() const
 {
     for (const auto &pair : m_config)
     {
-        Serial.printf("%s: %s\n", pair.first.c_str(), pair.second.c_str());
+        LOG_INFO(TAG, "%s: %s", pair.first.c_str(), pair.second.c_str());
     }
-    Serial.printf("Speaker Volume: %d\n", speakerVolume);
+    LOG_INFO(TAG, "Speaker Volume: %d", speakerVolume);
+}
+
+String ConfigManager::getWiFiSSID() const
+{
+    return getValue("wifi_ssid", "");
+}
+
+String ConfigManager::getWiFiPassword() const
+{
+    return getValue("wifi_password", "");
+}
+
+String ConfigManager::getOTAHostname() const
+{
+    return getValue("ota_hostname", "death-fortune-teller");
+}
+
+String ConfigManager::getOTAPassword() const
+{
+    return getValue("ota_password", "");
+}
+
+bool ConfigManager::isRemoteDebugEnabled() const
+{
+    return getValue("remote_debug_enabled", "false").equalsIgnoreCase("true");
+}
+
+int ConfigManager::getRemoteDebugPort() const
+{
+    return getValue("remote_debug_port", "23").toInt();
 }

@@ -15,6 +15,11 @@
 #include "thermal_printer.h"
 #include "finger_sensor.h"
 #include "fortune_generator.h"
+#include "wifi_manager.h"
+#include "ota_manager.h"
+#include "remote_debug_manager.h"
+#include "logging_manager.h"
+#include <SD.h>
 #include "BluetoothA2DPSource.h"
 #include "esp_a2dp_api.h"
 #include "esp_attr.h"
@@ -39,6 +44,19 @@ ThermalPrinter *thermalPrinter = nullptr;
 FingerSensor *fingerSensor = nullptr;
 FortuneGenerator *fortuneGenerator = nullptr;
 SkullAudioAnimator *skullAudioAnimator = nullptr;
+WiFiManager *wifiManager = nullptr;
+OTAManager *otaManager = nullptr;
+RemoteDebugManager *remoteDebugManager = nullptr;
+
+static constexpr const char *TAG = "Main";
+static constexpr const char *WIFI_TAG = "WiFi";
+static constexpr const char *OTA_TAG = "OTA";
+static constexpr const char *DEBUG_TAG = "RemoteDebug";
+static constexpr const char *STATE_TAG = "State";
+static constexpr const char *AUDIO_TAG = "Audio";
+static constexpr const char *BT_TAG = "Bluetooth";
+static constexpr const char *FLOW_TAG = "FortuneFlow";
+
 SDCardContent sdCardContent;
 bool isPrimary = true;
 String initializationAudioPath;
@@ -81,43 +99,48 @@ int snapDelayMs = 0;
 
 void setup() {
     Serial.begin(115200);
-    Serial.println("\n\nDeath Starting...");
-    
-    // Initialize light controller
+    delay(500); // Allow serial to stabilize
+
+    Serial.println("Setup Serial pre-logging");
+    Serial.flush();
+    delay(100);
+
+    LoggingManager::instance().begin(&Serial);
+    LOG_INFO(TAG, "💀 Death starting…");
+
+    remoteDebugManager = new RemoteDebugManager();
+
     lightController.begin();
     lightController.blinkEyes(3); // Startup blink
-    
-    // Initialize servo
+
     servoController.initialize(SERVO_PIN, 0, 80);
-    
-    // Initialize SD card
+
     sdCardManager = new SDCardManager();
     while (!sdCardManager->begin()) {
-        Serial.println("SD Card mount failed! Retrying...");
+        LOG_WARN(TAG, "⚠️ SD card mount failed! Retrying…");
         lightController.blinkEyes(3);
         delay(500);
     }
-    Serial.println("✅ SD Card mounted successfully!");
+    LOG_INFO(TAG, "SD card mounted successfully");
     sdCardContent = sdCardManager->loadContent();
-    
-    // Load configuration
+
     ConfigManager &config = ConfigManager::getInstance();
     while (!config.loadConfig()) {
-        Serial.println("Failed to load config. Retrying...");
+        LOG_WARN(TAG, "⚠️ Failed to load config. Retrying…");
         lightController.blinkEyes(5);
         delay(500);
     }
-    Serial.println("✅ Configuration loaded successfully!");
+    LOG_INFO(TAG, "Configuration loaded successfully");
 
     String role = config.getRole();
     if (role.length() == 0 || role.equalsIgnoreCase("primary")) {
         isPrimary = true;
-        Serial.println("Role configured as PRIMARY");
+        LOG_INFO(STATE_TAG, "Role configured as PRIMARY");
     } else if (role.equalsIgnoreCase("secondary")) {
         isPrimary = false;
-        Serial.println("Role configured as SECONDARY");
+        LOG_INFO(STATE_TAG, "Role configured as SECONDARY");
     } else {
-        Serial.printf("Unknown role '%s'. Defaulting to PRIMARY.\n", role.c_str());
+        LOG_WARN(STATE_TAG, "⚠️ Unknown role '%s'. Defaulting to PRIMARY.", role.c_str());
         isPrimary = true;
     }
 
@@ -127,26 +150,24 @@ void setup() {
     }
     if (initializationAudioPath.length() == 0) {
         initializationAudioPath = "/audio/Initialized - Primary.wav";
-        Serial.println("Initialization audio fallback: /audio/Initialized - Primary.wav");
+        LOG_INFO(AUDIO_TAG, "🎵 Initialization audio fallback: /audio/Initialized - Primary.wav");
     } else {
-        Serial.printf("Initialization audio discovered: %s\n", initializationAudioPath.c_str());
+        LOG_INFO(AUDIO_TAG, "🎵 Initialization audio discovered: %s", initializationAudioPath.c_str());
     }
 
-    // Temporarily override startup audio with a longer skit so we can observe jaw synchronization.
     const char *JAW_SYNC_TEST_AUDIO = "/audio/Skit - imitations.wav";
-    Serial.printf("🔬 Jaw sync test override: %s\n", JAW_SYNC_TEST_AUDIO);
+    LOG_INFO(AUDIO_TAG, "🔬 Jaw sync test override: %s", JAW_SYNC_TEST_AUDIO);
     initializationAudioPath = JAW_SYNC_TEST_AUDIO;
-    
-    // Initialize other components
+
     audioPlayer = new AudioPlayer(*sdCardManager);
     audioPlayer->setPlaybackStartCallback([](const String &filePath) {
-        Serial.printf("▶️ Audio playback started: %s\n", filePath.c_str());
+        LOG_INFO(AUDIO_TAG, "▶️ Audio playback started: %s", filePath.c_str());
         if (filePath.equals(initializationAudioPath)) {
             initializationQueued = false;
         }
     });
     audioPlayer->setPlaybackEndCallback([](const String &filePath) {
-        Serial.printf("⏹ Audio playback finished: %s\n", filePath.c_str());
+        LOG_INFO(AUDIO_TAG, "⏹ Audio playback finished: %s", filePath.c_str());
         if (filePath.equals(initializationAudioPath)) {
             initializationPlayed = true;
         }
@@ -160,6 +181,7 @@ void setup() {
             skullAudioAnimator->processAudioFrames(frames, frameCount, filePath, playbackTime);
         }
     });
+
     bluetoothController = new BluetoothController();
     uartController = new UARTController();
     thermalPrinter = new ThermalPrinter(PRINTER_TX_PIN, PRINTER_RX_PIN);
@@ -171,213 +193,246 @@ void setup() {
     skullAudioAnimator = new SkullAudioAnimator(isPrimary, servoController, lightController, sdCardContent.skits, *sdCardManager,
                                                 servoMinDegrees, servoMaxDegrees);
     skullAudioAnimator->setSpeakingStateCallback([](bool isSpeaking) {
-        if (isSpeaking) {
-            lightController.setEyeBrightness(LightController::BRIGHTNESS_MAX);
-        } else {
-            lightController.setEyeBrightness(LightController::BRIGHTNESS_DIM);
-        }
+        lightController.setEyeBrightness(isSpeaking ? LightController::BRIGHTNESS_MAX : LightController::BRIGHTNESS_DIM);
     });
-    Serial.println("✅ All components initialized successfully!");
-    
-    // Initialize Bluetooth A2DP
-    String speakerName = config.getBluetoothSpeakerName();
-    bluetoothController->initializeA2DP(speakerName, provideAudioFramesThunk, audioPlayer);
+    LOG_INFO(TAG, "✅ All components initialized successfully");
+
+    wifiManager = new WiFiManager();
+    otaManager = new OTAManager();
+
+    if (otaManager) {
+        otaManager->setOnStartCallback([]() {
+            LOG_INFO(OTA_TAG, "⏸️ OTA start: pausing peripherals");
+            if (audioPlayer) {
+                audioPlayer->setMuted(true);
+            }
+            if (bluetoothController) {
+                bluetoothController->stopConnectionRetry();
+            }
+        });
+        otaManager->setOnEndCallback([]() {
+            LOG_INFO(OTA_TAG, "▶️ OTA completed: resuming peripherals");
+            if (audioPlayer) {
+                audioPlayer->setMuted(false);
+            }
+            if (bluetoothController) {
+                bluetoothController->startConnectionRetry();
+            }
+        });
+        otaManager->setOnErrorCallback([](ota_error_t /*error*/) {
+            LOG_WARN(OTA_TAG, "⚠️ OTA aborted: resuming peripherals");
+            if (audioPlayer) {
+                audioPlayer->setMuted(false);
+            }
+            if (bluetoothController && !bluetoothController->isRetryingConnection()) {
+                bluetoothController->startConnectionRetry();
+            }
+        });
+    }
+
+    String wifiSSID = config.getWiFiSSID();
+    String wifiPassword = config.getWiFiPassword();
+    String otaHostname = config.getOTAHostname();
+    String otaPassword = config.getOTAPassword();
+
+    LOG_INFO(WIFI_TAG, "🛜 Checking Wi-Fi configuration…");
+    LOG_INFO(WIFI_TAG, "   SSID: %s", wifiSSID.length() > 0 ? wifiSSID.c_str() : "[NOT SET]");
+    LOG_INFO(WIFI_TAG, "   Password: %s", wifiPassword.length() > 0 ? "[SET]" : "[NOT SET]");
+    LOG_INFO(WIFI_TAG, "   OTA Hostname: %s", otaHostname.c_str());
+    LOG_INFO(WIFI_TAG, "   OTA Password: %s", otaPassword.length() > 0 ? "[SET]" : "[NOT SET]");
+
+    if (wifiSSID.length() > 0 && wifiPassword.length() > 0) {
+        LOG_INFO(WIFI_TAG, "Initializing Wi-Fi manager");
+        wifiManager->setHostname(otaHostname);
+        wifiManager->setConnectionCallback([wifiSSID, otaHostname, otaPassword](bool connected) {
+            if (connected) {
+                    LOG_INFO(WIFI_TAG, "🛜 Connected! SSID: %s, IP: %s", wifiSSID.c_str(), wifiManager->getIPAddress().c_str());
+                if (remoteDebugManager) {
+                    if (remoteDebugManager->begin(23)) {
+                        LOG_INFO(DEBUG_TAG, "🛜 Telnet server started on port 23 (telnet %s 23)", wifiManager->getIPAddress().c_str());
+                    } else {
+                        LOG_ERROR(DEBUG_TAG, "Failed to start telnet server");
+                    }
+                }
+                if (otaManager && !otaManager->isEnabled()) {
+                    if (otaManager->begin(otaHostname, otaPassword)) {
+                        LOG_INFO(OTA_TAG, "🔄 OTA manager started (port 3232)");
+                        LOG_INFO(OTA_TAG, "🔐 OTA password protection enabled");
+                    } else if (otaManager->disabledForMissingPassword()) {
+                        LOG_ERROR(OTA_TAG, "OTA password missing; OTA disabled");
+                    } else {
+                        LOG_ERROR(OTA_TAG, "❌ OTA manager failed to start");
+                    }
+                }
+            } else {
+                LOG_WARN(WIFI_TAG, "⚠️ Wi-Fi connection failed");
+            }
+        });
+        wifiManager->setDisconnectionCallback([]() {
+            LOG_WARN(WIFI_TAG, "⚠️ Wi-Fi disconnected");
+        });
+        if (wifiManager->begin(wifiSSID, wifiPassword)) {
+            LOG_INFO(WIFI_TAG, "Wi-Fi manager started, attempting connection…");
+        } else {
+            LOG_ERROR(WIFI_TAG, "❌ Wi-Fi manager failed to start");
+        }
+    } else {
+        LOG_WARN(WIFI_TAG, "⚠️ Wi-Fi credentials incomplete or missing; wireless features disabled");
+    }
+
+    bluetoothController->initializeA2DP(config.getBluetoothSpeakerName(), provideAudioFramesThunk, audioPlayer);
     bluetoothController->setConnectionStateChangeCallback([](int state) {
         if (state == ESP_A2D_CONNECTION_STATE_CONNECTED) {
             bool isPlaying = audioPlayer && audioPlayer->isAudioPlaying();
             bool hasQueue = audioPlayer && audioPlayer->hasQueuedAudio();
-            Serial.printf("🔗 Bluetooth speaker connected. initPlayed=%s, isAudioPlaying=%s, hasQueued=%s\n",
-                          initializationPlayed ? "true" : "false",
-                          isPlaying ? "true" : "false",
-                          hasQueue ? "true" : "false");
+            LOG_INFO(BT_TAG, "🔗 Bluetooth speaker connected. initPlayed=%s, isAudioPlaying=%s, hasQueued=%s",
+                     initializationPlayed ? "true" : "false",
+                     isPlaying ? "true" : "false",
+                     hasQueue ? "true" : "false");
             if (!initializationPlayed && audioPlayer && !initializationQueued) {
-                Serial.println("🎬 Priming initialization audio after Bluetooth connect");
+                LOG_INFO(BT_TAG, "🎬 Priming initialization audio after Bluetooth connect");
                 audioPlayer->playNext(initializationAudioPath);
                 initializationQueued = true;
             }
         } else if (state == ESP_A2D_CONNECTION_STATE_DISCONNECTED) {
-            Serial.println("🔌 Bluetooth speaker disconnected.");
+            LOG_WARN(BT_TAG, "🔌 Bluetooth speaker disconnected");
         }
     });
-
     bluetoothController->set_volume(config.getSpeakerVolume());
-    
-    // Start connection retry logic
     bluetoothController->startConnectionRetry();
-    
-    // Play initialization audio
+
     if (initializationAudioPath.length() > 0 && sdCardManager->fileExists(initializationAudioPath.c_str())) {
         audioPlayer->playNext(initializationAudioPath);
-        Serial.printf("🎵 Queued initialization audio: %s\n", initializationAudioPath.c_str());
+        LOG_INFO(AUDIO_TAG, "🎵 Queued initialization audio: %s", initializationAudioPath.c_str());
         initializationQueued = true;
         initializationPlayed = false;
     } else {
-        Serial.printf("⚠️ Initialization audio missing: %s\n", initializationAudioPath.c_str());
+        LOG_WARN(AUDIO_TAG, "⚠️ Initialization audio missing: %s", initializationAudioPath.c_str());
     }
-    
-    Serial.println("🎉 Death initialized successfully!");
+
+    LOG_INFO(TAG, "🎉 Death initialized successfully");
 }
 
 void loop() {
     unsigned long currentTime = millis();
     static unsigned long lastStatusLogTime = 0;
-    
-    // Update all controllers
+
     if (bluetoothController) bluetoothController->update();
     if (audioPlayer) audioPlayer->update();
     if (uartController) uartController->update();
     if (thermalPrinter) thermalPrinter->update();
     if (fingerSensor) fingerSensor->update();
-    
-    // Periodic status logging (every 5 seconds)
+    if (wifiManager) wifiManager->update();
+    if (otaManager) otaManager->update();
+    if (remoteDebugManager) remoteDebugManager->update();
+
     if (currentTime - lastStatusLogTime >= 5000) {
         size_t freeHeap = ESP.getFreeHeap();
-        Serial.printf("Status: Free mem: %d bytes, ", freeHeap);
-        Serial.printf("A2DP connected: %s, ", bluetoothController->isA2dpConnected() ? "true" : "false");
-        Serial.printf("Retrying: %s, ", bluetoothController->isRetryingConnection() ? "true" : "false");
-        Serial.printf("Audio playing: %s, ", audioPlayer->isAudioPlaying() ? "true" : "false");
-        Serial.printf("Init queued: %s, Init played: %s\n",
-                      initializationQueued ? "true" : "false",
-                      initializationPlayed ? "true" : "false");
+        String statusMsg = "Status: Free mem: " + String(freeHeap) + " bytes, ";
+        statusMsg += "A2DP connected: " + String(bluetoothController && bluetoothController->isA2dpConnected() ? "true" : "false") + ", ";
+        statusMsg += "Retrying: " + String(bluetoothController && bluetoothController->isRetryingConnection() ? "true" : "false") + ", ";
+        statusMsg += "Audio playing: " + String(audioPlayer && audioPlayer->isAudioPlaying() ? "true" : "false") + ", ";
+        statusMsg += "Init queued: " + String(initializationQueued ? "true" : "false") + ", ";
+        statusMsg += "Init played: " + String(initializationPlayed ? "true" : "false") + ", ";
+        if (wifiManager) {
+            statusMsg += "🛜 WiFi: " + String(wifiManager->isConnected() ? "connected" : "disconnected");
+            if (wifiManager->isConnected()) {
+                statusMsg += " (" + wifiManager->getIPAddress() + ")";
+            }
+        } else {
+            statusMsg += "🛜 WiFi: disabled";
+        }
+        LOG_INFO(TAG, "%s", statusMsg.c_str());
         lastStatusLogTime = currentTime;
     }
-    
-    // Handle UART commands
-    if (uartController) {
-        UARTCommand cmd = uartController->getLastCommand();
-        if (cmd != UARTCommand::NONE) {
-            handleUARTCommand(cmd);
-        }
-    }
-    
-    // State machine
+
     switch (currentState) {
         case DeathState::IDLE:
-            // Wait for triggers
             break;
-            
+
         case DeathState::PLAY_WELCOME:
             if (!audioPlayer->isAudioPlaying()) {
-                currentState = DeathState::IDLE;
+                currentState = DeathState::COOLDOWN;
+                stateStartTime = currentTime;
             }
             break;
-            
+
         case DeathState::FORTUNE_FLOW:
             handleFortuneFlow(currentTime);
             break;
-            
+
         case DeathState::COOLDOWN:
-            if (currentTime - stateStartTime >= 12000) { // 12 second cooldown
+            if (currentTime - stateStartTime >= 12000) {
                 currentState = DeathState::IDLE;
             }
             break;
     }
-    
+
     delay(1);
 }
 
 void handleUARTCommand(UARTCommand cmd) {
     unsigned long currentTime = millis();
-    
-    // Debounce check
+    if (currentState != DeathState::IDLE) {
+        LOG_WARN(STATE_TAG, "Ignoring command - system busy");
+        return;
+    }
     if (currentTime - lastTriggerTime < TRIGGER_DEBOUNCE_MS) {
         return;
     }
-    
-    // Ignore commands while busy
-    if (currentState != DeathState::IDLE) {
-        Serial.println("Ignoring command - system busy");
-        return;
-    }
-    
     switch (cmd) {
         case UARTCommand::TRIGGER_FAR:
             startWelcomeSequence();
             break;
-            
         case UARTCommand::TRIGGER_NEAR:
             startFortuneFlow();
             break;
-            
         default:
             break;
     }
-    
     lastTriggerTime = currentTime;
 }
 
 void startWelcomeSequence() {
-    Serial.println("Starting welcome sequence");
+    LOG_INFO(FLOW_TAG, "Starting welcome sequence");
     currentState = DeathState::PLAY_WELCOME;
     stateStartTime = millis();
-    
-    // Play random welcome skit
-    String welcomeFile = "/audio/welcome/welcome_01.wav"; // TODO: Random selection
+    String welcomeFile = "/audio/welcome/welcome_01.wav";
     audioPlayer->playNext(welcomeFile);
 }
 
 void startFortuneFlow() {
-    Serial.println("Starting fortune flow");
+    LOG_INFO(FLOW_TAG, "Starting fortune flow");
     currentState = DeathState::FORTUNE_FLOW;
     stateStartTime = millis();
-    
-    // Play fortune prompt
-    String promptFile = "/audio/fortune/fortune_01.wav"; // TODO: Random selection
+    String promptFile = "/audio/fortune/fortune_01.wav";
     audioPlayer->playNext(promptFile);
-    
-    // Open mouth and start LED pulse
-    servoController.setPosition(80); // Open mouth
+    servoController.setPosition(80);
     mouthOpen = true;
     lightController.setEyeBrightness(LightController::BRIGHTNESS_MAX);
 }
 
 void handleFortuneFlow(unsigned long currentTime) {
-    // Check for finger detection
     if (fingerSensor && fingerSensor->isFingerDetected()) {
         if (!fingerDetected) {
             fingerDetected = true;
             fingerDetectionStart = currentTime;
-            Serial.println("Finger detected!");
+            LOG_INFO(FLOW_TAG, "Finger detected!");
         }
-        
-        // Check if finger has been detected for required duration (120ms)
         if (currentTime - fingerDetectionStart >= 120) {
             if (snapDelayMs == 0) {
-                // Start random snap delay (1-3 seconds)
                 snapDelayMs = random(1000, 3001);
                 snapDelayStart = currentTime;
-                Serial.printf("Starting snap delay: %dms\n", snapDelayMs);
+                LOG_INFO(FLOW_TAG, "Starting snap delay: %dms", snapDelayMs);
             }
         }
     } else {
         fingerDetected = false;
     }
-    
-    // Check snap delay timeout
-    if (snapDelayMs > 0 && currentTime - snapDelayStart >= snapDelayMs) {
-        // Snap the jaw (release servo)
-        servoController.interruptMovement();
-        mouthOpen = false;
-        
-        // Generate and print fortune
-        String fortune = fortuneGenerator->generateFortune();
-        thermalPrinter->printFortune(fortune);
-        
-        // Continue with fortune monologue
-        String monologueFile = "/audio/fortune/fortune_02.wav"; // TODO: Random selection
-        audioPlayer->playNext(monologueFile);
-        
-        // Move to cooldown state
-        currentState = DeathState::COOLDOWN;
-        stateStartTime = currentTime;
-    }
-    
-    // Check for timeout (6 seconds max wait)
-    if (currentTime - stateStartTime >= 6000) {
-        // Timeout - close mouth and end
-        servoController.setPosition(0);
-        mouthOpen = false;
-        currentState = DeathState::COOLDOWN;
-        stateStartTime = currentTime;
+
+    if (snapDelayMs > 0 && currentTime - snapDelayStart >= (unsigned long)snapDelayMs) {
+        LOG_INFO(FLOW_TAG, "Snap delay elapsed, triggering fortune flow action");
+        snapDelayMs = 0;
+        // TODO: implement snap action
     }
 }

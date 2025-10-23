@@ -15,6 +15,9 @@
 */
 
 #include "skull_audio_animator.h"
+#include "logging_manager.h"
+
+static constexpr const char* TAG = "SkullAnimator";
 #include <cmath>
 #include <algorithm>
 #include <Arduino.h>
@@ -64,7 +67,7 @@ void SkullAudioAnimator::setPlaybackEnded(const String &filePath)
     m_currentSkit = ParsedSkit();
     m_currentSkitLineNumber = -1;
 
-    Serial.printf("SkullAudioAnimator::setPlaybackEnded() filePath: %s\n", filePath.c_str());
+    LOG_DEBUG(TAG, "Playback ended: %s", filePath.c_str());
 
     // Process audio frames for various animations
     updateSkit();
@@ -102,12 +105,13 @@ void SkullAudioAnimator::updateSkit()
         m_currentSkit = findSkitByName(m_skits, m_currentFile);
         if (m_currentSkit.lines.empty())
         {
-            Serial.printf("SkullAudioAnimator::updateSkit() Playing non-skit audio file (m_currentFile): %s, m_currentPlaybackTime: %lu, (m_currentAudioFilePath): %s\n", m_currentFile.c_str(), m_currentPlaybackTime, m_currentAudioFilePath.c_str());
+            LOG_DEBUG(TAG, "Non-skit audio file playing (file=%s, time=%lu, currentPath=%s)",
+                     m_currentFile.c_str(), m_currentPlaybackTime, m_currentAudioFilePath.c_str());
             setSpeakingState(true);
             return;
         }
 
-        Serial.printf("SkullAudioAnimator::updateSkit() Playing new skit at m_currentPlaybackTime: %lu, %s\n", m_currentPlaybackTime, m_currentSkit.audioFile.c_str());
+        LOG_INFO(TAG, "Playing new skit at %lu ms: %s", m_currentPlaybackTime, m_currentSkit.audioFile.c_str());
 
         // Filter skit lines for the current skull (primary or secondary)
         std::vector<ParsedSkitLine> lines;
@@ -118,8 +122,8 @@ void SkullAudioAnimator::updateSkit()
                 lines.push_back(line);
             }
         }
-        Serial.printf("SkullAudioAnimator::updateSkit() Parsed skit '%s' with %d lines. %d lines for us.\n",
-                      m_currentSkit.audioFile.c_str(), m_currentSkit.lines.size(), lines.size());
+        LOG_INFO(TAG, "Parsed skit '%s' with %d lines (%d applicable)",
+                 m_currentSkit.audioFile.c_str(), m_currentSkit.lines.size(), lines.size());
         m_currentSkit.lines = lines;
     }
 
@@ -148,7 +152,7 @@ void SkullAudioAnimator::updateSkit()
     // Log when a new line starts speaking
     if (m_currentSkitLineNumber != originalLineNumber)
     {
-        Serial.printf("SkullAudioAnimator::updateSkit() Now speaking line %d at time %lu\n", m_currentSkitLineNumber, m_currentPlaybackTime);
+        LOG_DEBUG(TAG, "Now speaking line %d at %lu ms", m_currentSkitLineNumber, m_currentPlaybackTime);
     }
 
     setSpeakingState(foundLine);
@@ -156,7 +160,7 @@ void SkullAudioAnimator::updateSkit()
     // Log when a line finishes speaking
     if (m_isCurrentlySpeaking && !foundLine)
     {
-        Serial.printf("SkullAudioAnimator::updateSkit() Ended speaking line %d at time %lu\n", m_currentSkitLineNumber, m_currentPlaybackTime);
+        LOG_DEBUG(TAG, "Ended speaking line %d at %lu ms", m_currentSkitLineNumber, m_currentPlaybackTime);
     }
 }
 

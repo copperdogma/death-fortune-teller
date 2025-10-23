@@ -1,13 +1,16 @@
 #include "sd_card_manager.h"
+#include "logging_manager.h"
+
+static constexpr const char* TAG = "SDCard";
 
 SDCardManager::SDCardManager() {}
 
 bool SDCardManager::begin() {
     if (!SD.begin()) {
-        Serial.println("SD Card: Mount Failed!");
+        LOG_ERROR(TAG, "Mount failed");
         return false;
     }
-    Serial.println("SD Card: Mounted successfully");
+    LOG_INFO(TAG, "Mounted successfully");
     return true;
 }
 
@@ -22,10 +25,10 @@ SDCardContent SDCardManager::loadContent() {
         content.secondaryInitAudio = "/audio/Initialized - Secondary.wav";
     }
 
-    Serial.println("Required file '/audio/Initialized - Primary.wav' " + 
-        String(fileExists("/audio/Initialized - Primary.wav") ? "found." : "missing."));
-    Serial.println("Required file '/audio/Initialized - Secondary.wav' " + 
-        String(fileExists("/audio/Initialized - Secondary.wav") ? "found." : "missing."));
+    LOG_INFO(TAG, "Required file '/audio/Initialized - Primary.wav' %s",
+             fileExists("/audio/Initialized - Primary.wav") ? "found" : "missing");
+    LOG_INFO(TAG, "Required file '/audio/Initialized - Secondary.wav' %s",
+             fileExists("/audio/Initialized - Secondary.wav") ? "found" : "missing");
 
     processSkitFiles(content);
 
@@ -35,7 +38,7 @@ SDCardContent SDCardManager::loadContent() {
 bool SDCardManager::processSkitFiles(SDCardContent& content) {
     File root = SD.open("/audio");
     if (!root || !root.isDirectory()) {
-        Serial.println("SD Card: Failed to open /audio directory");
+        LOG_ERROR(TAG, "Failed to open /audio directory");
         return false;
     }
 
@@ -49,7 +52,7 @@ bool SDCardManager::processSkitFiles(SDCardContent& content) {
         file = root.openNextFile();
     }
 
-    Serial.println("Processing " + String(skitFiles.size()) + " skits:");
+    LOG_INFO(TAG, "Processing %u skits", static_cast<unsigned>(skitFiles.size()));
     for (const auto& fileName : skitFiles) {
         String baseName = fileName.substring(0, fileName.lastIndexOf('.'));
         String txtFileName = baseName + ".txt";
@@ -59,9 +62,9 @@ bool SDCardManager::processSkitFiles(SDCardContent& content) {
         if (fileExists(fullTxtPath.c_str())) {
             ParsedSkit parsedSkit = parseSkitFile(fullWavPath, fullTxtPath);
             content.skits.push_back(parsedSkit);
-            Serial.println("- Processing skit '" + fileName + "' - success. (" + String(parsedSkit.lines.size()) + " lines)");
+            LOG_INFO(TAG, "Processed skit '%s' (%u lines)", fileName.c_str(), static_cast<unsigned>(parsedSkit.lines.size()));
         } else {
-            Serial.println("- Processing skit '" + fileName + "' - WARNING: missing txt file.");
+            LOG_WARN(TAG, "Skit '%s' missing txt file", fileName.c_str());
         }
         content.audioFiles.push_back(fullWavPath);
     }
@@ -77,7 +80,7 @@ ParsedSkit SDCardManager::parseSkitFile(const String& wavFile, const String& txt
 
     File file = openFile(txtFile.c_str());
     if (!file) {
-        Serial.println("Failed to open skit file: " + txtFile);
+        LOG_ERROR(TAG, "Failed to open skit file: %s", txtFile.c_str());
         return parsedSkit;
     }
 

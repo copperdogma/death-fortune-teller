@@ -19,6 +19,9 @@
 */
 
 #include "audio_player.h"
+#include "logging_manager.h"
+
+static constexpr const char* TAG = "AudioPlayer";
 #include "sd_card_manager.h"
 
 #include <Arduino.h>
@@ -74,7 +77,7 @@ void AudioPlayer::playNext(String filePath)
     audioQueue.push(path);
     portEXIT_CRITICAL(&m_queueMux);
 
-    Serial.printf("AudioPlayer::playNext() Added file to queue: %s ...\n", filePath.c_str());
+    LOG_DEBUG(TAG, "Added file to queue: %s", filePath.c_str());
 }
 
 int32_t IRAM_ATTR AudioPlayer::provideAudioFrames(Frame *frame, int32_t frame_count)
@@ -316,7 +319,7 @@ bool AudioPlayer::startNextFile()
         audioFile = m_sdCardManager.openFile(nextFile.c_str());
         if (!audioFile)
         {
-            Serial.printf("AudioPlayer::startNextFile() Failed to open audio file: %s\n", nextFile.c_str());
+            LOG_ERROR(TAG, "Failed to open audio file: %s", nextFile.c_str());
             continue;
         }
 

@@ -1,4 +1,7 @@
 #include "finger_sensor.h"
+#include "logging_manager.h"
+
+static constexpr const char* TAG = "FingerSensor";
 
 FingerSensor::FingerSensor(int pin) 
     : pin(pin), threshold(DETECTION_THRESHOLD), baseline(0), rawValue(0), 
@@ -8,7 +11,7 @@ FingerSensor::FingerSensor(int pin)
 
 void FingerSensor::begin() {
     pinMode(pin, INPUT);
-    Serial.println("Finger sensor initialized - starting calibration");
+    LOG_INFO(TAG, "Finger sensor initialized - starting calibration");
     performCalibration();
 }
 
@@ -61,7 +64,7 @@ void FingerSensor::performCalibration() {
         calibrationStart = currentTime;
         calibrationSamples = 0;
         calibrationSum = 0;
-        Serial.println("Starting finger sensor calibration...");
+        LOG_INFO(TAG, "Starting finger sensor calibration...");
     }
     
     if (currentTime - calibrationStart < CALIBRATION_TIME_MS) {
@@ -71,14 +74,14 @@ void FingerSensor::performCalibration() {
         calibrationSamples++;
         
         if (calibrationSamples % 100 == 0) {
-            Serial.printf("Calibration progress: %d samples\n", calibrationSamples);
+            LOG_DEBUG(TAG, "Calibration progress: %d samples", calibrationSamples);
         }
     } else {
         // Calibration complete
         baseline = calibrationSum / calibrationSamples;
         threshold = baseline - DETECTION_THRESHOLD;
         
-        Serial.printf("Finger sensor calibrated - baseline: %d, threshold: %d\n", baseline, threshold);
+        LOG_INFO(TAG, "Finger sensor calibrated - baseline: %d, threshold: %d", baseline, threshold);
         isCalibrated = true;
         
         // Reset calibration variables
@@ -95,12 +98,11 @@ void FingerSensor::updateDetection() {
         // Finger just detected
         fingerDetected = true;
         detectionStartTime = millis();
-        Serial.println("Finger detected!");
+        LOG_INFO(TAG, "Finger detected!");
     } else if (!currentlyDetected && fingerDetected) {
         // Finger removed
         fingerDetected = false;
         lastDetectionTime = millis();
-        Serial.println("Finger removed");
+        LOG_INFO(TAG, "Finger removed");
     }
 }
-

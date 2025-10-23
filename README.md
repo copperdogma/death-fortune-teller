@@ -85,6 +85,12 @@ const int PRINTER_RX_PIN = 20;  // Thermal printer RX pin
    cat /dev/cu.usbserial-10
    ```
 
+#### OTA (Over-the-Air) Quick Start
+- Set a strong `ota_password` value in `config.txt` on the SD card. OTA remains disabled until this value is present.
+- Create `platformio.local.ini` in the project root with your OTA password (`upload_flags = --auth=${sysenv.ESP32_OTA_PASSWORD}`) and export the env var before running `pio run -e esp32dev_ota -t upload`.
+- The firmware mutes audio and pauses Bluetooth retries during OTA so updates are stable.
+- Full instructions (custom tasks, telnet helpers, troubleshooting) live in [`docs/ota.md`](docs/ota.md).
+
 ### PlatformIO Configuration (`platformio.ini`)
 
 ```ini
@@ -218,6 +224,8 @@ The system loads configuration from SD card with settings for:
 - Servo min/max degrees
 - Speaker volume
 - Fortune templates
+- WiFi credentials
+- OTA password (required for OTA updates)
 
 ## Future Development
 

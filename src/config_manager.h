@@ -19,6 +19,16 @@ public:
     void printConfig() const;
     int getServoMinDegrees() const;
     int getServoMaxDegrees() const;
+    
+    // WiFi configuration methods
+    String getWiFiSSID() const;
+    String getWiFiPassword() const;
+    String getOTAHostname() const;
+    String getOTAPassword() const;
+    
+    // Remote debug configuration methods
+    bool isRemoteDebugEnabled() const;
+    int getRemoteDebugPort() const;
 
 private:
     ConfigManager() {}

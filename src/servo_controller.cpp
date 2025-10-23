@@ -1,5 +1,8 @@
 #include "servo_controller.h"
+#include "logging_manager.h"
 #include <algorithm>
+
+static constexpr const char* TAG = "Servo";
 
 // ServoController class constructor
 // Initializes member variables with default values
@@ -17,15 +20,15 @@ void ServoController::initialize(int pin, int minDeg, int maxDeg)
     setPosition(0); // Initialize to closed position
 
     // Log initialization details
-    Serial.printf("Initializing servo on pin %d (min: %d, max: %d)\n", servoPin, minDegrees, maxDegrees);
+    LOG_INFO(TAG, "Initializing servo on pin %d (min: %d, max: %d)", servoPin, minDegrees, maxDegrees);
 
     // Perform an initialization animation to demonstrate servo range
-    Serial.printf("Servo animation init: %d (min) degrees\n", minDegrees);
+    LOG_DEBUG(TAG, "Servo animation init: %d (min) degrees", minDegrees);
     setPosition(minDegrees);
-    Serial.printf("Servo animation init: %d (max) degrees\n", maxDegrees);
+    LOG_DEBUG(TAG, "Servo animation init: %d (max) degrees", maxDegrees);
     delay(500);
     setPosition(maxDegrees);
-    Serial.println("Servo animation init complete; resetting to 0 degrees");
+    LOG_INFO(TAG, "Servo animation init complete; resetting to 0 degrees");
     delay(500);
     setPosition(minDegrees);
 }

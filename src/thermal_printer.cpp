@@ -1,4 +1,7 @@
 #include "thermal_printer.h"
+#include "logging_manager.h"
+
+static constexpr const char* TAG = "ThermalPrinter";
 
 ThermalPrinter::ThermalPrinter(int txPin, int rxPin) 
     : txPin(txPin), rxPin(rxPin), initialized(false), hasErrorState(false), lastCommandTime(0) {
@@ -7,7 +10,7 @@ ThermalPrinter::ThermalPrinter(int txPin, int rxPin)
 void ThermalPrinter::begin() {
     Serial1.begin(PRINTER_BAUD, SERIAL_8N1, rxPin, txPin);
     initialized = true;
-    Serial.println("Thermal printer initialized");
+    LOG_INFO(TAG, "Thermal printer initialized");
 }
 
 void ThermalPrinter::update() {
@@ -22,7 +25,7 @@ void ThermalPrinter::update() {
 bool ThermalPrinter::printFortune(const String& fortune) {
     if (!initialized || hasErrorState) return false;
     
-    Serial.printf("Printing fortune: %s\n", fortune.c_str());
+    LOG_INFO(TAG, "Printing fortune: %s", fortune.c_str());
     
     // Print logo first
     if (!printLogo()) {
@@ -98,5 +101,5 @@ bool ThermalPrinter::waitForResponse(unsigned long timeoutMs) {
 
 void ThermalPrinter::handleError() {
     hasErrorState = true;
-    Serial.println("Thermal printer error - check paper and connection");
+    LOG_ERROR(TAG, "Thermal printer error - check paper and connection");
 }

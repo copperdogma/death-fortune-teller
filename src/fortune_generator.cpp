@@ -1,6 +1,9 @@
 #include "fortune_generator.h"
+#include "logging_manager.h"
 #include <SD.h>
 #include <ArduinoJson.h>
+
+static constexpr const char* TAG = "FortuneGenerator";
 
 FortuneGenerator::FortuneGenerator() : loaded(false) {
 }
@@ -8,7 +11,7 @@ FortuneGenerator::FortuneGenerator() : loaded(false) {
 bool FortuneGenerator::loadFortunes(const String& filePath) {
     File file = SD.open(filePath, FILE_READ);
     if (!file) {
-        Serial.printf("Failed to open fortune file: %s\n", filePath.c_str());
+        LOG_ERROR(TAG, "Failed to open fortune file: %s", filePath.c_str());
         return false;
     }
     
@@ -19,26 +22,26 @@ bool FortuneGenerator::loadFortunes(const String& filePath) {
     DeserializationError error = deserializeJson(doc, jsonString);
     
     if (error) {
-        Serial.printf("Failed to parse fortune JSON: %s\n", error.c_str());
+        LOG_ERROR(TAG, "Failed to parse fortune JSON: %s", error.c_str());
         return false;
     }
     
     // Parse version
     if (!doc.containsKey("version")) {
-        Serial.println("Fortune file missing version");
+        LOG_ERROR(TAG, "Fortune file missing version");
         return false;
     }
     
     // Parse templates
     if (!doc.containsKey("templates") || !doc["templates"].is<JsonArray>()) {
-        Serial.println("Fortune file missing or invalid templates");
+        LOG_ERROR(TAG, "Fortune file missing or invalid templates");
         return false;
     }
     parseTemplates(doc["templates"]);
     
     // Parse wordlists
     if (!doc.containsKey("wordlists") || !doc["wordlists"].is<JsonObject>()) {
-        Serial.println("Fortune file missing or invalid wordlists");
+        LOG_ERROR(TAG, "Fortune file missing or invalid wordlists");
         return false;
     }
     parseWordlists(doc["wordlists"]);
@@ -46,13 +49,13 @@ bool FortuneGenerator::loadFortunes(const String& filePath) {
     // Validate all templates
     for (const auto& template_obj : templates) {
         if (!validateTemplate(template_obj.template_text)) {
-            Serial.printf("Invalid template: %s\n", template_obj.template_text.c_str());
+            LOG_ERROR(TAG, "Invalid template: %s", template_obj.template_text.c_str());
             return false;
         }
     }
-    
+
     loaded = true;
-    Serial.printf("Loaded %d fortune templates\n", templates.size());
+    LOG_INFO(TAG, "Loaded %d fortune templates", templates.size());
     return true;
 }
 
@@ -124,7 +127,7 @@ bool FortuneGenerator::validateTemplate(const String& template_text) {
         String token = template_text.substring(tokenStart + 2, tokenEnd);
         
         if (wordlists.find(token) == wordlists.end() || wordlists[token].empty()) {
-            Serial.printf("Token '%s' has no wordlist or empty wordlist\n", token.c_str());
+            LOG_WARN(TAG, "Token '%s' has no wordlist or empty wordlist", token.c_str());
             return false;
         }
         
@@ -147,7 +150,7 @@ void FortuneGenerator::parseWordlists(JsonObject wordlistsObj) {
         }
         
         wordlists[category] = wordList;
-        Serial.printf("Loaded %d words for category '%s'\n", wordList.size(), category.c_str());
+        LOG_INFO(TAG, "Loaded %d words for category '%s'", wordList.size(), category.c_str());
     }
 }
 

@@ -1,4 +1,7 @@
 #include "bluetooth_controller.h"
+#include "logging_manager.h"
+
+static constexpr const char* TAG = "Bluetooth";
 #include "esp_bt.h"
 #include "esp_a2dp_api.h"
 #include "esp_bt_device.h"
@@ -69,13 +72,13 @@ void BluetoothController::initializeA2DP(const String &speaker_name, AudioProvid
 
     logBondedDevices();
     
-    Serial.println("🔍 Checking initial A2DP connection state...");
+    LOG_INFO(TAG, "🔍 Checking initial A2DP connection state...");
     
     // Start A2DP source
     a2dp_source->start(speaker_name.c_str(), staticDataCallback);
     a2dp_source->set_volume(m_volume);
     
-    Serial.println("✅ A2DP Bluetooth initialized: " + speaker_name);
+    LOG_INFO(TAG, "✅ A2DP Bluetooth initialized: %s", speaker_name.c_str());
 }
 
 bool BluetoothController::isA2dpConnected() {
@@ -105,7 +108,7 @@ void BluetoothController::update() {
     // Allow the library to restart discovery if needed
     if (m_retryingConnection && !m_a2dpConnected && !m_connectionStateStable) {
         if (currentTime - m_lastRetryTime >= m_retryInterval) {
-            Serial.printf("🔄 Retrying A2DP connection to: %s\n", m_speaker_name.c_str());
+            LOG_INFO(TAG, "🔄 Retrying A2DP connection to: %s", m_speaker_name.c_str());
             if (a2dp_source) {
                 esp_a2d_connection_state_t state = a2dp_source->get_connection_state();
                 if (state == ESP_A2D_CONNECTION_STATE_DISCONNECTED) {
@@ -155,7 +158,7 @@ bool BluetoothController::isBleConnected() const {
 
 void BluetoothController::onConnectionStateChanged(esp_a2d_connection_state_t state, void *remote_bda) {
     unsigned long currentTime = millis();
-    Serial.printf("🔔 Connection state callback triggered: state=%d\n", (int)state);
+    LOG_DEBUG(TAG, "🔔 Connection state callback triggered: state=%d", static_cast<int>(state));
     
     bool wasConnected = m_a2dpConnected;
     bool isConnectedState = (state == ESP_A2D_CONNECTION_STATE_CONNECTED);
@@ -165,15 +168,15 @@ void BluetoothController::onConnectionStateChanged(esp_a2d_connection_state_t st
         m_a2dpConnected = true;
 
         if (remote_bda) {
-            Serial.printf("🤝 Connected to %s\n", formatAddress(reinterpret_cast<uint8_t *>(remote_bda)).c_str());
+            LOG_INFO(TAG, "🤝 Connected to %s", formatAddress(reinterpret_cast<uint8_t *>(remote_bda)).c_str());
         }
 
         if (!wasConnected) {
-            Serial.println("🔗 A2DP Connected!");
+            LOG_INFO(TAG, "🔗 A2DP Connected!");
             stopConnectionRetry(); // Stop retrying when connected
             m_connectionStateStable = true;
         } else {
-            Serial.println("🔄 Connection state unchanged: Connected");
+            LOG_DEBUG(TAG, "🔄 Connection state unchanged: Connected");
         }
 
         requestMediaStart(200);
@@ -186,7 +189,7 @@ void BluetoothController::onConnectionStateChanged(esp_a2d_connection_state_t st
 
     // Debounce rapid disconnect notifications only when we're already disconnected
     if (m_lastConnectionStateChange != 0 && (currentTime - m_lastConnectionStateChange) < 2000 && !wasConnected) {
-        Serial.println("⏳ Ignoring rapid state change (debouncing)");
+        LOG_DEBUG(TAG, "⏳ Ignoring rapid state change (debouncing)");
         return;
     }
 
@@ -194,11 +197,11 @@ void BluetoothController::onConnectionStateChanged(esp_a2d_connection_state_t st
     m_a2dpConnected = false;
 
     if (wasConnected) {
-        Serial.println("🔌 A2DP Disconnected!");
+        LOG_WARN(TAG, "🔌 A2DP Disconnected!");
         startConnectionRetry(); // Start retrying when disconnected
         m_connectionStateStable = false;
     } else {
-        Serial.println("🔄 Connection state unchanged: Disconnected");
+        LOG_DEBUG(TAG, "🔄 Connection state unchanged: Disconnected");
     }
 
     if (m_connectionStateChangeCallback) {
@@ -219,7 +222,7 @@ void BluetoothController::onAudioStateChanged(esp_a2d_audio_state_t state, void 
             stateStr = "STARTED";
             break;
     }
-    Serial.printf("🎧 A2DP audio state changed: %s\n", stateStr);
+    LOG_INFO(TAG, "🎧 A2DP audio state changed: %s", stateStr);
 
     if (state == ESP_A2D_AUDIO_STATE_STARTED) {
         m_mediaStartPending = false;
@@ -230,7 +233,7 @@ void BluetoothController::onAudioStateChanged(esp_a2d_audio_state_t state, void 
 
 void BluetoothController::onVolumeChanged(uint8_t volume) {
     m_volume = volume;
-    Serial.printf("🔊 Volume changed to: %d\n", volume);
+    LOG_INFO(TAG, "🔊 Volume changed to: %d", volume);
 }
 
 // Static callback implementations
@@ -268,8 +271,8 @@ bool BluetoothController::ssidMatchCallback(const char *ssid, esp_bd_addr_t addr
 
     bool match = reported.equalsIgnoreCase(target);
     if (match) {
-        Serial.printf("🔎 Found target speaker %s (RSSI %d)\n", ssid, rssi);
-        Serial.printf("🔗 Cached address %s\n", formatAddress(address).c_str());
+        LOG_INFO(TAG, "🔎 Found target speaker %s (RSSI %d)", ssid, rssi);
+        LOG_INFO(TAG, "🔗 Cached address %s", formatAddress(address).c_str());
     }
     return match;
 }
@@ -277,12 +280,12 @@ bool BluetoothController::ssidMatchCallback(const char *ssid, esp_bd_addr_t addr
 void BluetoothController::startConnectionRetry() {
     m_retryingConnection = true;
     m_lastRetryTime = millis();
-    Serial.println("🔄 Starting A2DP connection retry...");
+    LOG_INFO(TAG, "🔄 Starting A2DP connection retry...");
 }
 
 void BluetoothController::stopConnectionRetry() {
     m_retryingConnection = false;
-    Serial.println("✅ Stopping A2DP connection retry.");
+    LOG_INFO(TAG, "✅ Stopping A2DP connection retry.");
 }
 
 bool BluetoothController::isRetryingConnection() const {
@@ -293,25 +296,25 @@ void BluetoothController::checkConnectionState() {
     if (!a2dp_source) return;
     
     if (!m_retryingConnection && !m_a2dpConnected) {
-        Serial.println("🔍 Checking if A2DP is actually connected...");
+        LOG_DEBUG(TAG, "🔍 Checking if A2DP is actually connected...");
     }
 }
 
 void BluetoothController::logBondedDevices() {
     int count = esp_bt_gap_get_bond_device_num();
     if (count <= 0) {
-        Serial.println("ℹ️ No bonded Bluetooth devices recorded.");
+        LOG_INFO(TAG, "ℹ️ No bonded Bluetooth devices recorded.");
         return;
     }
 
     esp_bd_addr_t *devices = new esp_bd_addr_t[count];
     if (esp_bt_gap_get_bond_device_list(&count, devices) == ESP_OK) {
-        Serial.printf("ℹ️ Bonded devices (%d):\n", count);
+        LOG_INFO(TAG, "ℹ️ Bonded devices (%d):", count);
         for (int i = 0; i < count; ++i) {
-            Serial.printf("   • %s\n", formatAddress(devices[i]).c_str());
+            LOG_INFO(TAG, "   • %s", formatAddress(devices[i]).c_str());
         }
     } else {
-        Serial.println("⚠️ Failed to read bonded device list.");
+        LOG_WARN(TAG, "⚠️ Failed to read bonded device list.");
     }
     delete[] devices;
 }
@@ -343,17 +346,17 @@ void BluetoothController::processMediaStart() {
 
     esp_err_t checkResult = esp_a2d_media_ctrl(ESP_A2D_MEDIA_CTRL_CHECK_SRC_RDY);
     if (checkResult != ESP_OK && checkResult != ESP_ERR_INVALID_STATE) {
-        Serial.printf("⚠️ MEDIA_CTRL_CHECK_SRC_RDY failed: %s\n", esp_err_to_name(checkResult));
+        LOG_WARN(TAG, "⚠️ MEDIA_CTRL_CHECK_SRC_RDY failed: %s", esp_err_to_name(checkResult));
         m_mediaStartDeadlineMs = now + 200;
         return;
     }
 
     esp_err_t startResult = esp_a2d_media_ctrl(ESP_A2D_MEDIA_CTRL_START);
     if (startResult == ESP_OK) {
-        Serial.println("▶️ Requested A2DP media start");
+        LOG_INFO(TAG, "▶️ Requested A2DP media start");
         m_mediaStartPending = false;
     } else {
-        Serial.printf("⚠️ MEDIA_CTRL_START failed: %s\n", esp_err_to_name(startResult));
+        LOG_WARN(TAG, "⚠️ MEDIA_CTRL_START failed: %s", esp_err_to_name(startResult));
         m_mediaStartDeadlineMs = now + 200;
     }
 }

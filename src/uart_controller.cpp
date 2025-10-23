@@ -1,4 +1,7 @@
 #include "uart_controller.h"
+#include "logging_manager.h"
+
+static constexpr const char* TAG = "UART";
 
 UARTController::UARTController() 
     : lastCommand(UARTCommand::NONE), lastCommandTime(0) {
@@ -7,7 +10,7 @@ UARTController::UARTController()
 void UARTController::begin() {
     Serial1.begin(UART_BAUD, SERIAL_8N1, RX_PIN, TX_PIN);
     Serial1.setRxBufferSize(RX_BUFFER_SIZE);
-    Serial.println("UART Controller initialized");
+    LOG_INFO(TAG, "UART controller initialized");
 }
 
 void UARTController::update() {
@@ -82,4 +85,3 @@ UARTCommand UARTController::commandFromByte(uint8_t cmd) {
         default: return UARTCommand::NONE;
     }
 }
-
