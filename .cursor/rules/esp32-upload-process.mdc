@@ -1,0 +1,44 @@
+---
+alwaysApply: true
+description: ESP32 upload process and monitoring management
+---
+
+# ESP32 Upload Process Rules
+
+## Critical Upload Requirements
+
+**ALWAYS kill monitoring processes before uploading to ESP32:**
+
+1. **Check for active monitors:**
+   ```bash
+   lsof /dev/cu.usbserial-*
+   ```
+
+2. **Kill any monitoring processes:**
+   ```bash
+   pkill -f "cat /dev/cu.usbserial-10"
+   pkill -f "pio device monitor"
+   kill <PID>  # if specific PID found
+   ```
+
+3. **Then upload:**
+   ```bash
+   pio run --target upload
+   ```
+
+## Why This Is Critical
+
+- ESP32 can only communicate with **one application at a time** over serial
+- Monitoring processes hold the serial port exclusively
+- Upload will fail with "device reports readiness to read but returned no data" if monitor is active
+- This applies to both PlatformIO monitor and `cat /dev/cu.usbserial-*` processes
+
+## Monitoring After Upload
+
+- Use `cat /dev/cu.usbserial-10` for simple monitoring
+- PlatformIO monitor may have terminal compatibility issues
+- Always stop monitoring before attempting uploads
+
+## Project Context
+
+This is the Death Fortune Teller project using ESP32-WROVER on perfboard with isolated power systems. The firmware includes SD card access, servo control, UART communication, and thermal printing functionality.
