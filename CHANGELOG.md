@@ -1,5 +1,15 @@
 # Changelog
 
+## [2025-10-24] - Flash/Monitor helper workflow
+
+### Added
+- `scripts/flash_and_monitor.py` to combine firmware upload (USB or OTA) with a 30s log capture window
+- PlatformIO custom targets (`Flash + Monitor (USB)` / `Flash + Monitor (OTA)`) and VS Code tasks for the new workflow
+
+### Updated
+- OTA documentation (`docs/ota.md`, README) and worklog summary to reference the helper script
+
+
 ## [2025-01-23] - Hardware Documentation and Proof-of-Concept Integration
 
 ### Added

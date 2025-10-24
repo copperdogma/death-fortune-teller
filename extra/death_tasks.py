@@ -1,5 +1,16 @@
 Import("env")
 
+if env.get("PIOENV", "") == "esp32dev":
+    env.AddCustomTarget(
+        name="flash_monitor_usb",
+        dependencies=None,
+        actions=[
+            "python scripts/flash_and_monitor.py --mode usb --seconds 30"
+        ],
+        title="Flash + Monitor (USB)",
+        description="Upload firmware over USB and capture 30s of serial output"
+    )
+
 if env.get("PIOENV", "") == "esp32dev_ota":
     # OTA composite target (build + upload)
     env.AddCustomTarget(
@@ -10,6 +21,16 @@ if env.get("PIOENV", "") == "esp32dev_ota":
         ],
         title="OTA Upload",
         description="Build firmware and upload over OTA using configured password"
+    )
+
+    env.AddCustomTarget(
+        name="flash_monitor_ota",
+        dependencies=None,
+        actions=[
+            "python scripts/flash_and_monitor.py --mode ota --capture telnet --seconds 30 --delay-after-flash 8"
+        ],
+        title="Flash + Monitor (OTA)",
+        description="Upload firmware over OTA and capture 30s of telnet logs"
     )
 
     # Telnet helper targets

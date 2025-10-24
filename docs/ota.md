@@ -53,6 +53,19 @@
   - `Telnet Status`, `Telnet Log`, `Telnet Startup`, `Telnet Head`, `Telnet Tail`, `Telnet Help`, `Telnet Stream`.
 - VS Code tasks mirror the same commands (`Death OTA: Telnet Status`, etc.).
 
+## Flash + Monitor Helpers
+- USB (serial capture):
+  ```bash
+  python scripts/flash_and_monitor.py --mode usb --seconds 30
+  ```
+  - Available as `Flash + Monitor (USB)` under the `esp32dev` Project Tasks group or `Death USB: Flash + Monitor` from VS Code’s task menu.
+- OTA (telnet capture):
+  ```bash
+  python scripts/flash_and_monitor.py --mode ota --capture telnet --seconds 30 --delay-after-flash 8
+  ```
+  - Surfaced via `Flash + Monitor (OTA)` in Project Tasks / `Death OTA: Flash + Monitor` in VS Code.
+  - After the OTA upload completes the script waits a few seconds for the board to reboot, then collects telnet logs. If the board is offline, it exits successfully but prints the connection warning.
+
 ## Runtime Behavior
 - OTA start: logs `⏸️ OTA start: pausing peripherals`, mutes audio, stops Bluetooth retries.
 - OTA finish: logs `▶️ OTA completed: resuming peripherals`, restores audio/Bluetooth.

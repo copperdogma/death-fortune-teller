@@ -90,6 +90,7 @@ const int PRINTER_RX_PIN = 20;  // Thermal printer RX pin
 - Set a strong `ota_password` value in `config.txt` on the SD card. OTA remains disabled until this value is present.
 - Create `platformio.local.ini` in the project root with your OTA password (`upload_flags = --auth=${sysenv.ESP32_OTA_PASSWORD}`) and export the env var before running `pio run -e esp32dev_ota -t upload`.
 - The firmware mutes audio and pauses Bluetooth retries during OTA so updates are stable.
+- Helper scripts: `python scripts/flash_and_monitor.py --mode usb --seconds 30` (USB flash + 30s serial capture) or `--mode ota --capture telnet` for OTA. See [`docs/ota.md`](docs/ota.md) for details.
 - Full instructions (custom tasks, telnet helpers, troubleshooting) live in [`docs/ota.md`](docs/ota.md).
 
 ### PlatformIO Configuration (`platformio.ini`)

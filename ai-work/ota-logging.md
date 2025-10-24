@@ -324,6 +324,7 @@ The project has a solid foundation but needs proper global logging implementatio
 ### Summary – 2025-10-24
 - OTA pipeline hardened: mandatory password, extended timeouts, peripheral pause/resume hooks, improved progress/error logging.
 - Wireless workflow documented and scripted (`docs/ota.md`, helper scripts, custom PlatformIO/VS Code tasks).
+- Added `flash_and_monitor.py` for one-step USB/OTA flash + 30 s capture (USB path verified; OTA capture best-effort via telnet).
 - Telnet logging fixed (logging macros, retries, buffered ring) with CLI/VSC tasks for status, logs, startup snapshots, and streaming.
 - OTA upload verified end-to-end; regressions noted (Wi-Fi reachability) now surface as retries instead of crashes.
 
