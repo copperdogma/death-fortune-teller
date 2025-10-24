@@ -1,0 +1,51 @@
+menu "Example Configuration"
+
+    config SHTC3_I2C_SDA_PIN
+        int "I2C SDA Pin"
+        default 4 if IDF_TARGET_ESP32S3
+        default 8 if IDF_TARGET_ESP32C3
+        help
+            GPIO number for I2C master data
+            For ESP32-C3, GPIO 8 is the default SDA pin.
+
+    config SHTC3_I2C_SCL_PIN
+        int "I2C SCL Pin"
+        default 5 if IDF_TARGET_ESP32S3
+        default 9 if IDF_TARGET_ESP32C3
+        help
+            GPIO number for I2C master clock
+            For ESP32-C3, GPIO 9 is the default SCL pin.
+
+    config PIR_DATA_PIN
+        int "PIR Data Pin"
+        default 7 if IDF_TARGET_ESP32S3
+        default 3 if IDF_TARGET_ESP32C3
+        help
+            Default PIR Data Pin
+
+endmenu
+
+menu "Occupancy Sensor Configuration"
+    config PIR_SENSOR_GPIO_NUM
+        int "PIR Sensor GPIO Pin Number"
+        default 4 if IDF_TARGET_ESP32S3
+        default 4 if IDF_TARGET_ESP32C3
+        range 0 39
+        help
+            GPIO pin number where the PIR sensor output is connected.
+            Default is GPIO 4 for ESP32-S3 and GPIO 3 for ESP32-C3.
+            For ESP32-C3, avoid using strapping pins (GPIO 2, 8, 9) 
+            and JTAG pins (GPIO 4-7).
+            
+
+            
+    config PIR_OCCUPIED_TO_UNOCCUPIED_DELAY_SECONDS
+        int "PIR Occupied to Unoccupied Delay (seconds)"
+        default 10
+        range 5 1800
+        help
+            Time in seconds before the occupancy sensor reports unoccupied after 
+            the last motion detection. Industry standard ranges from 30 seconds 
+            to 30 minutes (1800 seconds). Default value is 10 seconds for testing.
+            For production, 5-15 minutes (300-900 seconds) is typical.
+endmenu
