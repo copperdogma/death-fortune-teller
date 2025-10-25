@@ -1,5 +1,18 @@
 # OTA Issues Debugging Log
 
+### Step 9: 2025-10-24 21:53 MDT – Current OTA Investigation
+**Action**: Took over debugging with hardware on USB, verified SD `config.txt` (role=primary, ota_password=***REDACTED***) and established plan.
+**Result**: **IN PROGRESS** – Preparing to disable telnet streaming during OTA and capture logs post-failure.
+**Notes**:
+- OTA partition slots remain 0x1E0000 bytes; current firmware size is ~1.66 MB (build succeeds).
+- Failures observed at ~64 % likely `OTA_RECEIVE_ERROR` (transport drop), not partition overflow.
+- Implemented firmware change to auto-pause RemoteDebug streaming during OTA (reduces competing TCP traffic); flashed via USB (`pio run -e esp32dev -t upload --upload-port /dev/cu.usbserial-10` on 2025-10-24 22:20 MDT).
+- Serial capture post-flash confirms Wi-Fi connection and new IP 192.168.86.49 (updates needed for OTA host config).
+- Next actions:
+  1. Run OTA with telnet `stream off`, immediately capture telnet log to confirm error code.
+  2. Retry with `remoteDebugManager->update()` temporarily disabled if failure persists.
+  3. Adjust OTA chunk rate/conditions if still failing.
+
 ### Step 8: ESP32 Reflash and OTA Test
 **Action**: Reflashed ESP32 via USB with current firmware, tested OTA upload
 **Result**: **MAJOR SUCCESS** - OTA service now responding!
@@ -96,4 +109,3 @@ if (wifiSSID.length() > 0 && wifiPassword.length() > 0)  // Missing {
 - `scripts/telnet_command.py` - Added password authentication
 - `partitions/fortune_ota.csv` - Optimized partition layout
 - `platformio.ini` - Updated IP address (dynamic via scripts)
-

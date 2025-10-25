@@ -312,7 +312,7 @@ The project has a solid foundation but needs proper global logging implementatio
 - Documented local developer password setup: added README instructions to place `platformio.local.ini` in the project root (git-ignored) with `upload_flags = --auth=...`, plus an environment-variable example so credentials stay off git.
 
 ### Worklog – 2025-10-24 00:05 PT
-- Created `platformio.local.ini` with `upload_flags = --auth=Death9!!!` and attempted OTA upload.
+- Created `platformio.local.ini` with `upload_flags = --auth=***REDACTED***` and attempted OTA upload.
 - Authentication now succeeds (`Authenticating...OK`), but the transfer still aborts ~30% in with `Error Uploading`. The ESP32 stays online afterwards; serial log shows repeated Bluetooth retry/status messages with no crash.
 - Next steps: capture OTA debug output (telnet `log` during upload) and compare with prior OTA failure at 8% to isolate transport issue (likely Wi-Fi drop or OTA handler still unstable mid-transfer).
 

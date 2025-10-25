@@ -47,7 +47,7 @@ def main():
                         help="Exit with non-zero status if connection fails after retries")
     parser.add_argument("--auto-discover", action="store_true",
                         help="Auto-discover ESP32 if not found")
-    parser.add_argument("--password", default=os.environ.get("ESP32_OTA_PASSWORD", "Death9!!!"),
+    parser.add_argument("--password", default=os.environ.get("ESP32_OTA_PASSWORD", "***REDACTED***"),
                         help="Password for telnet authentication")
     args = parser.parse_args()
     
