@@ -87,6 +87,10 @@ void RemoteDebugManager::setAutoStreaming(bool enabled) {
     m_autoStreaming = enabled;
 }
 
+bool RemoteDebugManager::isAutoStreaming() const {
+    return m_autoStreaming;
+}
+
 void RemoteDebugManager::handleClient() {
     if (!m_client || !m_client.connected()) {
         if (m_client) {

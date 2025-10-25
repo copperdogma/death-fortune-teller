@@ -105,10 +105,14 @@ void WiFiManager::attemptConnection() {
 void WiFiManager::handleConnection() {
     m_connected = true;
     m_connectionAttempts = 0;
+
+    // Ensure optimal Wi-Fi performance once the driver is fully active
+    WiFi.setTxPower(WIFI_POWER_19_5dBm);
     
     LOG_INFO(TAG, "Connected successfully");
     LOG_INFO(TAG, "IP address: %s", WiFi.localIP().toString().c_str());
     LOG_INFO(TAG, "Hostname: %s", WiFi.getHostname());
+    LOG_INFO(TAG, "RSSI: %ddBm", WiFi.RSSI());
     
     if (m_connectionCallback) {
         m_connectionCallback(true);

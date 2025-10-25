@@ -32,6 +32,8 @@ public:
     void startConnectionRetry();
     void stopConnectionRetry();
     bool isRetryingConnection() const;
+    void pauseForOta();
+    void resumeAfterOta();
     
     // Manual connection state checking
     void checkConnectionState();
@@ -87,9 +89,27 @@ private:
     void logBondedDevices();
     void requestMediaStart(uint32_t delayMs = 100);
     void processMediaStart();
+    void performDeferredResume();
+    void finalizePause();
 
     bool m_mediaStartPending;
     unsigned long m_mediaStartDeadlineMs;
+    void startA2dp();
+
+    enum class PauseState {
+        Idle,
+        WaitingForDisconnect,
+        Paused
+    };
+
+    PauseState m_pauseState;
+    bool m_controllerWasEnabledBeforeOta;
+    bool m_bluedroidWasEnabledBeforeOta;
+    bool m_resumeDeferred;
+    unsigned long m_resumeAfterMillis;
+    unsigned long m_disconnectDeadlineMs;
+
+    static constexpr unsigned long kResumeDelayMs = 8000;
 };
 
 #endif // BLUETOOTH_CONTROLLER_H

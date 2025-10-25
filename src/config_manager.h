@@ -25,10 +25,11 @@ public:
     String getWiFiPassword() const;
     String getOTAHostname() const;
     String getOTAPassword() const;
-    
+
     // Remote debug configuration methods
     bool isRemoteDebugEnabled() const;
     int getRemoteDebugPort() const;
+    bool isBluetoothEnabled() const;
 
 private:
     ConfigManager() {}

@@ -115,3 +115,18 @@
 20251022: Codex got the base code working in platformio! It was based off TwoSkulls, but that was build in Arduino IDE and I wasnt sure if that was REQUIRED to get the code working, especailly the esp32-a2dp library and audio streaming. But Codex got it working under platformio.
 
 20251021: Project Created.
+## [2025-10-25] - OTA/Bluetooth guard refactor
+
+### Changed
+- Pause the main loop during OTA and defer Bluetooth resume to avoid stack crashes
+- Configure OTA uploads to read host IP from `DEATH_FORTUNE_HOST` env var
+- Document discovery workflow and 8s Bluetooth restart window
+
+### Added
+- Config flag to enable/disable Bluetooth without rebuild
+- OTA manager `isUpdating()` state for loop guards
+
+### Fixed
+- OTA crashes when Bluetooth is active during back-to-back updates
+- Telnet capture newline bug in `flash_and_monitor.py`
+

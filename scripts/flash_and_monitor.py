@@ -64,9 +64,7 @@ def capture_serial(port, baud, seconds):
 
     end_time = time.time() + seconds
     output = []
-    print(f"
-[flash_and_monitor] Starting serial capture for {seconds}s...
-")
+    print(f"\n[flash_and_monitor] Starting serial capture for {seconds}s...\n")
 
     try:
         with serial.Serial(port, baudrate=int(baud), timeout=0.2) as ser:
@@ -103,8 +101,7 @@ def capture_telnet(host, seconds):
     try:
         tn = telnetlib.Telnet(host, 23, timeout=5)
         tn.read_until(b"help", timeout=2)
-        tn.write(b"log
-")
+        tn.write(b"log\n")
         while time.time() < deadline:
             chunk = tn.read_very_eager()
             if chunk:
@@ -116,8 +113,7 @@ def capture_telnet(host, seconds):
         tn.close()
         return 0, "".join(output)
     except Exception as exc:
-        return 0, f"Telnet capture failed: {exc}
-"
+        return 0, f"Telnet capture failed: {exc}\n"
 
 
 def main():

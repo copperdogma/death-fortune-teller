@@ -7,6 +7,7 @@ OTAManager* OTAManager::s_instance = nullptr;
 
 OTAManager::OTAManager() 
     : m_enabled(false),
+      m_updating(false),
       m_passwordProtected(false),
       m_disabledForMissingPassword(false),
       m_lastProgressPercent(255)
@@ -35,7 +36,7 @@ bool OTAManager::begin(const String& hostname, const String& password) {
     
     // Set hostname and timeouts
     ArduinoOTA.setHostname(hostname.c_str());
-    ArduinoOTA.setTimeout(20000); // allow slower transfers before timing out
+    ArduinoOTA.setTimeout(45000); // allow slower transfers before timing out
 
     // Password authentication is mandatory
     ArduinoOTA.setPassword(password.c_str());
@@ -67,6 +68,10 @@ void OTAManager::update() {
 
 bool OTAManager::isEnabled() const {
     return m_enabled;
+}
+
+bool OTAManager::isUpdating() const {
+    return m_updating;
 }
 
 bool OTAManager::isPasswordProtected() const {
@@ -106,6 +111,7 @@ void OTAManager::setupCallbacks() {
 
 void OTAManager::onStart() {
     if (s_instance) {
+        s_instance->m_updating = true;
         LOG_INFO(TAG, "🔄 Update started");
         if (s_instance->m_onStartCallback) {
             s_instance->m_onStartCallback();
@@ -117,6 +123,7 @@ void OTAManager::onEnd() {
     if (s_instance) {
         LOG_INFO(TAG, "✅ Update completed");
         s_instance->m_lastProgressPercent = 255;
+        s_instance->m_updating = false;
         if (s_instance->m_onEndCallback) {
             s_instance->m_onEndCallback();
         }
@@ -157,6 +164,7 @@ void OTAManager::onError(ota_error_t error) {
             LOG_ERROR(TAG, "📶 Receive failure – check Wi-Fi signal quality and minimize peripheral activity during OTA");
         }
         s_instance->m_lastProgressPercent = 255;
+        s_instance->m_updating = false;
         if (s_instance->m_onErrorCallback) {
             s_instance->m_onErrorCallback(error);
         }

@@ -13,6 +13,7 @@
   wifi_password=YourPassword
   ota_hostname=death-fortune-teller
   ota_password=YourSecurePassword
+  bluetooth_enabled=true
   ```
 - On your development machine:
   1. Create `platformio.local.ini` in the project root (git-ignored):
@@ -26,6 +27,20 @@
      export ESP32_OTA_PASSWORD=YourSecurePassword
      ```
 - Optional: set `DEATH_FORTUNE_HOST` if the device IP changes (defaults to `192.168.86.29`).
+
+### Refresh the target IP before every OTA
+- Run `python scripts/discover_esp32.py` (or `pio run -e esp32dev_ota -t ota_upload_auto`) to locate the live skull. DHCP loves to shuffle between `192.168.86.46` and `192.168.86.49`.
+- Export the discovered IP for the current shell: `export DEATH_FORTUNE_HOST=<ip>` – the PlatformIO `esp32dev_ota` environment reads this variable automatically via `upload_port = ${sysenv.DEATH_FORTUNE_HOST}`. _(If the variable is missing, `pio run -e esp32dev_ota -t upload` will exit with “Upload port not found,” so run discovery first or use the auto task.)_
+- Alternatively, rely on the auto-discovery task (`pio run -e esp32dev_ota -t ota_upload_auto`) which handles discovery + upload in one go.
+- When a USB console is available, double-check the latest boot log: the line `WiFiManager: IP address: ... (RSSI: ... dBm)` reflects the address and signal strength the ESP32 is actually using.
+
+### During OTA the app loop idles automatically
+- The firmware now halts its normal loop while an OTA is in progress—only Wi-Fi/ArduinoOTA handlers continue running. The Bluetooth controller is explicitly powered down before flashing and brought back online afterward, so expect regular status logs while audio, sensors, and Bluetooth sleep until the transfer completes. Bluetooth restarts automatically ~8 s after the OTA finishes to leave a window for back-to-back uploads.
+
+### Disable Bluetooth when focusing on OTA stability (optional)
+- The runtime OTA guard already pauses playback and shuts Bluetooth down, but if you want to keep the skull silent between repeated OTA sessions you can still set `bluetooth_enabled=false` in `config/config.txt` and reboot. The firmware will skip A2DP initialization entirely while the rest of the system stays online.
+- For a quick compile-time kill switch you can also add `-DDISABLE_BLUETOOTH` to the relevant `build_flags`; both knobs accomplish the same thing.
+- Re-enable Bluetooth (config and/or build flag) once OTA transfers are healthy again and you’re ready to exercise audio playback.
 
 ## Building & Uploading OTA
 

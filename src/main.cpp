@@ -64,6 +64,7 @@ bool isPrimary = true;
 String initializationAudioPath;
 bool initializationQueued = false;
 bool initializationPlayed = false;
+bool remoteDebugStreamingWasEnabled = true;
 
 int32_t IRAM_ATTR provideAudioFramesThunk(void *context, Frame *frame, int32_t frameCount) {
     AudioPlayer *player = static_cast<AudioPlayer *>(context);
@@ -113,6 +114,27 @@ void setup() {
     LOG_INFO(TAG, "💀 Death starting…");
 
     remoteDebugManager = new RemoteDebugManager();
+
+    auto pauseRemoteDebugForOta = [&]() {
+        if (!remoteDebugManager) return;
+        remoteDebugStreamingWasEnabled = remoteDebugManager->isAutoStreaming();
+        if (remoteDebugStreamingWasEnabled) {
+            remoteDebugManager->setAutoStreaming(false);
+            remoteDebugManager->println("🛜 RemoteDebug: auto streaming paused during OTA");
+        }
+    };
+
+    auto restoreRemoteDebugAfterOta = [&](const char *enabledMsg, const char *disabledMsg) {
+        if (!remoteDebugManager) return;
+        if (remoteDebugStreamingWasEnabled) {
+            remoteDebugManager->setAutoStreaming(true);
+            remoteDebugManager->println(enabledMsg);
+        } else {
+            remoteDebugManager->println(disabledMsg);
+        }
+        remoteDebugStreamingWasEnabled = remoteDebugManager->isAutoStreaming();
+    };
+
 
     lightController.begin();
     lightController.blinkEyes(3); // Startup blink
@@ -190,7 +212,19 @@ void setup() {
         }
     });
 
-    bluetoothController = new BluetoothController();
+    bool bluetoothEnabledConfig = config.isBluetoothEnabled();
+#ifdef DISABLE_BLUETOOTH
+    bluetoothEnabledConfig = false;
+    bluetoothController = nullptr;
+    LOG_WARN(BT_TAG, "Bluetooth disabled for this build (DISABLE_BLUETOOTH set)");
+#else
+    if (bluetoothEnabledConfig) {
+        bluetoothController = new BluetoothController();
+    } else {
+        bluetoothController = nullptr;
+        LOG_WARN(BT_TAG, "Bluetooth disabled via config (bluetooth_enabled=false)");
+    }
+#endif
     uartController = new UARTController();
     thermalPrinter = new ThermalPrinter(PRINTER_TX_PIN, PRINTER_RX_PIN);
     fingerSensor = new FingerSensor(CAP_SENSE_PIN);
@@ -216,31 +250,34 @@ void setup() {
     otaManager = new OTAManager();
 
     if (otaManager) {
-        otaManager->setOnStartCallback([]() {
+        otaManager->setOnStartCallback([&]() {
             LOG_INFO(OTA_TAG, "⏸️ OTA start: pausing peripherals");
+            pauseRemoteDebugForOta();
             if (audioPlayer) {
                 audioPlayer->setMuted(true);
             }
             if (bluetoothController) {
-                bluetoothController->stopConnectionRetry();
+                bluetoothController->pauseForOta();
             }
         });
-        otaManager->setOnEndCallback([]() {
+        otaManager->setOnEndCallback([&]() {
             LOG_INFO(OTA_TAG, "▶️ OTA completed: resuming peripherals");
+            restoreRemoteDebugAfterOta("🛜 RemoteDebug: auto streaming resumed after OTA", "🛜 RemoteDebug: auto streaming left disabled after OTA");
             if (audioPlayer) {
                 audioPlayer->setMuted(false);
             }
             if (bluetoothController) {
-                bluetoothController->startConnectionRetry();
+                bluetoothController->resumeAfterOta();
             }
         });
-        otaManager->setOnErrorCallback([](ota_error_t /*error*/) {
+        otaManager->setOnErrorCallback([&](ota_error_t /*error*/) {
             LOG_WARN(OTA_TAG, "⚠️ OTA aborted: resuming peripherals");
+            restoreRemoteDebugAfterOta("🛜 RemoteDebug: auto streaming resumed after OTA abort", "🛜 RemoteDebug: auto streaming left disabled after OTA abort");
             if (audioPlayer) {
                 audioPlayer->setMuted(false);
             }
             if (bluetoothController && !bluetoothController->isRetryingConnection()) {
-                bluetoothController->startConnectionRetry();
+                bluetoothController->resumeAfterOta();
             }
         });
     }
@@ -295,26 +332,28 @@ void setup() {
         LOG_WARN(WIFI_TAG, "⚠️ Wi-Fi credentials incomplete or missing; wireless features disabled");
     }
 
-    bluetoothController->initializeA2DP(config.getBluetoothSpeakerName(), provideAudioFramesThunk, audioPlayer);
-    bluetoothController->setConnectionStateChangeCallback([](int state) {
-        if (state == ESP_A2D_CONNECTION_STATE_CONNECTED) {
-            bool isPlaying = audioPlayer && audioPlayer->isAudioPlaying();
-            bool hasQueue = audioPlayer && audioPlayer->hasQueuedAudio();
-            LOG_INFO(BT_TAG, "🔗 Bluetooth speaker connected. initPlayed=%s, isAudioPlaying=%s, hasQueued=%s",
-                     initializationPlayed ? "true" : "false",
-                     isPlaying ? "true" : "false",
-                     hasQueue ? "true" : "false");
-            if (!initializationPlayed && audioPlayer && !initializationQueued) {
-                LOG_INFO(BT_TAG, "🎬 Priming initialization audio after Bluetooth connect");
-                audioPlayer->playNext(initializationAudioPath);
-                initializationQueued = true;
+    if (bluetoothController && bluetoothEnabledConfig) {
+        bluetoothController->initializeA2DP(config.getBluetoothSpeakerName(), provideAudioFramesThunk, audioPlayer);
+        bluetoothController->setConnectionStateChangeCallback([](int state) {
+            if (state == ESP_A2D_CONNECTION_STATE_CONNECTED) {
+                bool isPlaying = audioPlayer && audioPlayer->isAudioPlaying();
+                bool hasQueue = audioPlayer && audioPlayer->hasQueuedAudio();
+                LOG_INFO(BT_TAG, "🔗 Bluetooth speaker connected. initPlayed=%s, isAudioPlaying=%s, hasQueued=%s",
+                         initializationPlayed ? "true" : "false",
+                         isPlaying ? "true" : "false",
+                         hasQueue ? "true" : "false");
+                if (!initializationPlayed && audioPlayer && !initializationQueued) {
+                    LOG_INFO(BT_TAG, "🎬 Priming initialization audio after Bluetooth connect");
+                    audioPlayer->playNext(initializationAudioPath);
+                    initializationQueued = true;
+                }
+            } else if (state == ESP_A2D_CONNECTION_STATE_DISCONNECTED) {
+                LOG_WARN(BT_TAG, "🔌 Bluetooth speaker disconnected");
             }
-        } else if (state == ESP_A2D_CONNECTION_STATE_DISCONNECTED) {
-            LOG_WARN(BT_TAG, "🔌 Bluetooth speaker disconnected");
-        }
-    });
-    bluetoothController->set_volume(config.getSpeakerVolume());
-    bluetoothController->startConnectionRetry();
+        });
+        bluetoothController->set_volume(config.getSpeakerVolume());
+        bluetoothController->startConnectionRetry();
+    }
 
     if (initializationAudioPath.length() > 0 && sdCardManager->fileExists(initializationAudioPath.c_str())) {
         audioPlayer->playNext(initializationAudioPath);
@@ -329,6 +368,17 @@ void setup() {
 }
 
 void loop() {
+    if (otaManager && otaManager->isUpdating()) {
+        if (wifiManager) {
+            wifiManager->update();
+        }
+        if (otaManager) {
+            otaManager->update();
+        }
+        delay(10);
+        return;
+    }
+
     unsigned long currentTime = millis();
     static unsigned long lastStatusLogTime = 0;
 

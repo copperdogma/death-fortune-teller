@@ -3,12 +3,18 @@
 
 static constexpr const char* TAG = "Bluetooth";
 #include "esp_bt.h"
+#include "esp_bt_main.h"
 #include "esp_a2dp_api.h"
 #include "esp_bt_device.h"
 #include "esp_err.h"
 #include "esp_log.h"
 #include <cstring>
 #include <cstdio>
+
+#include "ota_manager.h"
+// ESP32-A2DP keeps global pointers to the active controller instance; we reset them around OTA teardown.
+extern BluetoothA2DPCommon *actual_bluetooth_a2dp_common;
+extern BluetoothA2DPSource *actual_bluetooth_a2dp_source;
 
 namespace {
 constexpr const char *kLogTag = "BluetoothController";
@@ -42,6 +48,12 @@ BluetoothController::BluetoothController() {
     m_audioProviderContext = nullptr;
     m_mediaStartPending = false;
     m_mediaStartDeadlineMs = 0;
+    m_pauseState = PauseState::Idle;
+    m_controllerWasEnabledBeforeOta = false;
+    m_bluedroidWasEnabledBeforeOta = false;
+    m_resumeDeferred = false;
+    m_resumeAfterMillis = 0;
+    m_disconnectDeadlineMs = 0;
     s_instance = this; // Set static instance
 }
 
@@ -56,29 +68,7 @@ void BluetoothController::initializeA2DP(const String &speaker_name, AudioProvid
     m_speaker_name = speaker_name;
     m_audioProviderCallback = audioProviderCallback;
     m_audioProviderContext = context;
-    
-    // Create A2DP source
-    a2dp_source = new BluetoothA2DPSource();
-    
-    // Set up callbacks using static function pointers
-    a2dp_source->set_on_connection_state_changed(staticConnectionStateChanged, this);
-    a2dp_source->set_on_audio_state_changed(staticAudioStateChanged, this);
-    a2dp_source->set_default_bt_mode(ESP_BT_MODE_BTDM);
-    a2dp_source->set_auto_reconnect(true);
-    a2dp_source->set_ssid_callback(ssidMatchCallback);
-
-    esp_log_level_set("BT_APP", ESP_LOG_INFO);
-    esp_log_level_set("BT_AV", ESP_LOG_INFO);
-
-    logBondedDevices();
-    
-    LOG_INFO(TAG, "🔍 Checking initial A2DP connection state...");
-    
-    // Start A2DP source
-    a2dp_source->start(speaker_name.c_str(), staticDataCallback);
-    a2dp_source->set_volume(m_volume);
-    
-    LOG_INFO(TAG, "✅ A2DP Bluetooth initialized: %s", speaker_name.c_str());
+    startA2dp();
 }
 
 bool BluetoothController::isA2dpConnected() {
@@ -120,6 +110,26 @@ void BluetoothController::update() {
     }
 
     processMediaStart();
+
+    if (m_resumeDeferred) {
+        OTAManager *ota = OTAManager::instance();
+        if (ota && ota->isUpdating()) {
+            m_resumeAfterMillis = currentTime + kResumeDelayMs;
+        } else if (currentTime >= m_resumeAfterMillis) {
+            performDeferredResume();
+        }
+    }
+
+    if (m_pauseState == PauseState::WaitingForDisconnect) {
+        bool disconnected = true;
+        if (a2dp_source) {
+            esp_a2d_connection_state_t state = a2dp_source->get_connection_state();
+            disconnected = (state == ESP_A2D_CONNECTION_STATE_DISCONNECTED);
+        }
+        if (disconnected || currentTime >= m_disconnectDeadlineMs) {
+            finalizePause();
+        }
+    }
 }
 
 void BluetoothController::setConnectionStateChangeCallback(std::function<void(int)> callback) {
@@ -290,6 +300,193 @@ void BluetoothController::stopConnectionRetry() {
 
 bool BluetoothController::isRetryingConnection() const {
     return m_retryingConnection;
+}
+
+void BluetoothController::pauseForOta() {
+    if (m_pauseState != PauseState::Idle) {
+        LOG_DEBUG(TAG, "Bluetooth already handling OTA pause (state=%d)", static_cast<int>(m_pauseState));
+        return;
+    }
+
+    LOG_INFO(TAG, "⏸️ Pausing Bluetooth for OTA");
+    m_resumeDeferred = false;
+    stopConnectionRetry();
+    m_connectionStateStable = false;
+    m_mediaStartPending = false;
+    m_controllerWasEnabledBeforeOta = false;
+    m_bluedroidWasEnabledBeforeOta = false;
+
+    if (a2dp_source) {
+        esp_a2d_connection_state_t currentState = a2dp_source->get_connection_state();
+        if (currentState == ESP_A2D_CONNECTION_STATE_CONNECTED || currentState == ESP_A2D_CONNECTION_STATE_CONNECTING) {
+            LOG_INFO(TAG, "🔻 Disconnecting A2DP link before OTA (state=%d)", static_cast<int>(currentState));
+            a2dp_source->disconnect();
+            m_pauseState = PauseState::WaitingForDisconnect;
+            m_disconnectDeadlineMs = millis() + 1500;
+        } else {
+            finalizePause();
+        }
+    } else {
+        finalizePause();
+    }
+    m_a2dpConnected = false;
+}
+
+void BluetoothController::resumeAfterOta() {
+    if (!m_audioProviderCallback) {
+        LOG_WARN(TAG, "Cannot resume Bluetooth after OTA – audio provider not set");
+        return;
+    }
+
+    if (m_pauseState == PauseState::WaitingForDisconnect) {
+        finalizePause();
+    }
+
+    LOG_INFO(TAG, "⏱️ Scheduling Bluetooth resume %.1fs after OTA", kResumeDelayMs / 1000.0f);
+    m_resumeDeferred = true;
+    m_resumeAfterMillis = millis() + kResumeDelayMs;
+}
+
+void BluetoothController::finalizePause() {
+    if (m_pauseState == PauseState::Paused) {
+        return;
+    }
+
+    if (a2dp_source) {
+        a2dp_source->end(false);
+        delete a2dp_source;
+        a2dp_source = nullptr;
+        actual_bluetooth_a2dp_common = nullptr;
+        actual_bluetooth_a2dp_source = nullptr;
+    }
+
+    m_disconnectDeadlineMs = 0;
+
+    esp_bluedroid_status_t bluedroidStatus = esp_bluedroid_get_status();
+    if (bluedroidStatus == ESP_BLUEDROID_STATUS_ENABLED) {
+        esp_err_t disableResult = esp_bluedroid_disable();
+        if (disableResult != ESP_OK && disableResult != ESP_ERR_INVALID_STATE) {
+            LOG_ERROR(TAG, "Failed to disable Bluedroid for OTA: %s", esp_err_to_name(disableResult));
+        } else {
+            unsigned long deadline = millis() + 500;
+            while (esp_bluedroid_get_status() == ESP_BLUEDROID_STATUS_ENABLED && millis() < deadline) {
+                delay(10);
+            }
+            if (esp_bluedroid_get_status() != ESP_BLUEDROID_STATUS_ENABLED) {
+                m_bluedroidWasEnabledBeforeOta = true;
+            } else {
+                LOG_WARN(TAG, "Timed out waiting for Bluedroid to disable before OTA");
+            }
+        }
+    }
+
+    esp_bt_controller_status_t controllerStatus = esp_bt_controller_get_status();
+    if (controllerStatus == ESP_BT_CONTROLLER_STATUS_ENABLED) {
+        esp_err_t disableController = esp_bt_controller_disable();
+        if (disableController != ESP_OK && disableController != ESP_ERR_INVALID_STATE) {
+            LOG_ERROR(TAG, "Failed to disable Bluetooth controller for OTA: %s", esp_err_to_name(disableController));
+        } else {
+            unsigned long deadline = millis() + 500;
+            while (esp_bt_controller_get_status() == ESP_BT_CONTROLLER_STATUS_ENABLED && millis() < deadline) {
+                delay(10);
+            }
+            if (esp_bt_controller_get_status() != ESP_BT_CONTROLLER_STATUS_ENABLED) {
+                m_controllerWasEnabledBeforeOta = true;
+            } else {
+                LOG_WARN(TAG, "Timed out waiting for Bluetooth controller to disable before OTA");
+            }
+        }
+    } else if (controllerStatus == ESP_BT_CONTROLLER_STATUS_INITED) {
+        m_controllerWasEnabledBeforeOta = true;
+    }
+
+    m_pauseState = PauseState::Paused;
+}
+
+void BluetoothController::performDeferredResume() {
+    if (!m_audioProviderCallback) {
+        LOG_WARN(TAG, "Cannot resume Bluetooth after OTA – audio provider not set");
+        return;
+    }
+
+    m_resumeDeferred = false;
+
+    if (m_controllerWasEnabledBeforeOta) {
+        esp_bt_controller_status_t controllerStatus = esp_bt_controller_get_status();
+        if (controllerStatus == ESP_BT_CONTROLLER_STATUS_INITED) {
+            esp_err_t enableResult = esp_bt_controller_enable(ESP_BT_MODE_BTDM);
+            if (enableResult != ESP_OK && enableResult != ESP_ERR_INVALID_STATE) {
+                LOG_ERROR(TAG, "Failed to enable Bluetooth controller after OTA: %s", esp_err_to_name(enableResult));
+            } else {
+                unsigned long deadline = millis() + 500;
+                while (esp_bt_controller_get_status() != ESP_BT_CONTROLLER_STATUS_ENABLED && millis() < deadline) {
+                    delay(10);
+                }
+            }
+        }
+    }
+
+    if (m_bluedroidWasEnabledBeforeOta) {
+        esp_bluedroid_status_t bluedroidStatus = esp_bluedroid_get_status();
+        if (bluedroidStatus == ESP_BLUEDROID_STATUS_INITIALIZED) {
+            esp_err_t enableResult = esp_bluedroid_enable();
+            if (enableResult != ESP_OK && enableResult != ESP_ERR_INVALID_STATE) {
+                LOG_ERROR(TAG, "Failed to enable Bluedroid after OTA: %s", esp_err_to_name(enableResult));
+            }
+        } else if (bluedroidStatus == ESP_BLUEDROID_STATUS_UNINITIALIZED) {
+            esp_err_t initResult = esp_bluedroid_init();
+            if (initResult == ESP_OK) {
+                esp_err_t enableResult = esp_bluedroid_enable();
+                if (enableResult != ESP_OK && enableResult != ESP_ERR_INVALID_STATE) {
+                    LOG_ERROR(TAG, "Failed to enable Bluedroid after OTA: %s", esp_err_to_name(enableResult));
+                }
+            } else if (initResult != ESP_ERR_INVALID_STATE) {
+                LOG_ERROR(TAG, "Failed to init Bluedroid after OTA: %s", esp_err_to_name(initResult));
+            }
+        }
+    }
+
+    if (!a2dp_source) {
+        startA2dp();
+    }
+    LOG_INFO(TAG, "▶️ Resuming Bluetooth after OTA");
+    m_a2dpConnected = false;
+    m_connectionStateStable = false;
+    m_mediaStartPending = false;
+    startConnectionRetry();
+    m_controllerWasEnabledBeforeOta = false;
+    m_bluedroidWasEnabledBeforeOta = false;
+    m_pauseState = PauseState::Idle;
+}
+
+void BluetoothController::startA2dp() {
+    if (!m_audioProviderCallback) {
+        LOG_WARN(TAG, "Cannot start A2DP – audio provider not initialized");
+        return;
+    }
+    if (a2dp_source) {
+        delete a2dp_source;
+        a2dp_source = nullptr;
+    }
+
+    a2dp_source = new BluetoothA2DPSource();
+    a2dp_source->set_on_connection_state_changed(staticConnectionStateChanged, this);
+    a2dp_source->set_on_audio_state_changed(staticAudioStateChanged, this);
+    a2dp_source->set_default_bt_mode(ESP_BT_MODE_BTDM);
+    a2dp_source->set_auto_reconnect(true);
+    a2dp_source->set_ssid_callback(ssidMatchCallback);
+
+    esp_log_level_set("BT_APP", ESP_LOG_INFO);
+    esp_log_level_set("BT_AV", ESP_LOG_INFO);
+
+    logBondedDevices();
+
+    LOG_INFO(TAG, "🔍 Starting A2DP source for speaker %s", m_speaker_name.c_str());
+    a2dp_source->start(m_speaker_name.c_str(), staticDataCallback);
+    a2dp_source->set_volume(m_volume);
+    LOG_INFO(TAG, "✅ A2DP Bluetooth initialized: %s", m_speaker_name.c_str());
+    m_mediaStartPending = false;
+    m_connectionStateStable = false;
 }
 
 void BluetoothController::checkConnectionState() {

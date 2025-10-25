@@ -12,6 +12,7 @@ public:
     bool begin(const String& hostname, const String& password = "");
     void update();
     bool isEnabled() const;
+    bool isUpdating() const;
     bool isPasswordProtected() const;
     bool disabledForMissingPassword() const;
     static OTAManager* instance();
@@ -24,6 +25,7 @@ public:
 
 private:
     bool m_enabled;
+    bool m_updating;
     bool m_passwordProtected;
     bool m_disabledForMissingPassword;
     String m_hostname;

@@ -23,6 +23,7 @@ public:
     void setConnectionCallback(std::function<void()> callback);
     void setDisconnectionCallback(std::function<void()> callback);
     void setAutoStreaming(bool enabled);
+    bool isAutoStreaming() const;
     
 private:
     WiFiServer* m_server;

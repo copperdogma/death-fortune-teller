@@ -150,3 +150,8 @@ int ConfigManager::getRemoteDebugPort() const
 {
     return getValue("remote_debug_port", "23").toInt();
 }
+
+bool ConfigManager::isBluetoothEnabled() const
+{
+    return !getValue("bluetooth_enabled", "true").equalsIgnoreCase("false");
+}
