@@ -13,8 +13,22 @@ import os
 import socket
 import sys
 import time
+import subprocess
 
 DEFAULT_HOST = os.environ.get("DEATH_FORTUNE_HOST", "192.168.86.29")
+
+def discover_esp32():
+    """Auto-discover ESP32 if not set"""
+    try:
+        result = subprocess.run([sys.executable, 'scripts/discover_esp32.py'], 
+                              capture_output=True, text=True)
+        if result.returncode == 0:
+            for line in result.stdout.split('\n'):
+                if 'Active ESP32 found:' in line:
+                    return line.split(':')[1].strip()
+    except:
+        pass
+    return None
 DEFAULT_PORT = 23
 
 
@@ -31,7 +45,22 @@ def main():
                         help="Delay in seconds between retries")
     parser.add_argument("--strict", action="store_true",
                         help="Exit with non-zero status if connection fails after retries")
+    parser.add_argument("--auto-discover", action="store_true",
+                        help="Auto-discover ESP32 if not found")
+    parser.add_argument("--password", default=os.environ.get("ESP32_OTA_PASSWORD", "Death9!!!"),
+                        help="Password for telnet authentication")
     args = parser.parse_args()
+    
+    # Auto-discover if needed
+    if args.auto_discover and args.host == DEFAULT_HOST:
+        discovered = discover_esp32()
+        if discovered:
+            print(f"🔍 Auto-discovered ESP32 at {discovered}")
+            args.host = discovered
+        else:
+            print("❌ Could not auto-discover ESP32")
+            print("💡 Run: python scripts/discover_esp32.py")
+            return 1
 
     cmd = args.command
     payload = None
@@ -50,6 +79,21 @@ def main():
             with socket.create_connection((args.host, args.port), timeout=5) as sock:
                 sock.settimeout(3)
                 _drain(sock)
+                
+                # Handle password prompt if present
+                initial_response = _read_all(sock)
+                if "password" in initial_response.lower() or "#" in initial_response:
+                    # Send password
+                    sock.sendall(f"{args.password}\n".encode("utf-8"))
+                    time.sleep(0.5)
+                    _drain(sock)  # Drain password response
+                else:
+                    # If no password prompt, we might need to send a newline first
+                    sock.sendall(b"\n")
+                    time.sleep(0.5)
+                    _drain(sock)
+                
+                # Send the actual command
                 sock.sendall(payload.encode("utf-8"))
                 time.sleep(1.0)
                 response = _read_all(sock)

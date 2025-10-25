@@ -1,5 +1,32 @@
 # Changelog
 
+## [2025-10-24] - OTA System Improvements and Debugging Tools
+
+### Added
+- **Auto-Discovery OTA System**: Automatically discovers ESP32 devices and handles dynamic IP addresses
+- **Enhanced Debugging Tools**: 
+  - `scripts/discover_esp32.py` - Network scanner for ESP32 devices
+  - `scripts/ota_upload_auto.py` - Auto-discovery OTA upload
+  - `scripts/system_status.py` - System status dashboard
+  - `scripts/troubleshoot.py` - Interactive troubleshooting guide
+- **Telnet Authentication**: Added password support for secure telnet connections
+- **PlatformIO Integration**: New custom targets for debugging tools in VS Code
+
+### Fixed
+- **OTA Partition Layout**: Optimized partition table by removing unnecessary SPIFFS partition
+- **OTA Service Issues**: Resolved "No response from the ESP" errors through proper firmware initialization
+- **Dynamic IP Handling**: Auto-discovery system handles ESP32 IP address changes
+
+### Improved
+- **OTA Documentation**: Enhanced `docs/ota.md` with comprehensive troubleshooting guide
+- **Partition Sizes**: Increased OTA partition sizes from 1.69MB to 1.88MB each
+- **Error Handling**: Better error messages and debugging information
+
+### Documentation
+- Added `OTA_TROUBLESHOOTING.md` - Comprehensive OTA troubleshooting guide
+- Added `TEST_REPORT.md` - Test results for debugging tools
+- Added `ai-work/ota-issues.md` - Detailed debugging log and solution documentation
+
 ## [2025-10-24] - Flash/Monitor helper workflow
 
 ### Added

@@ -67,3 +67,45 @@ if env.get("PIOENV", "") == "esp32dev_ota":
         title="Telnet Stream",
         description="Stream rolling log via telnet"
     )
+
+    # New debugging tools
+    env.AddCustomTarget(
+        name="discover_esp32",
+        dependencies=None,
+        actions=[
+            "python scripts/discover_esp32.py"
+        ],
+        title="Discover ESP32",
+        description="Scan network for ESP32 devices and show status"
+    )
+
+    env.AddCustomTarget(
+        name="system_status",
+        dependencies=None,
+        actions=[
+            "python scripts/system_status.py"
+        ],
+        title="System Status",
+        description="Show complete system status dashboard"
+    )
+
+    env.AddCustomTarget(
+        name="troubleshoot",
+        dependencies=None,
+        actions=[
+            "python scripts/troubleshoot.py"
+        ],
+        title="Troubleshoot",
+        description="Interactive troubleshooting guide for OTA issues"
+    )
+
+    # Auto-discovery OTA upload
+    env.AddCustomTarget(
+        name="ota_upload_auto",
+        dependencies=None,
+        actions=[
+            "python scripts/ota_upload_auto.py"
+        ],
+        title="OTA Upload (Auto-Discovery)",
+        description="Automatically discover ESP32 and perform OTA upload"
+    )
