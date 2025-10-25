@@ -1,0 +1,19 @@
+# Death, the Fortune-Telling Skeleton -- Configuration
+# Copy this file to your SD card as /config/config.txt
+
+# Basic settings
+## NOTE: remove the role. This is a stand-alone prop
+role=primary
+speaker_name=JBL Flip 5
+speaker_volume=100
+
+# WiFi Settings for OTA update/monitoring
+# Uncomment and fill in your WiFi credentials to enable wireless features
+#wifi_ssid=YourNetworkName
+#wifi_password=YourPassword
+#ota_hostname=death-fortune-teller
+#ota_password=your_secure_ota_password
+
+# Remote debug settings (Phase 2: Wireless Serial Monitor)
+#remote_debug_enabled=true
+#remote_debug_port=23
