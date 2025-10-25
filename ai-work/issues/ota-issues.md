@@ -181,6 +181,126 @@
 - Boot log reiterates strong dependence on Wi-Fi RSSI (−80 dBm). Consider moving the router or adding a temporary antenna to improve invite responsiveness.
 - Next experiment: temporarily disable Bluetooth in `config.txt` or via telnet command once a non-interactive pathway exists, to see if freeing RAM/socket slots lets ArduinoOTA reply on the first invite.
 
+### Step 32: 2025-10-25 13:16 MDT – Post-reboot status check
+**Action**: After the user power-cycled the skull, captured 10 s of USB serial output to verify the new network state before attempting OTA.
+**Result**: **SUCCESS** – Logs show `WiFi: connected (192.168.86.49)` with free heap ~16 KB; Bluetooth still retrying.
+**Notes**:
+- Confirms the ESP32 is back online on `.49`; no immediate OTA or telnet actions performed yet per request.
+- RSSI message not present in the short capture, but previous boot logs showed −75 to −80 dBm—worth monitoring if invites keep timing out.
+
+### Step 33: 2025-10-25 13:18 MDT – OTA retry after reboot
+**Action**: Set `DEATH_FORTUNE_HOST=192.168.86.49` and ran `pio run -e esp32dev_ota -t upload` while tailing USB serial to watch for OTA callbacks.
+**Result**: **FAILED** – `espota.py` logged `Host 192.168.86.49 Not Found` after ~90 s of invitations; the device never opened the TCP data socket, and no `OTA:` progress lines appeared on serial. PlatformIO also emitted a benign `.sconsign` temp-file warning while unwinding the failed job.
+**Notes**:
+- Serial heartbeats continued every ~5 s with Wi-Fi connected, so the ESP32 stayed online and did not reboot.
+- Invitation failure persists even immediately after the board reboot; suggests the UDP packet isn’t reaching ArduinoOTA (network loss or service saturation).
+- Next step: keep OTA focus (no telnet usage) and consider increasing invite retries/timeout or improving Wi-Fi signal to get past the initial handshake.
+
+### Step 34: 2025-10-25 13:21 MDT – Connectivity spot-check
+**Action**: Issued `ping -c 5 192.168.86.49` from the Mac, then rechecked USB serial output.
+**Result**: **FAILED** – Ping reported `Host is down` with 100 % packet loss, yet the skull’s serial status immediately afterwards still claimed `WiFi: connected (192.168.86.49)`.
+**Notes**:
+- Confirms the ESP32 believes it’s on Wi-Fi while the host can’t reach it—likely severe packet loss or a stale DHCP association in the Google/Nest mesh.
+- Will hold off on telnet and instead focus on getting the network path stable enough for OTA invites to succeed.
+
+### Step 35: 2025-10-25 13:24 MDT – Discovery vs. device logs mismatch
+**Action**: Ran `python scripts/discover_esp32.py --quiet` to refresh the active IP list, then pinged the recommended address.
+**Result**: **MIXED** – Discovery identified 192.168.86.46 as the active ESP32 (telnet reachable), and `ping` to `.46` returned 0 % loss (~30 ms RTT). USB serial, however, continues to report `WiFi: connected (192.168.86.49)`.
+**Notes**:
+- `brw28565a69921b.lan` resolves to a Brother printer, so the telnet-positive `.46` might actually be that peripheral rather than the skull; nevertheless, it is the only host responding quickly.
+- Next OTA attempt will still target `.46` in case the skull truly migrated, but serial monitoring will confirm whether the ESP32 ever accepts the invite.
+
+### Step 36: 2025-10-25 13:28 MDT – OTA invite against 192.168.86.46
+**Action**: Exported `DEATH_FORTUNE_HOST=192.168.86.46` and reran `pio run -e esp32dev_ota -t upload` with a serial tail.
+**Result**: **FAILED** – After ~7 min of retries `espota.py` reported `No response from the ESP`. Serial heartbeats kept advertising `WiFi: connected (192.168.86.49)`, indicating the MCU never saw the OTA start hook.
+**Notes**:
+- Confirms the UDP invite still isn’t reaching ArduinoOTA even on the freshly pingable `.46`; possible that the ESP32 hasn’t truly migrated off `.49` despite the discovery scan.
+- With OTA blocked at the invitation stage for both candidate IPs, the next move is to firm up which address the board is actually using (e.g., inspect DHCP table or add a debug print in `WiFiManager` for `WiFi.localIP()` each loop) before launching another upload.
+
+### Step 37: 2025-10-25 13:33 MDT – Add RSSI/IP instrumentation
+**Action**: Updated `src/main.cpp` to print `WiFi.RSSI()` alongside the current IP in the 5 s status heartbeat, then prepared to reflash over USB for ground truth on signal strength.
+**Result**: **IN PROGRESS** – Code change staged locally; next step is `pio run -e esp32dev -t upload --upload-port /dev/cu.usbserial-10` to deploy the instrumentation.
+**Notes**:
+- Expecting the enhanced log to confirm whether the skull is clinging to a weak association (e.g., −80 dBm) which would explain the dropped OTA invites.
+- Leaving telnet untouched per instructions; only USB flashing and serial monitoring are in play.
+
+### Step 38: 2025-10-25 13:36 MDT – RSSI confirmed after USB flash
+**Action**: Flashed the instrumented build via USB (`pio run -e esp32dev -t upload --upload-port /dev/cu.usbserial-10`) and tailed serial output.
+**Result**: **SUCCESS** – Boot log now reports `WiFiManager: RSSI: -76dBm` and heartbeat lines show `WiFi: connected (192.168.86.49) RSSI: -76dBm`. RemoteDebug also noted an automatic client connection from 192.168.86.28 immediately after boot.
+**Notes**:
+- Signal quality remains borderline (mid −70s), matching the earlier suspicion that OTA invites are getting lost when the link degrades further.
+- Despite the RSSI readout, `ping` from the Mac to `.49` still times out, so the network path is asymmetric—likely the mesh routing toward the Mac is flaky while outbound traffic from the skull occasionally succeeds.
+
+### Step 39: 2025-10-25 13:34 MDT – OTA retry with RSSI telemetry
+**Action**: With `DEATH_FORTUNE_HOST=192.168.86.49`, reran `pio run -e esp32dev_ota -t upload` while the new status messages streamed RSSI values (−77 to −83 dBm).
+**Result**: **FAILED** – `espota.py` again reported `Host 192.168.86.49 Not Found` after ~100 s of invitations. Serial never printed the OTA start hook; Wi-Fi RSSI hovered <−80 dBm just before each failure.
+**Notes**:
+- Confirms the board is clinging to a very weak link; every invite attempt coincided with RSSI dips, supporting the theory that UDP packets are dropping before ArduinoOTA can acknowledge them.
+- Next mitigation: reduce load on the Wi-Fi stack (e.g., temporarily disable Bluetooth retries) or physically improve signal strength before reattempting OTA.
+
+### Step 40: 2025-10-25 13:39 MDT – Disable Bluetooth to lighten Wi-Fi load
+**Action**: Added `-DDISABLE_BLUETOOTH` to both PlatformIO environments so the next USB flash skips A2DP entirely (no connection retries while OTA is in progress).
+**Result**: **IN PROGRESS** – Build flags updated; preparing to reflash to confirm the skull boots with Bluetooth fully disabled.
+**Notes**:
+- Expectation: reduced RF contention and lower heap usage should make ArduinoOTA more responsive on a marginal RSSI link.
+- Will remove the flag once OTA stability is confirmed so audio can return.
+
+### Step 41: 2025-10-25 13:44 MDT – Bluetooth-disabled build verified
+**Action**: Flashed the new `DISABLE_BLUETOOTH` build via USB and captured the post-boot heartbeat.
+**Result**: **SUCCESS** – Status log now shows `A2DP connected: false, Retrying: false` with free heap ~112 KB (previously ~9 KB) while Wi-Fi remains at 192.168.86.49, RSSI ≈ −80 dBm.
+**Notes**:
+- With Bluetooth idle, the ESP32 has ~100 KB more headroom; if OTA still fails the culprit is likely pure RF reachability rather than heap pressure.
+- Proceeding with another OTA attempt immediately while the link is quiet.
+
+### Step 42: 2025-10-25 13:38 MDT – OTA succeeds with Bluetooth disabled
+**Action**: Ran `pio run -e esp32dev_ota -t upload` (target 192.168.86.49) after disabling Bluetooth. Serial tail captured `OTAManager: Progress …` messages.
+**Result**: **SUCCESS** – OTA completed in ~85 s (`Result: OK`), triggering an automatic reboot. The new firmware booted from OTA slot without USB intervention.
+**Notes**:
+- Progress logs marched from 0 % to 100 % with no invite timeouts, confirming that shedding Bluetooth load and reclaiming heap resolved the handshake failures.
+- Next steps: restore Bluetooth (remove `DISABLE_BLUETOOTH`) and repeat OTA to verify the pause/resume guard still works, or leave it disabled if OTA sessions will remain the priority today.
+
+### Step 43: 2025-10-25 13:44 MDT – Wall-power OTA attempt #1
+**Action**: With the skull unplugged from USB and running on wall power, ran `pio run -e esp32dev_ota -t upload` using `DEATH_FORTUNE_HOST=192.168.86.49`.
+**Result**: **FAILED @ 26 %** – Transfer aborted with `Error Uploading` after steady progress; ESP remained online (pings responded) but OTA did not resume.
+**Notes**:
+- Even without Bluetooth, occasional packet loss still interrupts the stream; left everything untouched and immediately retried.
+- Discovery still reports `.49` as active; no need to reset the board between attempts.
+
+### Step 44: 2025-10-25 13:47 MDT – Wall-power OTA attempt #2
+**Action**: Re-ran `pio run -e esp32dev_ota -t upload` (same target).
+**Result**: **SUCCESS** – OTA completed in ~125 s and rebooted (`Result: OK`). This confirms the first failure was transient RF loss.
+**Notes**:
+- Post-reboot pings showed 700–1700 ms latency but no drops—network is noisy yet usable.
+- Prepared a second back-to-back OTA to satisfy the “two in a row” requirement.
+
+### Step 45: 2025-10-25 13:50 MDT – Wall-power OTA attempt #3
+**Action**: Immediately launched a second OTA upload after the successful reboot (still wall powered, Bluetooth disabled).
+**Result**: **SUCCESS** – OTA finished in ~157 s with another clean reboot (`Result: OK`).
+**Notes**:
+- Achieved two consecutive OTA successes under wall-power conditions.
+- Recommend leaving Bluetooth disabled during future OTA runs unless signal quality improves; once testing is done, remove `-DDISABLE_BLUETOOTH` to restore audio features.
+
+### Step 46: 2025-10-25 14:11 MDT – Auto-discovery regression
+**Action**: Tried `scripts/ota_upload_auto.py` on the perfboard setup after moving the skull; script rewrote `platformio.ini` with `upload_port = 192.168.86.46`, then attempted a build.
+**Result**: **FAILED** – Toolchain invocation ran outside the PlatformIO environment (clang errors, missing headers) and OTA never started. Also proved that `.46` corresponds to a different host (welcome prompt, no OTA) while the skull still lives at `.49`.
+**Notes**:
+- Restored `upload_port` to `${sysenv.DEATH_FORTUNE_HOST}` to avoid future mismatches.
+- Will stick to direct `pio run` invocations for now.
+
+### Step 47: 2025-10-25 14:20 MDT – Perfboard OTA run #1
+**Action**: With `upload_port` restored and `DEATH_FORTUNE_HOST=192.168.86.49`, executed `pio run -e esp32dev_ota -t upload`.
+**Result**: **SUCCESS** – OTA completed in ~59 s (`Result: OK`).
+**Notes**:
+- Confirms the skull still responds at `.49` even without USB connected.
+- Bluetooth remains disabled, keeping free heap >110 KB and eliminating retry chatter.
+
+### Step 48: 2025-10-25 14:21 MDT – Perfboard OTA run #2
+**Action**: Immediately repeated the OTA upload (same host/IP).
+**Result**: **SUCCESS** – OTA finished in ~42 s (`Result: OK`), delivering the required two back-to-back successes on wall power with the perfboard wiring.
+**Notes**:
+- Perfboard scenario meets the acceptance criteria for OTA reliability without USB.
+- Next follow-up is optional: re-enable Bluetooth and reconfirm once the network is stable.
+
 ### Step 8: ESP32 Reflash and OTA Test
 **Action**: Reflashed ESP32 via USB with current firmware, tested OTA upload
 **Result**: **MAJOR SUCCESS** - OTA service now responding!

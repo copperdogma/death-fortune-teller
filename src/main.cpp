@@ -20,6 +20,7 @@
 #include "remote_debug_manager.h"
 #include "logging_manager.h"
 #include "skit_selector.h"
+#include <WiFi.h>
 #include <SD.h>
 #include "BluetoothA2DPSource.h"
 #include "esp_a2dp_api.h"
@@ -403,6 +404,7 @@ void loop() {
             statusMsg += "🛜 WiFi: " + String(wifiManager->isConnected() ? "connected" : "disconnected");
             if (wifiManager->isConnected()) {
                 statusMsg += " (" + wifiManager->getIPAddress() + ")";
+                statusMsg += " RSSI: " + String(WiFi.RSSI()) + "dBm";
             }
         } else {
             statusMsg += "🛜 WiFi: disabled";
