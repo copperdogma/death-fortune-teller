@@ -71,6 +71,43 @@
   ```
   That script now performs discovery, exports `DEATH_FORTUNE_HOST` for the child process, and skips permanent config edits. If it errors, run the manual command with the discovered IP.
 
+### Troubleshooting toolkit
+If OTA stalls, work through the helpers in this order:
+```bash
+python scripts/discover_esp32.py        # find the skull & check telnet/OTA status
+python scripts/system_status.py         # summary of Wi-Fi, OTA, SD, audio
+python scripts/telnet_command.py status --auto-discover
+python scripts/troubleshoot.py          # guided checklist if things still fail
+```
+
+Key scripts (all under `scripts/`):
+- `discover_esp32.py` – scans the subnet, highlights the active skull, and reports telnet/OTA readiness.
+- `system_status.py` – auto-discovers the skull and prints a concise health report (Wi‑Fi, OTA, telnet, SD, audio).
+- `troubleshoot.py` – interactive flow that walks through power, SD, Wi‑Fi, and telnet checks.
+- `telnet_command.py` – one-shot telnet commands with auto-discovery (`--auto-discover`), password support, and better error reporting.
+
+PlatformIO surfaces these tools as custom targets (`esp32dev_ota → Discover ESP32`, `→ System Status`, `→ Troubleshoot`) and VS Code tasks mirror them under “Death OTA”.
+
+### Common issues & fixes
+- **No active ESP32 found**: ensure the skull is powered, Wi‑Fi credentials are correct, SD card is inserted, and give it 30–60 s after boot. Re-run discovery or power cycle if needed.
+- **Telnet connection timeout**: the telnet server may be paused or the device is in an error state. Try power cycling, verify Wi‑Fi strength, and check the USB serial log if available.
+- **OTA invite/transfer failures**: double-check Wi‑Fi RSSI (< −70 dBm is ideal), confirm telnet/OTA service is running, and consider temporarily disabling Bluetooth (config flag or telnet command) to reduce traffic before the upload.
+
+### Helpful environment variables
+Set these once per shell session to avoid retyping:
+```bash
+export DEATH_FORTUNE_HOST=192.168.86.49
+export ESP32_OTA_PASSWORD=YourSecurePassword
+```
+`DEATH_FORTUNE_HOST` is consumed automatically by the OTA scripts/tasks, and `ESP32_OTA_PASSWORD` feeds the `platformio.local.ini` template.
+
+### Preventative tips
+1. Reserve stable DHCP leases for each skull.
+2. Keep per-skull `config.txt` files in sync (Wi‑Fi / OTA settings).
+3. Run `discover_esp32.py` before every session to spot IP drift early.
+4. Maintain a quick reference of hostnames/IPs for manual overrides.
+5. Use the environment variables above so scripts and tasks stay consistent.
+
 ## Telnet Logging & Commands
 - Telnet address defaults to `DEATH_FORTUNE_HOST:23`.
 - Manual session:

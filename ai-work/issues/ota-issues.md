@@ -320,6 +320,54 @@
 **Notes**:
 - OTA stability looks excellent with Bluetooth disabled; next story will tackle re-enabling audio without sacrificing reliability.
 
+### Step 52: 2025-10-25 14:36 MDT – Remove compile-time Bluetooth disable
+**Action**: Dropped `-DDISABLE_BLUETOOTH` from both PlatformIO environments so Bluetooth/A2DP will initialize again on the next build.
+**Result**: **IN PROGRESS** – Ready to verify whether OTA remains reliable with Bluetooth active.
+**Notes**:
+- Next steps: run consecutive OTA uploads using the manual flow (`discover_esp32.py`, export `DEATH_FORTUNE_HOST`, `pio run …`) and monitor for regressions.
+
+### Step 53: 2025-10-25 14:37 MDT – Rediscovery before Bluetooth-on tests
+**Action**: Re-ran `scripts/discover_esp32.py --quiet` after removing the flag to confirm the skull is still at the expected IP.
+**Result**: **SUCCESS** – Discovery shows only 192.168.86.49 as `ACTIVE Telnet:✅ OTA:✅`; `.46` remains tagged `TELNET`.
+**Notes**:
+- Using this IP for the upcoming OTA runs so we don’t chase the printer again.
+
+### Step 54: 2025-10-25 14:39 MDT – Bluetooth-on OTA attempt #1
+**Action**: Executed `DEATH_FORTUNE_HOST=192.168.86.49 pio run -e esp32dev_ota -t upload` with Bluetooth back in the build.
+**Result**: **SUCCESS** – Transfer completed in ~111 s (`Result: OK`), confirming OTA still works with Bluetooth enabled.
+**Notes**:
+- Build output shows the Bluetooth controller recompiled; status logs (captured earlier) now include retry activity again.
+
+### Step 55: 2025-10-25 14:40 MDT – Bluetooth-on OTA attempt #2
+**Action**: Immediately re-ran the OTA upload command.
+**Result**: **FAILED** – `espota.py` reported `No response from device` about 10 s into the session (after auth). No serial console available to inspect Bluetooth activity.
+**Notes**:
+- Likely timing/race between the controller resuming and the next OTA invite. Will pause a few seconds before the next attempt to let Bluetooth settle.
+
+### Step 56: 2025-10-25 14:48 MDT – Bluetooth-on OTA attempt #3 (with 10 s pause)
+**Action**: Waited ~10 s, then launched another OTA upload to 192.168.86.49.
+**Result**: **FAILED** – After ~7 min of invitations the host logged `No response from the ESP` (auth succeeded but the data socket never opened).
+**Notes**:
+- Evidently the ESP32 isn’t answering OTA invites reliably once Bluetooth resumes. Need to quiet RemoteDebug/Bluetooth traffic before attempting the next pair of uploads.
+
+### Step 57: 2025-10-25 14:50 MDT – Bluetooth-on OTA attempt #4 (after ~40 s pause)
+**Action**: Slept ~40 s to let Bluetooth settle, then retried the OTA upload.
+**Result**: **FAILED** – `Host 192.168.86.49 Not Found` after the invite phase; subsequent attempts to run `telnet_command.py stream off` also timed out / reported “Host is down”.
+**Notes**:
+- The skull may have roamed to a new IP mid-test or the Wi-Fi link is collapsing when Bluetooth is active; need fresh discovery and possibly to pause RemoteDebug via the new helper once we locate the device again.
+
+### Step 58: 2025-10-25 14:52 MDT – Device unreachable
+**Action**: Ran discovery again; no `ACTIVE` device found. `arp -a` shows `death-fortune-teller.lan (192.168.86.49) at (incomplete)`.
+**Result**: **FAILED** – Pings to 192.168.86.49 return `Host is down`. The skull appears offline (likely reboot loop or Wi-Fi drop) after the previous failed OTA attempts.
+**Notes**:
+- Awaiting hardware reset or reconnection before continuing Bluetooth-on tests.
+
+### Step 59: 2025-10-25 14:55 MDT – Next steps
+**Action**: Paused active testing while the skull is offline; prepared to tackle telnet automation so Bluetooth can be toggled before OTA.
+**Result**: **PENDING** – Will resume once the board is reachable again (power cycle may be required).
+**Notes**:
+- Priority for the next session: establish a reliable telnet command path (`status`, `stream off`, `bluetooth disable/enable`) to eliminate manual intervention when Bluetooth is active.
+
 ### Step 8: ESP32 Reflash and OTA Test
 **Action**: Reflashed ESP32 via USB with current firmware, tested OTA upload
 **Result**: **MAJOR SUCCESS** - OTA service now responding!
