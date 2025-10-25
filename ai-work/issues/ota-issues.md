@@ -301,6 +301,25 @@
 - Perfboard scenario meets the acceptance criteria for OTA reliability without USB.
 - Next follow-up is optional: re-enable Bluetooth and reconfirm once the network is stable.
 
+### Step 49: 2025-10-25 14:23 MDT – Post-update discovery check
+**Action**: Ran the enhanced `scripts/discover_esp32.py --quiet` to confirm it flags only the skull as active.
+**Result**: **SUCCESS** – Output now lists 27 devices but only 192.168.86.49 shows `ACTIVE Telnet:✅ OTA:✅`; the Brother printer at .46 is demoted to `TELNET`.
+**Notes**:
+- Confirms the discovery improvements worked; discovery output includes both telnet/OTA readiness flags for clarity.
+
+### Step 50: 2025-10-25 14:32 MDT – OTA validation run #1 (post-tooling updates)
+**Action**: With `platformio.ini` back on `${sysenv.DEATH_FORTUNE_HOST}` and discovery confirming `.49`, executed `DEATH_FORTUNE_HOST=192.168.86.49 pio run -e esp32dev_ota -t upload`.
+**Result**: **SUCCESS** – Transfer completed in ~86 s (`Result: OK`) and the skull rebooted cleanly on wall power.
+**Notes**:
+- Confirms the revised scripts + docs workflow works end-to-end.
+- No Bluetooth retries present; free heap remains ~110 KB during the run.
+
+### Step 51: 2025-10-25 14:34 MDT – OTA validation run #2
+**Action**: Immediately repeated the manual OTA command with the same environment.
+**Result**: **SUCCESS** – Second upload wrapped in ~38 s (`Result: OK`), meeting the “two consecutive” requirement after the documentation/tooling changes.
+**Notes**:
+- OTA stability looks excellent with Bluetooth disabled; next story will tackle re-enabling audio without sacrificing reliability.
+
 ### Step 8: ESP32 Reflash and OTA Test
 **Action**: Reflashed ESP32 via USB with current firmware, tested OTA upload
 **Result**: **MAJOR SUCCESS** - OTA service now responding!

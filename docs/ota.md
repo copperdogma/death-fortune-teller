@@ -28,11 +28,25 @@
      ```
 - Optional: set `DEATH_FORTUNE_HOST` if the device IP changes (defaults to `192.168.86.29`).
 
-### Refresh the target IP before every OTA
-- Run `python scripts/discover_esp32.py` (or `pio run -e esp32dev_ota -t ota_upload_auto`) to locate the live skull. DHCP loves to shuffle between `192.168.86.46` and `192.168.86.49`.
-- Export the discovered IP for the current shell: `export DEATH_FORTUNE_HOST=<ip>` – the PlatformIO `esp32dev_ota` environment reads this variable automatically via `upload_port = ${sysenv.DEATH_FORTUNE_HOST}`. _(If the variable is missing, `pio run -e esp32dev_ota -t upload` will exit with “Upload port not found,” so run discovery first or use the auto task.)_
-- Alternatively, rely on the auto-discovery task (`pio run -e esp32dev_ota -t ota_upload_auto`) which handles discovery + upload in one go.
-- When a USB console is available, double-check the latest boot log: the line `WiFiManager: IP address: ... (RSSI: ... dBm)` reflects the address and signal strength the ESP32 is actually using.
+### Quick manual OTA checklist (recommended)
+1. **Discover the skull**  
+   ```bash
+   python scripts/discover_esp32.py
+   export DEATH_FORTUNE_HOST=<ip-from-output>
+   ```
+   The discovery script now verifies the RemoteDebug banner / OTA port so it only reports the actual skull as “Active”.
+2. **(Optional) Verify signal + heap**  
+   If USB is connected, check the serial heartbeat for `RSSI` and free heap. RSSI stronger than −70 dBm yields the most reliable OTA sessions.
+3. **Kick off OTA**  
+   ```bash
+   pio run -e esp32dev_ota -t upload
+   ```
+   PlatformIO pulls `DEATH_FORTUNE_HOST` directly; no file edits required.
+
+### About the auto-discovery upload task
+- `python scripts/ota_upload_auto.py` / `pio run -e esp32dev_ota -t ota_upload_auto` remain available, but they now leave `platformio.ini` untouched and simply export `DEATH_FORTUNE_HOST` for the upload process. Treat the feature as experimental until we get broader coverage.
+- If the helper fails, fall back to the manual checklist above—no cleanup needed.
+- When a USB console is available, you can still double-check the boot log: `WiFiManager: IP address: ... (RSSI: ... dBm)` is the authoritative address.
 
 ### During OTA the app loop idles automatically
 - The firmware now halts its normal loop while an OTA is in progress—only Wi-Fi/ArduinoOTA handlers continue running. The Bluetooth controller is explicitly powered down before flashing and brought back online afterward, so expect regular status logs while audio, sensors, and Bluetooth sleep until the transfer completes. Bluetooth restarts automatically ~8 s after the OTA finishes to leave a window for back-to-back uploads.
@@ -44,31 +58,18 @@
 
 ## Building & Uploading OTA
 
-### Auto-Discovery OTA (RECOMMENDED)
-**NEW FEATURE**: Automatically discovers ESP32 devices and handles dynamic IP addresses.
-
-- **CLI (one-off)**:
-  ```bash
-  pio run -e esp32dev_ota -t ota_upload_auto
-  ```
-- **Direct script**:
-  ```bash
-  python scripts/ota_upload_auto.py
-  ```
-- **Project Tasks (VS Code / PlatformIO panel)**:
-  - `esp32dev_ota → OTA Upload (Auto-Discovery)` (automatically finds ESP32)
-- **VS Code tasks**:
-  - `Terminal → Run Task… → Death OTA: Upload (Auto-Discovery)`.
-
-### Manual OTA (Legacy)
-- CLI (one-off):
+### OTA commands at a glance
+- **Manual (preferred)**  
   ```bash
   pio run -e esp32dev_ota -t upload
   ```
-- Project Tasks (VS Code / PlatformIO panel):
-  - `esp32dev_ota → OTA Upload` (requires manual IP configuration).
-- VS Code tasks:
-  - `Terminal → Run Task… → Death OTA: Upload`.
+- **Auto (experimental)**  
+  ```bash
+  python scripts/ota_upload_auto.py
+  # or
+  pio run -e esp32dev_ota -t ota_upload_auto
+  ```
+  That script now performs discovery, exports `DEATH_FORTUNE_HOST` for the child process, and skips permanent config edits. If it errors, run the manual command with the discovered IP.
 
 ## Telnet Logging & Commands
 - Telnet address defaults to `DEATH_FORTUNE_HOST:23`.
