@@ -36,7 +36,7 @@
    ```
    The discovery script now verifies the RemoteDebug banner / OTA port so it only reports the actual skull as “Active”.
 2. **(Optional) Verify signal + heap**  
-   If USB is connected, check the serial heartbeat for `RSSI` and free heap. RSSI stronger than −70 dBm yields the most reliable OTA sessions.
+   If USB is connected, check the serial heartbeat for `RSSI` and free heap. RSSI stronger than −70 dBm yields the most reliable OTA sessions. When the link is weak, temporarily disabling Bluetooth (`-DDISABLE_BLUETOOTH` build flag or `bluetooth_enabled=false` in `config.txt`) reduces RF contention before running back-to-back OTAs.
 3. **Kick off OTA**  
    ```bash
    pio run -e esp32dev_ota -t upload
@@ -120,6 +120,9 @@ export ESP32_OTA_PASSWORD=YourSecurePassword
   - `python scripts/telnet_command.py log`
   - `python scripts/telnet_stream.py`
   - Use `--strict` to fail on connection issues; otherwise scripts retry three times and exit 0 so tasks stay green.
+- Tips:
+  - Telnet streaming starts **off by default**; enable it explicitly with `python scripts/telnet_command.py stream on` and turn it back off with `stream off` when finished.
+  - On marginal Wi-Fi links, pass shorter waits (for example `--read-timeout 1 --post-send-wait 1`) to `telnet_command.py` so the helper doesn’t stall while draining periodic status messages.
 - PlatformIO custom targets (under `esp32dev_ota`):
   - `Telnet Status`, `Telnet Log`, `Telnet Startup`, `Telnet Head`, `Telnet Tail`, `Telnet Help`, `Telnet Stream`.
 - VS Code tasks mirror the same commands (`Death OTA: Telnet Status`, etc.).

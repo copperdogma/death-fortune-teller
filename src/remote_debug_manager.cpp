@@ -7,7 +7,7 @@ RemoteDebugManager::RemoteDebugManager()
     : m_server(nullptr),
       m_enabled(false),
       m_port(23),
-      m_autoStreaming(true),
+      m_autoStreaming(false),
       m_lastBroadcastSequence(0) {}
 
 bool RemoteDebugManager::begin(int port) {
@@ -93,6 +93,13 @@ bool RemoteDebugManager::isAutoStreaming() const {
 
 void RemoteDebugManager::handleClient() {
     if (!m_client || !m_client.connected()) {
+        WiFiClient pending = m_server->available();
+        if (pending) {
+            LOG_DEBUG(TAG, "Telnet pending from %s (connected=%d, available=%d)",
+                     pending.remoteIP().toString().c_str(),
+                     pending.connected(), pending.available());
+        }
+
         if (m_client) {
             m_client.stop();
             if (m_disconnectionCallback) {
@@ -100,7 +107,7 @@ void RemoteDebugManager::handleClient() {
             }
         }
 
-        m_client = m_server->available();
+        m_client = pending;
         if (m_client) {
             LOG_INFO(TAG, "Telnet client connected from %s", m_client.remoteIP().toString().c_str());
             m_lastBroadcastSequence = LoggingManager::instance().latestSequence();
@@ -111,7 +118,7 @@ void RemoteDebugManager::handleClient() {
 
             m_client.println("🛜 RemoteDebug connected");
             m_client.println("Commands: status, wifi, ota, log, startup, head N, tail N, stream on|off, help");
-            sendStartupLog();
+            m_client.println("🛜 Hint: run 'startup' to replay boot log; use 'log' for rolling buffer.");
         }
     } else {
         if (m_client.available()) {

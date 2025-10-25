@@ -49,6 +49,12 @@ def main():
                         help="Auto-discover ESP32 if not found")
     parser.add_argument("--password", default=os.environ.get("ESP32_OTA_PASSWORD", "***REDACTED***"),
                         help="Password for telnet authentication")
+    parser.add_argument("--connect-timeout", type=float, default=5.0,
+                        help="Socket connect timeout in seconds")
+    parser.add_argument("--read-timeout", type=float, default=4.0,
+                        help="Socket read timeout in seconds")
+    parser.add_argument("--post-send-wait", type=float, default=1.5,
+                        help="Wait time after sending a command before reading response")
     args = parser.parse_args()
     
     # Auto-discover if needed
@@ -76,8 +82,8 @@ def main():
     while True:
         attempts += 1
         try:
-            with socket.create_connection((args.host, args.port), timeout=5) as sock:
-                sock.settimeout(3)
+            with socket.create_connection((args.host, args.port), timeout=args.connect_timeout) as sock:
+                sock.settimeout(args.read_timeout)
                 _drain(sock)
                 
                 # Handle password prompt if present
@@ -95,7 +101,7 @@ def main():
                 
                 # Send the actual command
                 sock.sendall(payload.encode("utf-8"))
-                time.sleep(1.0)
+                time.sleep(args.post_send_wait)
                 response = _read_all(sock)
                 sys.stdout.write(response)
                 sys.stdout.flush()

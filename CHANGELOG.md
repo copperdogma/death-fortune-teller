@@ -1,5 +1,19 @@
 # Changelog
 
+## [2025-10-25] - Telnet stability and OTA workflow hardening
+
+### Added
+- `ai-work/issues/telnet-issues.md` log capturing systematic debugging steps and resolution
+
+### Changed
+- Disabled Bluetooth via build flags during OTA/test builds to free RF bandwidth and heap
+- Defaulted RemoteDebug auto-streaming to off and documented short-timeout usage in `docs/ota.md`
+- Hardened discovery/banner matching and exposed timeout knobs in `scripts/telnet_command.py`
+
+### Fixed
+- Telnet helper timeouts caused by startup-log flooding and weak Wi-Fi links
+- OTA transfers stalling after telnet handshake failures by tuning streaming and helper behaviour
+
 ## [2025-01-23] - Story 002: SD Audio Playback & Jaw Synchronization Complete
 
 ### Added
@@ -129,4 +143,3 @@
 ### Fixed
 - OTA crashes when Bluetooth is active during back-to-back updates
 - Telnet capture newline bug in `flash_and_monitor.py`
-

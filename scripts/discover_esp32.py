@@ -41,6 +41,21 @@ def get_hostname(ip):
     return None
 
 
+def _is_skull_banner(text: str) -> bool:
+    """Return True if telnet banner looks like the RemoteDebug skull."""
+    if not text:
+        return False
+    lowered = text.lower()
+    checks = [
+        "🛜 remotedebug connected",
+        "commands: status, wifi, ota",
+        "🛜 startup log",
+        "🛜 status: wifi=",
+        "death initialized successfully",
+    ]
+    return any(marker in lowered for marker in checks)
+
+
 def probe_telnet(ip, timeout=2):
     """Attempt a lightweight telnet handshake to see if RemoteDebug responds."""
     try:
@@ -75,12 +90,7 @@ def probe_telnet(ip, timeout=2):
             sock.close()
 
         text = data.decode("utf-8", errors="ignore")
-        is_remote_debug = (
-            "RemoteDebug" in text
-            or "WiFi:" in text
-            or "🛜" in text
-            or "status" in text.lower() and "buffer" in text.lower()
-        )
+        is_remote_debug = _is_skull_banner(text)
         return True, is_remote_debug, text.strip()
     except Exception:
         return False, False, ""
@@ -149,11 +159,11 @@ def discover_esp32_devices():
     for ip in sorted(devices):
         hostname = get_hostname(ip)
         telnet_up, remote_debug, telnet_text = probe_telnet(ip)
-        ota_ready = probe_ota(ip) if not remote_debug else True
+        ota_ready = probe_ota(ip)
+        skull_hostname = hostname and "death-fortune-teller" in hostname
+        skull_banner = remote_debug or _is_skull_banner(telnet_text)
 
-        if hostname and "death-fortune-teller" in hostname:
-            status = "ACTIVE"
-        elif remote_debug or ota_ready:
+        if skull_hostname or skull_banner or ota_ready:
             status = "ACTIVE"
         elif hostname and "espressif" in hostname:
             status = "ESP32 (no telnet)" if not telnet_up else "ESP32"
