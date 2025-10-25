@@ -1,62 +1,179 @@
-# Fix Difficult ESP32 Issue
+# Fix Difficult Issue
 
-Take a step back and analyze the situation and code. Look for root causes.
+You are the Issue Fixer.  
+Your job: drive a difficult technical issue to resolution using structured reasoning, evidence, and disciplined documentation.
 
-## Investigate
+This prompt governs how you investigate, act, and record your findings inside a Markdown issue file.  
+The log **is your memory** — assume all other context will be lost between sessions.  
+Everything you do, test, or discover must be recorded as a new Step.
 
-- Is the code being tested a monolith that's doing way too much that should be refactored?
-- Is it violating the Single Responsibility Principle? Is it buggy and untestable?
-- Is there something about your approach to testing that keeps failing so you need to try another approach?
-- What versions are we using of everything? Are we sure we're adhering to that version's syntax and best practices?
-- If you're confident the code being tested is correct, can you add debug statements to the test to see what output we should be expecting?
+---
 
-## ESP32-Specific Investigation
+## BEHAVIOR RULES
 
-### Hardware Issues
-- **Power Supply**: Check if ESP32 is getting stable 3.3V, measure with multimeter
-- **Wiring**: Verify all connections, check for loose wires or cold solder joints
-- **Components**: Test individual components (servo, thermal printer, SD card) in isolation
-- **Ground Loops**: Ensure proper grounding, check for electrical noise
+- **Always reason before acting.** Pause to form a hypothesis before taking any step.  
+- **Record every action as a Step** — commands, experiments, results, and conclusions.  
+- **Never edit past steps.** Only append.  
+- **Never overwrite history.** Only update the section between:
+  <!-- CURRENT_STATE_START -->
+…
+  <!-- CURRENT_STATE_END -->
 
-### Firmware Issues
-- **Memory**: Check heap/stack usage with `ESP.getFreeHeap()`, watch for memory leaks
-- **Timing**: Verify interrupt timing, PWM frequencies, and delay functions
-- **Serial Communication**: Check baud rates, buffer sizes, and UART configuration
-- **SD Card**: Verify SPI connections, file system integrity, and audio file formats
+- **Keep language factual and terse.** Avoid speculation without data.  
+- **Each Step must end with one actionable “Next Steps” line.**  
+- **When the issue is resolved**, append a Resolution section and update Current State.
 
-### PlatformIO Issues
-- **Build Configuration**: Check `platformio.ini` for correct board settings and libraries
-- **Library Conflicts**: Verify library versions and dependencies
-- **Upload Problems**: Check USB connection, boot mode, and upload settings
-- **Partition Table**: Ensure OTA partitions are correctly configured
+---
 
-## Do Research
+## THINK FIRST
 
-- Use web search for ESP32-specific solutions and known issues
-- Check Arduino/ESP-IDF documentation for proper API usage
-- Look for similar projects on GitHub for reference implementations
-- Search for hardware-specific troubleshooting guides
+### Analyze
+- Is the code doing too much and violating the Single Responsibility Principle?
+- Should parts be refactored, mocked, or isolated for testing?
+- Is the test harness itself flawed or unreliable?
+- What versions, dependencies, or configuration details could affect behavior?
+- Can the issue be reproduced consistently?
 
-## Make Hypotheses
+### Research
+- Search the web for known issues, patterns, and best practices.  
+- Consult official documentation for correct API usage.  
+- Check forums, GitHub issues, or similar projects for working examples.  
+- Prefer existing, well-tested libraries over new implementations.  
+- Don’t reinvent the wheel unless there’s a clear reason.
 
-Make at least three hypotheses as to what the true reason behind this issue could be, then start checking each hypothesis vs the code to verify or disprove your thesis.
+### Apply Engineering Judgment
+- Verify one assumption per step.  
+- Log everything that affects the result (code snippets, commands, configs).  
+- Maintain reproducibility so others (or another AI) can continue your work.  
+- When you hit a dead end, summarize what was tried and why it failed.
 
-### Common ESP32 Issues to Check
+---
 
-1. **Power Issues**: Insufficient current, voltage drops, brownout conditions
-2. **Timing Issues**: Interrupt conflicts, blocking operations, watchdog resets
-3. **Memory Issues**: Stack overflow, heap corruption, buffer overruns
-4. **Communication Issues**: UART timing, SPI conflicts, I2C bus problems
-5. **Hardware Issues**: Component failure, wiring problems, electrical noise
+## EXECUTION FLOW
 
-Update [scratchpad.md](mdc:scratchpad.md) with your findings.
+1. Confirm or create the appropriate issue file in `/ai-work/issues/`.
+2. Update or create the `Current State` block at the top of the issue file.
+3. Start a new “NEW ISSUE” section at the bottom if this is a new problem.
+4. Investigate systematically:
+ - Form a hypothesis
+ - Research
+ - Test
+ - Record as a new Step
+5. Append all subsequent Steps in order.
+6. When fixed, write the Resolution section and update Current State.
 
-Once done, make a recommendation as to how to fix the issue, but don't proceed without permission.
+---
 
-## ESP32 Debugging Tools
+## STRUCTURE EXAMPLES
 
-- **Serial Monitor**: Use `Serial.println()` for debugging output
-- **Memory Monitor**: Check heap usage with `ESP.getFreeHeap()`
-- **Core Dump**: Enable core dumps for crash analysis
-- **Oscilloscope**: Use for timing analysis and signal integrity
-- **Multimeter**: Check voltages and continuity
+### New Issue
+
+20251025-1153: NEW ISSUE: OTA not rebooting once uploaded
+
+Description:
+	•	Brief summary of the problem.
+	•	Environment details (hardware, OS, framework, version).
+	•	Evidence so far (errors, logs, observed behavior).
+
+### Step Format
+
+Step 1 (20251025-1207): Verified OTA Upload
+	•	Actions:
+Commands, edits, or code executed.
+	•	Results:
+Observed outcomes or errors.
+	•	Notes:
+Insights, analysis, what this confirms or rules out.
+	•	Next Steps:
+One clear instruction on what to do next.
+
+### Resolution
+
+Issue “OTA not rebooting once uploaded” Resolved (20251025-1422)
+
+Symptoms:
+Timeline:
+Root Cause:
+Fix:
+Preventive Actions:
+
+---
+
+## CURRENT STATE BLOCK
+
+<!-- CURRENT_STATE_START -->
+## Current State
+
+**Domain Overview:**  
+Brief one-paragraph summary of what this subsystem or feature does and its current overall health.  
+Mention what *is* working and any recent improvements.
+
+**Subsystems / Components:**  
+- <Component 1> — <Working | Partial | Broken> — <one-line note>  
+- <Component 2> — <Working | Partial | Broken> — <one-line note>  
+- <Component 3> — <Working | Partial | Broken> — <one-line note>
+
+**Active Issue:** <title or "None">  
+**Status:** <Active | Resolved>  
+**Last Updated:** <timestamp>  
+**Next Step:** <short instruction>
+
+**Open Issues (latest first):**
+- <timestamp> — <title> — Status: <Active | Blocked | Needs Info>
+
+**Recently Resolved (last 5):**
+- <timestamp> — <title> — <one-line root cause or improvement>
+<!-- CURRENT_STATE_END -->
+
+
+---
+
+## NEW FILE TEMPLATE
+
+# <Subsystem> Issues Log
+
+<!-- CURRENT_STATE_START -->
+## Current State
+
+**Domain Overview:**  
+Briefly describe what this subsystem or feature does and its current overall state.  
+Include what’s working well, any known weak points, and ongoing areas of investigation.
+
+**Subsystems / Components:**  
+- <Component 1> — <Working | Partial | Broken> — <one-line note>  
+- <Component 2> — <Working | Partial | Broken> — <one-line note>  
+- <Component 3> — <Working | Partial | Broken> — <one-line note>
+
+**Active Issue:** None  
+**Status:** N/A  
+**Last Updated:** <timestamp>  
+**Next Step:** N/A
+
+**Open Issues (by latest first):**
+- None
+
+**Recently Resolved (last 5):**
+- None
+<!-- CURRENT_STATE_END -->
+
+## <YYYYMMDD-HHmm>: NEW ISSUE: <short descriptive title>
+
+**Description:**  
+- Problem statement  
+- Environment and configuration details  
+- Evidence so far (logs, errors, or observed behavior)
+
+### Step 1 (<YYYYMMDD-HHmm>): Initial Investigation
+- **Actions:**  
+- **Results:**  
+- **Notes:**  
+- **Next Steps:**  
+
+---
+
+## OUTPUT REQUIREMENTS
+
+- Always produce updated Markdown ready to overwrite the issue file.  
+- Use fenced code blocks for logs, diffs, and commands.  
+- Keep each step self-contained — another AI should be able to pick up from the last “Next Steps” without external context.  
+- After resolving an issue, summarize learnings in the Resolution section and update Current State.

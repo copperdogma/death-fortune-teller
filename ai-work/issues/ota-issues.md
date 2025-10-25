@@ -149,6 +149,38 @@
 - Keeps the repo agnostic to DHCP churn.
 - Future enhancement: wrap `pio run -e esp32dev_ota -t ota_upload_auto` as the default VS Code task so manual exports are optional.
 
+### Step 28: 2025-10-25 11:42 MDT – OTA invite timeouts on 192.168.86.46
+**Action**: Exported `DEATH_FORTUNE_HOST=192.168.86.46` (from discovery output) and ran `python scripts/flash_and_monitor.py --mode ota --capture serial --strict --seconds 80`. PlatformIO built the OTA image successfully and attempted upload with `host_ip=192.168.86.28`.
+**Result**: **FAILED** – `espota.py` retried invitations for ~7 min before reporting `No response from the ESP`. Script exited with error 1.
+**Notes**:
+- Serial capture never engaged because the OTA invite never completed; no reboot observed.
+- Serial polling afterwards showed the skull still advertising Wi-Fi at `192.168.86.49`, so the target likely moved off `.46` between discovery and upload.
+- Need non-interactive way to refresh `DEATH_FORTUNE_HOST` immediately before invoking OTA so the automation doesn’t chase stale leases.
+
+### Step 29: 2025-10-25 11:50 MDT – OTA invite failures on 192.168.86.49
+**Action**: Re-ran `scripts/discover_esp32.py` (reported `.46` active, `.49` stale), force-set `DEATH_FORTUNE_HOST=192.168.86.49`, and repeated the OTA helper script.
+**Result**: **FAILED** – Build succeeded again but `espota.py` errored with `Host 192.168.86.49 Not Found` after the UDP invitation phase (timeout ~6 min).
+**Notes**:
+- Serial console kept logging `WiFi: connected (192.168.86.49)` every 5 s, confirming the ESP32 stayed online during the attempt.
+- `ping` alternated between full packet loss and 200 ms replies, suggesting marginal RSSI (serial shows −75 to −80 dBm).
+- Telnet helper (`scripts/telnet_command.py`) cannot complete the password exchange in this environment because it expects interactive prompts; connections drop right after the ESP prints “RemoteDebug connected”.
+
+### Step 30: 2025-10-25 12:09 MDT – Direct PlatformIO OTA with serial tail
+**Action**: Launched `pio run -e esp32dev_ota -t upload` while tailing USB serial in a parallel thread to capture OTA log output.
+**Result**: **FAILED** – PlatformIO (now auto-upgraded to Core 6.12.0) still reported `Host 192.168.86.49 Not Found` after ~2.5 min of invitations; the ESP never accepted the TCP session so no reboot happened.
+**Notes**:
+- Serial feed during the run showed normal status heartbeats (free heap slowly dropping to ~12 KB) but no `OTA:` progress lines, confirming ArduinoOTA `handle()` never saw the upload.
+- Manual UDP probe (`socket.sendto()` replicating espota invite) also timed out, reinforcing that the device isn’t answering port 3232 from the Mac’s IP.
+- Because I can’t interactively acknowledge telnet/password prompts, I can’t toggle RemoteDebug streaming off mid-upload; need a scripted command or config flag to keep that service quiet so OTA has fewer sockets to juggle.
+
+### Step 31: 2025-10-25 12:24 MDT – USB reset baseline
+**Action**: Toggled DTR/RTS on `/dev/cu.usbserial-10` to reset the ESP32 and captured the full boot log over serial to verify baseline behaviour post-OTA attempts.
+**Result**: **SUCCESS** – Skull reinitialized cleanly, reported `OTA manager started (port 3232)` and resumed Bluetooth retries; no crash or brownout detected.
+**Notes**:
+- Confirms USB flashing/reset path still works, so the stalled OTA is network-side.
+- Boot log reiterates strong dependence on Wi-Fi RSSI (−80 dBm). Consider moving the router or adding a temporary antenna to improve invite responsiveness.
+- Next experiment: temporarily disable Bluetooth in `config.txt` or via telnet command once a non-interactive pathway exists, to see if freeing RAM/socket slots lets ArduinoOTA reply on the first invite.
+
 ### Step 8: ESP32 Reflash and OTA Test
 **Action**: Reflashed ESP32 via USB with current firmware, tested OTA upload
 **Result**: **MAJOR SUCCESS** - OTA service now responding!
