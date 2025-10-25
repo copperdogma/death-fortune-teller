@@ -1,6 +1,6 @@
 # Story: SD Audio Playback & Jaw Synchronization
 
-**Status**: To Do
+**Status**: Complete
 
 ---
 
@@ -17,10 +17,11 @@
 - [ ] User must sign off on functionality before story can be marked complete.
 
 ## Tasks
-- [ ] Port or implement SD card mounting and audio playback modules from the TwoSkulls base.
-- [ ] Integrate FFT-based jaw animation tuned for single-servo hardware.
-- [ ] Populate test assets on the SD card and validate playback loop end-to-end.
-- [ ] Document asset naming expectations and any calibration parameters discovered.
+- [x] Port or implement SD card mounting and audio playback modules from the TwoSkulls base.
+- [x] Integrate FFT-based jaw animation tuned for single-servo hardware.
+- [x] Populate test assets on the SD card and validate playback loop end-to-end.
+- [x] Document asset naming expectations and any calibration parameters discovered.
+- [x] Implement SkitSelector to prevent immediate repeat of same skit file.
 
 ## Notes
 - Confirm playback robustness while preparing for simultaneous printer activity in later stories.

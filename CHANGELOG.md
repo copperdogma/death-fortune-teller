@@ -1,5 +1,25 @@
 # Changelog
 
+## [2025-01-23] - Story 002: SD Audio Playback & Jaw Synchronization Complete
+
+### Added
+- **SkitSelector Class**: Advanced weighted selection algorithm to prevent immediate skit repeats
+- **Skit Selection Logic**: Time-based and play-count-based weighting for fair skit distribution
+- **Repeat Prevention**: Excludes last played skit from immediate selection pool
+- **Test Integration**: Built-in test function to validate skit selection functionality
+
+### Implemented
+- **SD Card Audio Playback**: Complete SD card mounting and A2DP streaming system
+- **Jaw Servo Synchronization**: RMS amplitude analysis with exponential smoothing for natural speech motion
+- **Audio Energy Analysis**: Real-time audio frame processing with sophisticated servo control
+- **Playback Loop Validation**: End-to-end testing with multiple skit files
+
+### Enhanced
+- **Audio Player Integration**: Seamless integration with existing audio playback system
+- **Servo Control**: Advanced smoothing algorithms for fluid jaw movement
+- **Error Handling**: Robust error detection and recovery mechanisms
+- **Thread Safety**: Proper FreeRTOS synchronization for multi-threaded operations
+
 ## [2025-10-24] - OTA System Improvements and Debugging Tools
 
 ### Added

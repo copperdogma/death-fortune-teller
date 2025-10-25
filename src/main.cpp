@@ -19,6 +19,7 @@
 #include "ota_manager.h"
 #include "remote_debug_manager.h"
 #include "logging_manager.h"
+#include "skit_selector.h"
 #include <SD.h>
 #include "BluetoothA2DPSource.h"
 #include "esp_a2dp_api.h"
@@ -47,6 +48,7 @@ SkullAudioAnimator *skullAudioAnimator = nullptr;
 WiFiManager *wifiManager = nullptr;
 OTAManager *otaManager = nullptr;
 RemoteDebugManager *remoteDebugManager = nullptr;
+SkitSelector *skitSelector = nullptr;
 
 static constexpr const char *TAG = "Main";
 static constexpr const char *WIFI_TAG = "WiFi";
@@ -75,6 +77,8 @@ int32_t IRAM_ATTR provideAudioFramesThunk(void *context, Frame *frame, int32_t f
 void handleUARTCommand(UARTCommand cmd);
 void startWelcomeSequence();
 void startFortuneFlow();
+void playRandomSkit();
+void testSkitSelection();
 void handleFortuneFlow(unsigned long currentTime);
 
 // State machine
@@ -174,6 +178,10 @@ void setup() {
         if (skullAudioAnimator) {
             skullAudioAnimator->setPlaybackEnded(filePath);
         }
+        // Update skit selector with the completed skit
+        if (skitSelector && filePath.startsWith("/audio/Skit")) {
+            skitSelector->updateSkitPlayCount(filePath);
+        }
     });
     audioPlayer->setAudioFramesProvidedCallback([](const String &filePath, const Frame *frames, int32_t frameCount) {
         if (skullAudioAnimator && frameCount > 0) {
@@ -195,6 +203,13 @@ void setup() {
     skullAudioAnimator->setSpeakingStateCallback([](bool isSpeaking) {
         lightController.setEyeBrightness(isSpeaking ? LightController::BRIGHTNESS_MAX : LightController::BRIGHTNESS_DIM);
     });
+
+    // Initialize skit selector for preventing immediate repeats
+    skitSelector = new SkitSelector(sdCardContent.skits);
+    
+    // Test skit selection to verify repeat prevention works
+    testSkitSelection();
+    
     LOG_INFO(TAG, "✅ All components initialized successfully");
 
     wifiManager = new WiFiManager();
@@ -410,6 +425,38 @@ void startFortuneFlow() {
     servoController.setPosition(80);
     mouthOpen = true;
     lightController.setEyeBrightness(LightController::BRIGHTNESS_MAX);
+}
+
+void playRandomSkit() {
+    if (skitSelector && audioPlayer) {
+        ParsedSkit selectedSkit = skitSelector->selectNextSkit();
+        if (!selectedSkit.audioFile.isEmpty()) {
+            LOG_INFO(FLOW_TAG, "Playing random skit: %s", selectedSkit.audioFile.c_str());
+            audioPlayer->playNext(selectedSkit.audioFile);
+        } else {
+            LOG_WARN(FLOW_TAG, "No skits available for selection");
+        }
+    } else {
+        LOG_WARN(FLOW_TAG, "SkitSelector or AudioPlayer not available");
+    }
+}
+
+void testSkitSelection() {
+    if (!skitSelector) {
+        LOG_WARN(FLOW_TAG, "SkitSelector not available for testing");
+        return;
+    }
+    
+    LOG_INFO(FLOW_TAG, "Testing skit selection (repeat prevention)...");
+    
+    // Test multiple selections to verify no immediate repeats
+    for (int i = 0; i < 5; i++) {
+        ParsedSkit selectedSkit = skitSelector->selectNextSkit();
+        LOG_INFO(FLOW_TAG, "Test selection %d: %s", i + 1, selectedSkit.audioFile.c_str());
+        delay(100); // Small delay to ensure different timestamps
+    }
+    
+    LOG_INFO(FLOW_TAG, "Skit selection test completed");
 }
 
 void handleFortuneFlow(unsigned long currentTime) {
