@@ -5,13 +5,15 @@ NOTE: This file is for the user to write notes to the AI for it to investigate/r
 ## NOTES
 
 
-- 20251022: Codex got the base code working in platformio! But it removed the frame hooks that, I think, were used by the audio analysis code that was used to drive the servo (and eye) animations. That's probably the next most important thing, as it might be a dealbreaker for this codebase and we'd have to revert to the TwoSkulls codebase and start over.
-
 - We need to remove the TwoSkulls folder once we have everything we need from there. It was just our working baseline, but we're free to rewrite 100% of it.
 
 - We want a serial interface so we can test functions over the serial port, like the one implemented here: https://github.com/copperdogma/death-poc/blob/master/finger-detector-test/finger-detector-test.ino
 
 - do we NEED to be arduino compatible? why?
+
+- put back breathing animation cycle
+
+- make an ai-work/issues folder and have the Ai start an issues file for every issue it has to tackle. This will be a nice log and help future AIs to pick up where we left off and/or make sure they don't repeat the same mistakes/failre-bound attempts. Make a slash command to go with it. And SHOULD we just keep one issues file per topic, or one per issue we need to tackle? Discuss.
 
 
 OTA

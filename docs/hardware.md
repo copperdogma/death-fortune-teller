@@ -2,6 +2,8 @@
 
 This document catalogs the bill of materials and pin assignments for the Death Fortune Teller project, combining features from TwoSkulls and three proof-of-concept modules.
 
+** NOTE: **DIODE** We'll need a diode to keep power from flowing backwards, When the ESP32 WROVER or SuperMini is plugged in to reprogram or monitor, we don't want it to backdflow and try to power the rest of the system.
+
 **Important Note**: All pin assignments in code use GPIO numbers, not physical board pin numbers. The FREENOVE ESP32-WROVER board has physical pins numbered 1-38, but code must reference the GPIO numbers.
 
 ## Table of Contents
@@ -17,6 +19,7 @@ This document catalogs the bill of materials and pin assignments for the Death F
 - [Recommended Solution](#recommended-solution)
 - [Implementation Notes](#implementation-notes)
 - [Troubleshooting](#troubleshooting)
+- [Revision History](#revision-history)
 
 ## Bill of Materials
 
@@ -37,10 +40,8 @@ This document catalogs the bill of materials and pin assignments for the Death F
 - **Servo Motor**: Hitec HS-125MG (4.8v-6v, 3.0-3.5kg.cm torque, 1.2A stall current)
 
 ### Sensor System
-- **Touch Sensor**: ESP32 built-in touch sensor
-- **Capacitive Sensor**: External capacitive sensor
-- **Touch Electrode**: Conductive material for finger contact
-- **Optional Resistor**: 1MΩ for touch sensitivity adjustment
+- ~10x10cm copper foil for capacitive sensor
+- coax (shielded) cable for capacitive sensor
 
 ### Printing System
 - **Thermal Printer**: CSN-A1X or compatible 58mm thermal printer
@@ -350,6 +351,57 @@ private:
     static constexpr int PRINTER_RX_PIN = 5;
 };
 ```
+
+### Optional Master Power Switch (Using Built-In Skull Switch)
+
+The skull’s built-in battery compartment typically includes an **inline power switch**.  
+Even if the batteries are unused, you can repurpose this switch as a **master power switch** for the 5 V rail.
+
+#### Usage (switch-only; no batteries)
+
+Wire the switch **in series on the 5 V input** feeding the perfboard:
+
+1. **Isolate/ignore the battery contacts** so they don’t connect to anything.
+2. Bring the two switch leads into the enclosure and terminate them on a **2-pin header** (e.g., `J_SW`).
+3. Place the header **in series with the 5 V input** from your USB-C power:
+
+USB-C 5V ──> [Skull Switch] ──> Perfboard 5V rail
+USB-C GND ─────────────────────> Common GND
+
+When the switch is **OFF**, it opens the 5 V line and the entire system powers down.
+
+**Notes**
+- Switch the **high side (5 V)**, not ground.
+- Keep **common ground** shared between all supplies and boards.
+- This integrates cleanly with the existing **Power Requirements** and **Power Distribution** sections.
+
+#### Optional: add backup power from the built-in 3×AA pack (≈4.5 V)
+
+If you want the skull to run when USB-C is unplugged, you can **OR** the 3×AA pack with a **Schottky diode** to prevent back-feeding:
+
+                     +-------------------+
+                     |   Skull Switch    |
+
+USB-C 5V ────────────────+────o/ o───────────+───> Perfboard 5V rail
+|                   |
+3×AA + ──> Schottky ─────+                   |
+(e.g. 1N5819)                      |
+|
+USB-C GND ───────────────────────────────────+───> Common GND
+3×AA −  ─────────────────────────────────────+
+
+**Details**
+- Use a **Schottky diode** (e.g., 1N5817/1N5819, ≥2 A recommended for headroom) from **battery +** to the **switched 5 V rail** (banded end toward the rail).
+- The switch still controls system power. With USB unplugged and the switch ON, the batteries supply the rail through the diode.
+- Expect a **~0.2–0.4 V drop** across the diode; many loads tolerate this (printer/servo are on 5 V; ESP32 is on regulated 3.3 V).
+- Maintain the **bulk capacitor** near peak loads (printer/servo) as already specified.
+
+#### Safety / Integration checklist
+- ✅ Do **not** route battery + directly to the 5 V rail without a diode (prevents back-feed into USB-C and programmers).  
+- ✅ Keep **wire gauge** appropriate for 5 V rail current (AWG 20–22).  
+- ✅ Place the master switch **before** any 5 V regulators and high-current loads (servo/printer).  
+- ✅ Common ground between USB-C, batteries, and all modules.
+
 
 ## Implementation Notes
 
