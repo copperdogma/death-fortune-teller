@@ -67,14 +67,17 @@ Debounce/precedence:
 3) State Machine (runtime)
 
 IDLE
- ├─ on TRIGGER_FAR  → PLAY_WELCOME  → (end) → IDLE
- └─ on TRIGGER_NEAR → FORTUNE_FLOW  → (end) → COOLDOWN → IDLE
+ ├─ on TRIGGER_FAR  → PLAY_WELCOME  → (end) → WAIT_FOR_NEAR
+ └─ on TRIGGER_NEAR → (only if in WAIT_FOR_NEAR) → PLAY_FINGER_PROMPT → (end) → MOUTH_OPEN_WAIT_FINGER
+
+MOUTH_OPEN_WAIT_FINGER:
+  ├─ finger detected → FINGER_DETECTED → (random 1–3s delay) → SNAP_WITH_FINGER → (play finger snap skit) → FORTUNE_FLOW
+  └─ timeout (6s) → SNAP_NO_FINGER → (play no finger skit) → FORTUNE_FLOW
 
 FORTUNE_FLOW:
-  PLAY_PROMPT → MOUTH_OPEN → MOUTH_LED pulse
-  WAIT_FINGER (max 6s; requires ≥120ms solid detection)
-    ├─ finger detected → start random 1–3s timer → SNAP (release) → PRINT_FORTUNE → continue monologue → end
-    └─ timeout → abort (close mouth) → end
+  PLAY_FORTUNE_PREAMBLE → CHOOSE_TEMPLATE → PLAY_TEMPLATE_SKIT → GENERATE_FORTUNE → PLAY_FORTUNE_TOLD → PRINT_FORTUNE → FORTUNE_COMPLETE
+
+FORTUNE_COMPLETE → FORTUNE_DONE → (play goodbye skit) → COOLDOWN → IDLE
 
 Timers (initial):
 	•	Finger solid detection: ≥120 ms before starting the snap timer.
@@ -91,12 +94,30 @@ Timers (initial):
 SD layout (proposed):
 
 /audio/
-  /welcome/          # welcome skits (WAV)
+  /welcome/          # welcome skits (FAR sensor)
     welcome_01.wav
     welcome_02.wav
-  /fortune/          # fortune skits (WAV)
-    fortune_01.wav
-    fortune_02.wav
+  /finger_prompt/    # "put finger in my mouth" skits (NEAR sensor)
+    finger_prompt_01.wav
+    finger_prompt_02.wav
+  /finger_snap/      # finger snap skits (finger detected)
+    finger_snap_01.wav
+    finger_snap_02.wav
+  /no_finger/        # no finger skits (timeout)
+    no_finger_01.wav
+    no_finger_02.wav
+  /fortune_preamble/ # fortune preamble skits
+    fortune_preamble_01.wav
+    fortune_preamble_02.wav
+  /fortune_templates/ # template-specific skits
+    template_01.wav
+    template_02.wav
+  /fortune_told/     # "fortune told" skits
+    fortune_told_01.wav
+    fortune_told_02.wav
+  /goodbye/          # goodbye skits
+    goodbye_01.wav
+    goodbye_02.wav
   Initialized.wav    # boot self-test line
 
 /printer/
@@ -185,27 +206,27 @@ Directionality & robustness
 
 8) config.txt (initial keys)
 
-speaker_name=FortuneSkull
-default_mode=LittleKid           # (modes may be ignored in 2025 MVP)
-a2dp_target=YourSpeakerName
+# Basic settings
+role=primary
+speaker_name=JBL Flip 5
+speaker_volume=100
 
-# Jaw servo (microseconds)
+# WiFi Settings for OTA update/monitoring
+wifi_ssid=YourNetworkName
+wifi_password=YourPassword
+ota_hostname=death-fortune-teller
+ota_password=your_secure_ota_password
+
+# Remote debug settings (Phase 2: Wireless Serial Monitor)
+remote_debug_enabled=true
+remote_debug_port=23
+
+# Jaw servo (microseconds) - pins hardcoded in firmware
 servo_us_min=500
-servo_us_mid=1500
 servo_us_max=2500
-jaw_open_us=...                  # to be tuned
-jaw_snap_style=release           # fixed
 
-# Mouth LED
-mouth_led_pin=...
-mouth_led_idle=0
-mouth_led_prompt=255
-mouth_led_pulse=1
-
-# Cap sense
-cap_pin=...                      # or touch channel
-cap_threshold=...                # discovered/overridden at boot
-cap_hysteresis=...
+# Cap sense - threshold configurable per skull
+cap_threshold=0.002              # 0.2% change threshold (tunable per skull)
 
 # Timing
 finger_wait_ms=6000
@@ -213,13 +234,12 @@ snap_delay_min_ms=1000
 snap_delay_max_ms=3000
 cooldown_ms=12000
 
-# Printer
-printer_uart=1
+# Printer - pins hardcoded in firmware
 printer_baud=9600                # PoC default
 printer_logo=/printer/logo_384w.bmp
 fortunes_json=/printer/fortunes_littlekid.json
 
-(Pins to be assigned per your perfboard; these keys are placeholders.)
+Note: Pin assignments are hardcoded in firmware and not configurable. The config.txt file must be updated with final values and copied to the skull's SD card.
 
 ⸻
 

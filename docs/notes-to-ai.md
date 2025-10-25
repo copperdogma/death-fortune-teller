@@ -15,6 +15,18 @@ NOTE: This file is for the user to write notes to the AI for it to investigate/r
 
 - make an ai-work/issues folder and have the Ai start an issues file for every issue it has to tackle. This will be a nice log and help future AIs to pick up where we left off and/or make sure they don't repeat the same mistakes/failre-bound attempts. Make a slash command to go with it. And SHOULD we just keep one issues file per topic, or one per issue we need to tackle? Discuss.
 
+MATTER CONTROLLER UPDATES REQUIRED
+The PoC Matter controller needs updates to:
+- Add Zone Trigger Logic:
+  - Far zone occupancy → send TRIGGER_FAR (0x05)
+  - Near zone occupancy → send TRIGGER_NEAR (0x06)
+- Integrate with Occupancy Sensor: Connect to matter-two-zone-occupancy-sensor for zone detection
+- Maintain Existing Protocol: Keep all existing PoC commands (HELLO, SET_MODE, PING, etc.)
+
+
+QUESTIONS
+- if the UART comms fails completely what should we do? currrently we just require a manual reboot. If we can detect failure cases, what should we do in general? How to alert the operator?
+
 
 OTA
 - DONE: ✅ can we set up the esp32 so we can upload wirelessly? → **PLANNED** - See [ESP32 Wireless Features Plan](.cursor/plans/esp32-wireless-ota-upload-58791e9e.plan.md) (Phase 1: OTA Upload)
