@@ -10,7 +10,7 @@ Death, the Fortune Telling Skeleton
 | Story ID | Title                                   | Priority | Status | Link                                                   |
 |----------|-----------------------------------------|----------|--------|--------------------------------------------------------|
 | 001      | PlatformIO Firmware Bring-Up            | High     | Done   | /docs/stories/story-001-platformio-firmware-bring-up.md |
-| 001a     | Configuration Management System         | High     | To Do  | /docs/stories/story-001a-configuration-management.md   |
+| 001a     | Configuration Management System         | High     | Done  | /docs/stories/story-001a-configuration-management.md   |
 | 001b     | Breathing Cycle Implementation          | High     | Done   | /docs/stories/story-001b-breathing-cycle.md            |
 | 002      | SD Audio Playback & Jaw Synchronization | High     | Done   | /docs/stories/story-002-sd-audio-playback-jaw-sync.md   |
 | 002b     | Skit Category Support & Directory Structure | High     | To Do  | /docs/stories/story-002b-skit-category-support.md       |
