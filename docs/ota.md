@@ -114,7 +114,8 @@ export ESP32_OTA_PASSWORD=YourSecurePassword
   ```bash
   telnet <device-ip> 23
   ```
-  Available commands: `status`, `wifi`, `ota`, `log`, `startup`, `head N`, `tail N`, `stream on|off`, `help`.
+  Available commands: `status`, `wifi`, `ota`, `log`, `startup`, `head N`, `tail N`, `stream on|off`, `bluetooth on|off|status`, `reboot`, `help`.
+  - Use Bluetooth control to silence the radio before OTA, and `reboot` for a remote restart when needed.
 - Helper scripts:
   - `python scripts/telnet_command.py status`
   - `python scripts/telnet_command.py log`
@@ -122,10 +123,16 @@ export ESP32_OTA_PASSWORD=YourSecurePassword
   - Use `--strict` to fail on connection issues; otherwise scripts retry three times and exit 0 so tasks stay green.
 - Tips:
   - Telnet streaming starts **off by default**; enable it explicitly with `python scripts/telnet_command.py stream on` and turn it back off with `stream off` when finished.
-  - On marginal Wi-Fi links, pass shorter waits (for example `--read-timeout 1 --post-send-wait 1`) to `telnet_command.py` so the helper doesn’t stall while draining periodic status messages.
+  - On marginal Wi-Fi links, pass shorter waits (for example `--read-timeout 1 --post-send-wait 1`) to `telnet_command.py` for quick status/log commands.
+  - When toggling Bluetooth, allow more time (e.g. `--post-send-wait 3`) for the radio to shut down cleanly before OTA.
 - PlatformIO custom targets (under `esp32dev_ota`):
   - `Telnet Status`, `Telnet Log`, `Telnet Startup`, `Telnet Head`, `Telnet Tail`, `Telnet Help`, `Telnet Stream`.
 - VS Code tasks mirror the same commands (`Death OTA: Telnet Status`, etc.).
+- `Discover ESP32` uses the cached IP for a quick check; run `Discover ESP32 (Full)` if you need a complete subnet scan.
+
+### PlatformIO tasks
+- **OTA Upload** wraps `scripts/ota_upload_auto.py`, which auto-discovers (or reuses the cached) IP, pauses Bluetooth, performs the upload, and restores Bluetooth—no manual `DEATH_FORTUNE_HOST` export required.
+- Telnet and discovery tasks use the same cache (`.pio/death_fortune_host`). Each helper now attempts the cached/existing host first, only running fast discovery on failure, and exposes a `--full-discovery` flag when you explicitly want the slower subnet scan.
 
 ## Flash + Monitor Helpers
 - USB (serial capture):

@@ -54,6 +54,7 @@ BluetoothController::BluetoothController() {
     m_resumeDeferred = false;
     m_resumeAfterMillis = 0;
     m_disconnectDeadlineMs = 0;
+    m_manuallyDisabled = false;
     s_instance = this; // Set static instance
 }
 
@@ -87,6 +88,9 @@ const String &BluetoothController::get_speaker_name() const {
 }
 
 void BluetoothController::update() {
+    if (m_manuallyDisabled) {
+        return;
+    }
     // Check connection state periodically
     static unsigned long lastConnectionCheck = 0;
     unsigned long currentTime = millis();
@@ -288,6 +292,10 @@ bool BluetoothController::ssidMatchCallback(const char *ssid, esp_bd_addr_t addr
 }
 
 void BluetoothController::startConnectionRetry() {
+    if (m_manuallyDisabled) {
+        LOG_INFO(TAG, "🔇 Bluetooth manually disabled; skipping connection retry");
+        return;
+    }
     m_retryingConnection = true;
     m_lastRetryTime = millis();
     LOG_INFO(TAG, "🔄 Starting A2DP connection retry...");
@@ -300,6 +308,62 @@ void BluetoothController::stopConnectionRetry() {
 
 bool BluetoothController::isRetryingConnection() const {
     return m_retryingConnection;
+}
+
+bool BluetoothController::manualDisable() {
+    if (m_manuallyDisabled) {
+        LOG_INFO(TAG, "Bluetooth already manually disabled");
+        return false;
+    }
+
+    LOG_INFO(TAG, "🔕 Manually disabling Bluetooth via telnet");
+    m_manuallyDisabled = true;
+    m_resumeDeferred = false;
+    stopConnectionRetry();
+    m_mediaStartPending = false;
+
+    if (a2dp_source) {
+        esp_a2d_connection_state_t currentState = a2dp_source->get_connection_state();
+        if (currentState == ESP_A2D_CONNECTION_STATE_CONNECTED || currentState == ESP_A2D_CONNECTION_STATE_CONNECTING) {
+            LOG_INFO(TAG, "🔻 Disconnecting A2DP link before manual disable (state=%d)", static_cast<int>(currentState));
+            a2dp_source->disconnect();
+            unsigned long deadline = millis() + 1500;
+            while (millis() < deadline) {
+                esp_a2d_connection_state_t state = a2dp_source->get_connection_state();
+                if (state == ESP_A2D_CONNECTION_STATE_DISCONNECTED) {
+                    break;
+                }
+                delay(10);
+            }
+        }
+    }
+
+    // Ensure the pause state allows finalizePause() to run
+    m_pauseState = PauseState::Idle;
+    finalizePause();
+    m_pauseState = PauseState::Paused;
+    m_a2dpConnected = false;
+    return true;
+}
+
+bool BluetoothController::manualEnable() {
+    if (!m_manuallyDisabled) {
+        LOG_INFO(TAG, "Bluetooth already enabled");
+        return false;
+    }
+
+    if (!m_audioProviderCallback) {
+        LOG_WARN(TAG, "Cannot enable Bluetooth – audio provider not initialized");
+        return false;
+    }
+
+    LOG_INFO(TAG, "🔊 Manually re-enabling Bluetooth via telnet");
+    m_manuallyDisabled = false;
+    m_controllerWasEnabledBeforeOta = true;
+    m_bluedroidWasEnabledBeforeOta = true;
+    m_pauseState = PauseState::Paused;
+    performDeferredResume();
+    return true;
 }
 
 void BluetoothController::pauseForOta() {
@@ -335,6 +399,11 @@ void BluetoothController::pauseForOta() {
 void BluetoothController::resumeAfterOta() {
     if (!m_audioProviderCallback) {
         LOG_WARN(TAG, "Cannot resume Bluetooth after OTA – audio provider not set");
+        return;
+    }
+
+    if (m_manuallyDisabled) {
+        LOG_INFO(TAG, "Bluetooth manually disabled – skipping automatic resume after OTA");
         return;
     }
 
@@ -404,6 +473,11 @@ void BluetoothController::finalizePause() {
 }
 
 void BluetoothController::performDeferredResume() {
+    if (m_manuallyDisabled) {
+        LOG_INFO(TAG, "Bluetooth manually disabled – keeping radio off");
+        return;
+    }
+
     if (!m_audioProviderCallback) {
         LOG_WARN(TAG, "Cannot resume Bluetooth after OTA – audio provider not set");
         return;

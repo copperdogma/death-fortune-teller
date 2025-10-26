@@ -1,34 +1,65 @@
 #!/usr/bin/env python3
-"""
-System Status Dashboard
-Shows complete status of the Death Fortune Teller system.
-"""
+"""System Status Dashboard for the Death Fortune Teller."""
 
+from __future__ import annotations
+
+import argparse
 import os
 import sys
 import socket
 import subprocess
-import time
+from pathlib import Path
 
-def get_death_fortune_host():
-    """Get the DEATH_FORTUNE_HOST from environment or discover it"""
-    host = os.environ.get('DEATH_FORTUNE_HOST')
-    if host:
-        return host
-    
-    # Try to discover the ESP32
+CACHE_PATH = Path(".pio/death_fortune_host")
+
+
+def read_cached_host() -> str | None:
     try:
-        result = subprocess.run([sys.executable, 'scripts/discover_esp32.py'], 
-                              capture_output=True, text=True)
-        if result.returncode == 0:
-            # Parse the output to find active device
-            for line in result.stdout.split('\n'):
-                if 'Active ESP32 found:' in line:
-                    return line.split(':')[1].strip()
-    except:
+        if CACHE_PATH.exists():
+            cached = CACHE_PATH.read_text().strip()
+            if cached:
+                return cached
+    except Exception:
         pass
-    
     return None
+
+
+def run_discovery(force_full: bool = False) -> str | None:
+    args = [sys.executable, "scripts/discover_esp32.py", "--fast", "--quiet"]
+    if force_full:
+        args = [sys.executable, "scripts/discover_esp32.py", "--quiet"]
+
+    try:
+        result = subprocess.run(args, capture_output=True, text=True, timeout=35)
+        if result.returncode == 0:
+            output = (result.stdout or "").strip()
+            if output:
+                ip = output.splitlines()[-1].strip()
+                if ip:
+                    try:
+                        CACHE_PATH.parent.mkdir(parents=True, exist_ok=True)
+                        CACHE_PATH.write_text(ip)
+                    except Exception:
+                        pass
+                    return ip
+    except Exception:
+        pass
+    return None
+
+
+def get_death_fortune_host(full_scan: bool = False) -> str | None:
+    """Resolve the ESP32 host quickly, falling back to discovery when required."""
+    for candidate in [
+        os.environ.get("DEATH_FORTUNE_HOST", "").strip(),
+        read_cached_host(),
+    ]:
+        if candidate:
+            return candidate
+
+    host = run_discovery(force_full=False)
+    if host or not full_scan:
+        return host
+    return run_discovery(force_full=True)
 
 def test_connection(host, port=23, timeout=3):
     """Test connection to ESP32"""
@@ -41,45 +72,56 @@ def test_connection(host, port=23, timeout=3):
     except:
         return False
 
-def get_wifi_status(host):
-    """Get WiFi status from ESP32"""
+def _telnet_command(host: str, *command: str) -> str:
+    args = [
+        sys.executable,
+        "scripts/telnet_command.py",
+        *command,
+        "--host",
+        host,
+        "--auto-discover",
+        "--retries",
+        "2",
+        "--retry-delay",
+        "1",
+        "--connect-timeout",
+        "3",
+        "--read-timeout",
+        "2",
+        "--post-send-wait",
+        "1",
+    ]
+
     try:
-        result = subprocess.run([sys.executable, 'scripts/telnet_command.py', 'wifi', '--host', host], 
-                              capture_output=True, text=True, timeout=5)
+        result = subprocess.run(args, capture_output=True, text=True, timeout=12)
         if result.returncode == 0:
             return result.stdout.strip()
-    except:
+    except Exception:
         pass
     return "Unknown"
+
+
+def get_wifi_status(host):
+    return _telnet_command(host, "wifi")
 
 def get_ota_status(host):
-    """Get OTA status from ESP32"""
-    try:
-        result = subprocess.run([sys.executable, 'scripts/telnet_command.py', 'ota', '--host', host], 
-                              capture_output=True, text=True, timeout=5)
-        if result.returncode == 0:
-            return result.stdout.strip()
-    except:
-        pass
-    return "Unknown"
+    return _telnet_command(host, "ota")
 
 def get_system_status(host):
-    """Get system status from ESP32"""
-    try:
-        result = subprocess.run([sys.executable, 'scripts/telnet_command.py', 'status', '--host', host], 
-                              capture_output=True, text=True, timeout=5)
-        if result.returncode == 0:
-            return result.stdout.strip()
-    except:
-        pass
-    return "Unknown"
+    return _telnet_command(host, "status")
 
 def main():
+    parser = argparse.ArgumentParser(description="Death Fortune Teller system status")
+    parser.add_argument("--fast", action="store_true", help="Use cached/fast discovery only (default)")
+    parser.add_argument("--full", action="store_true", help="Force full discovery scan")
+    args = parser.parse_args()
+
     print("💀 Death Fortune Teller - System Status")
     print("=" * 50)
     
     # Find ESP32
-    host = get_death_fortune_host()
+    full_scan = args.full and not args.fast
+    host = get_death_fortune_host(full_scan=full_scan)
     if not host:
         print("❌ ESP32 not found on network")
         print("💡 Run: python scripts/discover_esp32.py")

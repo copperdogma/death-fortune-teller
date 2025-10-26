@@ -34,6 +34,9 @@ public:
     bool isRetryingConnection() const;
     void pauseForOta();
     void resumeAfterOta();
+    bool manualDisable();
+    bool manualEnable();
+    bool isManuallyDisabled() const { return m_manuallyDisabled; }
     
     // Manual connection state checking
     void checkConnectionState();
@@ -110,6 +113,8 @@ private:
     unsigned long m_disconnectDeadlineMs;
 
     static constexpr unsigned long kResumeDelayMs = 8000;
+
+    bool m_manuallyDisabled;
 };
 
 #endif // BLUETOOTH_CONTROLLER_H

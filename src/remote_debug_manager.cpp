@@ -1,5 +1,9 @@
 #include "remote_debug_manager.h"
 #include "ota_manager.h"
+#include "bluetooth_controller.h"
+#include "esp_system.h"
+
+extern BluetoothController *bluetoothController;
 
 static constexpr const char* TAG = "RemoteDebug";
 
@@ -117,7 +121,7 @@ void RemoteDebugManager::handleClient() {
             }
 
             m_client.println("🛜 RemoteDebug connected");
-            m_client.println("Commands: status, wifi, ota, log, startup, head N, tail N, stream on|off, help");
+            m_client.println("Commands: status, wifi, ota, log, startup, head N, tail N, stream on|off, bluetooth on|off, reboot, help");
             m_client.println("🛜 Hint: run 'startup' to replay boot log; use 'log' for rolling buffer.");
         }
     } else {
@@ -201,6 +205,31 @@ void RemoteDebugManager::processCommand(const String& command) {
         } else {
             m_client.println("🛜 Usage: stream on|off");
         }
+    } else if (command.equalsIgnoreCase("bluetooth") || command.startsWith("bluetooth ")) {
+        if (!bluetoothController) {
+            m_client.println("🛜 Bluetooth controller unavailable");
+            return;
+        }
+        String arg = command.substring(String("bluetooth").length());
+        arg.trim();
+        if (arg.length() == 0 || arg.equalsIgnoreCase("status")) {
+            m_client.printf("🛜 Bluetooth: %s, Connection: %s\n",
+                            bluetoothController->isManuallyDisabled() ? "disabled" : "enabled",
+                            bluetoothController->isA2dpConnected() ? "connected" : "disconnected");
+        } else if (arg.equalsIgnoreCase("off") || arg.equalsIgnoreCase("disable")) {
+            bool changed = bluetoothController->manualDisable();
+            m_client.println(changed ? "🛜 Bluetooth manually disabled" : "🛜 Bluetooth already disabled or unavailable");
+        } else if (arg.equalsIgnoreCase("on") || arg.equalsIgnoreCase("enable")) {
+            bool changed = bluetoothController->manualEnable();
+            m_client.println(changed ? "🛜 Bluetooth enabled" : "🛜 Bluetooth already enabled or unavailable");
+        } else {
+            m_client.println("🛜 Usage: bluetooth [status|on|off]");
+        }
+    } else if (command.equalsIgnoreCase("reboot") || command.equalsIgnoreCase("restart")) {
+        m_client.println("🛜 Rebooting in 1 second…");
+        m_client.flush();
+        delay(1000);
+        esp_restart();
     } else if (command.equalsIgnoreCase("help")) {
         m_client.println("🛜 Available commands:");
         m_client.println("  status        - Show system status");
@@ -211,6 +240,8 @@ void RemoteDebugManager::processCommand(const String& command) {
         m_client.println("  head [N]      - Show last N log entries");
         m_client.println("  tail [N]      - Show first N startup log entries");
         m_client.println("  stream on|off - Toggle live streaming");
+        m_client.println("  bluetooth [on|off|status] - Manage Bluetooth controller");
+        m_client.println("  reboot        - Restart the skull safely");
         m_client.println("  help          - Show this help");
     } else {
         m_client.println("🛜 Unknown command. Type 'help' for available commands.");

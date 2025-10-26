@@ -17,10 +17,10 @@ if env.get("PIOENV", "") == "esp32dev_ota":
         name="ota_upload",
         dependencies=None,
         actions=[
-            "platformio run -e esp32dev_ota -t upload"
+            "bash -lc 'python scripts/ota_upload_auto.py ${DEATH_FORTUNE_HOST:+--host $DEATH_FORTUNE_HOST}'"
         ],
         title="OTA Upload",
-        description="Build firmware and upload over OTA using configured password"
+        description="Auto-discover (if needed), disable Bluetooth, upload OTA, then re-enable"
     )
 
     env.AddCustomTarget(
@@ -35,26 +35,26 @@ if env.get("PIOENV", "") == "esp32dev_ota":
 
     # Telnet helper targets
     TELNET_CMDS = {
-        "status": "Show system status",
-        "log": "Dump rolling log",
-        "startup": "Dump startup log",
-        "head": "Show last 20 log entries",
-        "tail": "Show first 20 startup entries",
-        "help": "List telnet commands"
+        "status": ("status", "Show system status", "--read-timeout 2 --post-send-wait 1.2 --retries 3 --retry-delay 2"),
+        "log": ("log", "Dump rolling log", "--read-timeout 2 --post-send-wait 2 --retries 2"),
+        "startup": ("startup", "Dump startup log", "--read-timeout 2 --post-send-wait 2 --retries 2"),
+        "head": ("head 20", "Show last 20 log entries", "--read-timeout 2 --post-send-wait 2 --retries 2"),
+        "tail": ("tail 20", "Show first 20 startup entries", "--read-timeout 2 --post-send-wait 2 --retries 2"),
+        "help": ("help", "List telnet commands", "--read-timeout 1 --post-send-wait 1"),
+        "bluetooth_off": ("bluetooth off", "Disable Bluetooth (manual)", "--read-timeout 2 --post-send-wait 3 --retries 2"),
+        "bluetooth_on": ("bluetooth on", "Enable Bluetooth (manual)", "--read-timeout 2 --post-send-wait 2 --retries 2"),
+        "reboot": ("reboot", "Reboot the skull remotely", "--read-timeout 1 --post-send-wait 1")
     }
 
-    for cmd, desc in TELNET_CMDS.items():
-        cmd_args = cmd
-        if cmd in ("head", "tail"):
-            cmd_args = f"{cmd} 20"
+    for target_name, (cmd_args, desc, extra_opts) in TELNET_CMDS.items():
         env.AddCustomTarget(
-            name=f"telnet_{cmd}",
+            name=f"telnet_{target_name}",
             dependencies=None,
             actions=[
-                f"python scripts/telnet_command.py {cmd_args}"
+                f"python scripts/telnet_command.py {cmd_args} --auto-discover {extra_opts}"
             ],
-            title=f"Telnet {cmd}",
-            description=desc
+            title=f"Telnet {cmd_args}",
+            description=desc,
         )
 
     # Telnet stream target
@@ -62,10 +62,10 @@ if env.get("PIOENV", "") == "esp32dev_ota":
         name="telnet_stream",
         dependencies=None,
         actions=[
-            "python scripts/telnet_stream.py"
+            "python scripts/telnet_stream.py --auto-discover"
         ],
         title="Telnet Stream",
-        description="Stream rolling log via telnet"
+        description="Stream rolling log via telnet",
     )
 
     # New debugging tools
@@ -73,39 +73,38 @@ if env.get("PIOENV", "") == "esp32dev_ota":
         name="discover_esp32",
         dependencies=None,
         actions=[
-            "python scripts/discover_esp32.py"
+            "python scripts/discover_esp32.py --fast"
         ],
         title="Discover ESP32",
-        description="Scan network for ESP32 devices and show status"
+        description="Scan network for ESP32 devices and show status",
+    )
+
+    env.AddCustomTarget(
+        name="discover_esp32_full",
+        dependencies=None,
+        actions=[
+            "python scripts/discover_esp32.py"
+        ],
+        title="Discover ESP32 (Full)",
+        description="Perform a full network scan for ESP32 devices",
     )
 
     env.AddCustomTarget(
         name="system_status",
         dependencies=None,
         actions=[
-            "python scripts/system_status.py"
+            "python scripts/system_status.py --fast"
         ],
         title="System Status",
-        description="Show complete system status dashboard"
+        description="Show complete system status dashboard",
     )
 
     env.AddCustomTarget(
         name="troubleshoot",
         dependencies=None,
         actions=[
-            "python scripts/troubleshoot.py"
+            "python scripts/troubleshoot.py --fast"
         ],
         title="Troubleshoot",
-        description="Interactive troubleshooting guide for OTA issues"
-    )
-
-    # Auto-discovery OTA upload
-    env.AddCustomTarget(
-        name="ota_upload_auto",
-        dependencies=None,
-        actions=[
-            "python scripts/ota_upload_auto.py"
-        ],
-        title="OTA Upload (Auto-Discovery)",
-        description="Automatically discover ESP32 and perform OTA upload"
+        description="Interactive troubleshooting guide for OTA issues",
     )

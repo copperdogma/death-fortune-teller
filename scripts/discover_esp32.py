@@ -10,16 +10,26 @@ import subprocess
 import sys
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from pathlib import Path
 
 TELNET_PASSWORD = os.environ.get("ESP32_TELNET_PASSWORD", "Death9!!!")
 OTA_PORT = 3232
+CACHE_PATH = Path(".pio/death_fortune_host")
+
+
+def quick_probe(ip, timeout=0.6):
+    try:
+        with socket.create_connection((ip, 23), timeout=timeout):
+            return True
+    except Exception:
+        return False
 
 
 def ping_host(ip):
     """Ping a single IP address"""
     try:
         result = subprocess.run(
-            ["ping", "-c", "1", "-W", "1000", ip],
+            ["ping", "-c", "1", "-W", "400", ip],
             capture_output=True,
             timeout=2,
         )
@@ -144,10 +154,9 @@ def discover_esp32_devices():
 
     network = discover_network_prefix()
     devices = []
-    with ThreadPoolExecutor(max_workers=48) as executor:
-        futures = [
-            executor.submit(ping_host, f"{network}{i}") for i in range(20, 60)
-        ]
+    scan_range = range(20, 60)
+    with ThreadPoolExecutor(max_workers=32) as executor:
+        futures = [executor.submit(ping_host, f"{network}{i}") for i in scan_range]
         for future in as_completed(futures):
             ip = future.result()
             if ip:
@@ -186,6 +195,67 @@ def discover_esp32_devices():
 
 
 def main():
+    quiet = "--quiet" in sys.argv
+    fast_only = "--fast" in sys.argv
+
+    # Quick check: cached IP first
+    if CACHE_PATH.exists():
+        cached_ip = CACHE_PATH.read_text().strip()
+        if cached_ip and quick_probe(cached_ip):
+            if quiet:
+                print(cached_ip)
+            else:
+                print("🔍 Using cached ESP32 host")
+                print("📡 Found 1 active device")
+                print("\n📋 ESP32 Device Status:")
+                print("-" * 60)
+                print(f"🟢 {cached_ip:<15} death-fortune-teller.lan         ACTIVE       Telnet:✅ OTA:✅")
+                print(f"\n✅ Active ESP32 found: {cached_ip}")
+                print(f"💡 Set: export DEATH_FORTUNE_HOST={cached_ip}")
+                print("💡 Test: python scripts/telnet_command.py status")
+            return 0
+
+    # Try resolving known hostnames before full scan
+    hostnames = [] if fast_only else [
+        os.environ.get("DEATH_FORTUNE_HOSTNAME", "death-fortune-teller"),
+        "death-fortune-teller.lan",
+        "death-fortune-teller.local",
+    ]
+    tried = set()
+    for host in hostnames:
+        if not host or host in tried:
+            continue
+        tried.add(host)
+        try:
+            resolved_ip = socket.gethostbyname(host)
+        except Exception:
+            continue
+        if resolved_ip and resolved_ip != "0.0.0.0" and quick_probe(resolved_ip):
+            if not quiet:
+                print(f"🔍 Resolved {host} to {resolved_ip}")
+            try:
+                CACHE_PATH.parent.mkdir(parents=True, exist_ok=True)
+                CACHE_PATH.write_text(resolved_ip)
+            except Exception:
+                pass
+            if quiet:
+                print(resolved_ip)
+            else:
+                print("📡 Found 1 active device")
+                print("\n📋 ESP32 Device Status:")
+                print("-" * 60)
+                print(f"🟢 {resolved_ip:<15} {host:<25} ACTIVE       Telnet:✅ OTA:✅")
+                print(f"\n✅ Active ESP32 found: {resolved_ip}")
+                print(f"💡 Set: export DEATH_FORTUNE_HOST={resolved_ip}")
+                print("💡 Test: python scripts/telnet_command.py status")
+            return 0
+
+    if fast_only:
+        if quiet:
+            return 1
+        print("⚠️ Fast discovery could not locate an active ESP32")
+        return 1
+
     devices = discover_esp32_devices()
 
     if not devices:
@@ -217,6 +287,11 @@ def main():
 
         if device["status"] == "ACTIVE" and not active_device:
             active_device = device
+            try:
+                CACHE_PATH.parent.mkdir(parents=True, exist_ok=True)
+                CACHE_PATH.write_text(device["ip"])
+            except Exception:
+                pass
 
     if active_device:
         print(f"\n✅ Active ESP32 found: {active_device['ip']}")

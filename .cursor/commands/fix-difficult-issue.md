@@ -12,7 +12,6 @@ Everything you do, test, or discover must be recorded as a new Step.
 ## BEHAVIOR RULES
 
 - **Always reason before acting.** Pause to form a hypothesis before taking any step.  
-- **Record every action as a Step** — commands, experiments, results, and conclusions.  
 - **Never edit past steps.** Only append.  
 - **Never overwrite history.** Only update the section between:
   <!-- CURRENT_STATE_START -->
@@ -20,8 +19,9 @@ Everything you do, test, or discover must be recorded as a new Step.
   <!-- CURRENT_STATE_END -->
 
 - **Keep language factual and terse.** Avoid speculation without data.  
-- **Each Step must end with one actionable “Next Steps” line.**  
+- **Each Step must end with one actionable "Next Steps" line.**  
 - **When the issue is resolved**, append a Resolution section and update Current State.
+- **Use consistent Step numbering** — each step gets a sequential number (Step 1, Step 2, etc.) with timestamp.
 
 ---
 
@@ -58,8 +58,8 @@ Everything you do, test, or discover must be recorded as a new Step.
  - Form a hypothesis
  - Research
  - Test
- - Record as a new Step
-5. Append all subsequent Steps in order.
+ - Record as a new numbered Step
+5. Append all subsequent Steps in order with sequential numbering.
 6. When fixed, write the Resolution section and update Current State.
 
 ---
@@ -77,15 +77,14 @@ Description:
 
 ### Step Format
 
-Step 1 (20251025-1207): Verified OTA Upload
-	•	Actions:
-Commands, edits, or code executed.
-	•	Results:
-Observed outcomes or errors.
-	•	Notes:
-Insights, analysis, what this confirms or rules out.
-	•	Next Steps:
-One clear instruction on what to do next.
+### Step 1 (20251025-1207): Verified OTA Upload
+**Action**: Commands, edits, or code executed.
+**Result**: Observed outcomes or errors.
+**Notes**:
+- Insights, analysis, what this confirms or rules out.
+- Additional context or observations.
+
+**Next Steps**: One clear instruction on what to do next.
 
 ### Resolution
 
@@ -164,10 +163,13 @@ Include what’s working well, any known weak points, and ongoing areas of inves
 - Evidence so far (logs, errors, or observed behavior)
 
 ### Step 1 (<YYYYMMDD-HHmm>): Initial Investigation
-- **Actions:**  
-- **Results:**  
-- **Notes:**  
-- **Next Steps:**  
+**Action**: Brief description of what was done.
+**Result**: Observed outcomes or errors.
+**Notes**:
+- Insights, analysis, what this confirms or rules out.
+- Additional context or observations.
+
+**Next Steps**: One clear instruction on what to do next.
 
 ---
 
@@ -175,5 +177,6 @@ Include what’s working well, any known weak points, and ongoing areas of inves
 
 - Always produce updated Markdown ready to overwrite the issue file.  
 - Use fenced code blocks for logs, diffs, and commands.  
-- Keep each step self-contained — another AI should be able to pick up from the last “Next Steps” without external context.  
+- Keep each step self-contained — another AI should be able to pick up from the last "Next Steps" without external context.  
 - After resolving an issue, summarize learnings in the Resolution section and update Current State.
+- **Number all Steps sequentially** (Step 1, Step 2, Step 3, etc.) with timestamps for easy tracking and reference.

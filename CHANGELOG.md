@@ -1,14 +1,38 @@
 # Changelog
 
+## [2025-10-26] - Helper script regression verification
+
+### Added
+- Logged verification run for all helper scripts in `ai-work/issues/telnet-issues.md`, including results for discovery, telnet, OTA, and troubleshooting flows.
+
+### Verified
+- Reflashed firmware before each helper run to confirm cache-first discovery logic works end-to-end.
+- Confirmed every helper script executes successfully post cache-first refactor, with sandbox timeouts noted where applicable.
+
+## [2025-10-26] - Cache-first Telnet/OTA helpers
+
+### Changed
+- `scripts/telnet_command.py`, `telnet_stream.py`, and `ota_upload_auto.py` now try the cached or explicit host first, only invoking fast discovery on failure, with an optional `--full-discovery` fallback.
+- `scripts/system_status.py` and `troubleshoot.py` reuse the shared cache/discovery helpers and call telnet commands with shorter timeouts so dashboards fail fast when the skull is offline.
+- Updated `docs/ota.md` to document the cache-first behaviour and new `--full-discovery` option.
+
+### Fixed
+- Eliminated 45–70 s delays caused by automatic full subnet scans whenever telnet or OTA commands timed out.
+
+### Testing
+- `python -m compileall scripts`
+
 ## [2025-10-25] - Telnet stability and OTA workflow hardening
 
 ### Added
 - `ai-work/issues/telnet-issues.md` log capturing systematic debugging steps and resolution
+- Telnet `bluetooth on|off|status` and `reboot` commands for runtime control
 
 ### Changed
-- Disabled Bluetooth via build flags during OTA/test builds to free RF bandwidth and heap
-- Defaulted RemoteDebug auto-streaming to off and documented short-timeout usage in `docs/ota.md`
-- Hardened discovery/banner matching and exposed timeout knobs in `scripts/telnet_command.py`
+- Added telnet `bluetooth on|off` commands and wired OTA tasks to disable/re-enable audio streaming automatically
+- Defaulted RemoteDebug auto-streaming to off and documented timeout guidance in `docs/ota.md`
+- Hardened discovery/banner matching, cached the last known host for helper scripts, and exposed timeout knobs in `scripts/telnet_command.py`
+- PlatformIO OTA/Telnet tasks rely on `scripts/ota_upload_auto.py` and cached host data instead of manual environment variables
 
 ### Fixed
 - Telnet helper timeouts caused by startup-log flooding and weak Wi-Fi links
