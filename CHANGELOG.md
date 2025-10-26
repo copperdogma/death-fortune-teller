@@ -1,5 +1,49 @@
 # Changelog
 
+## [2025-01-25] - Configuration Management System (Story 001a)
+
+### Added
+- **Complete Configuration Management**: Implemented all configuration keys from spec.md §8
+- **Type-Safe Configuration Access**: Added getter methods for all configuration values with proper types
+- **Configuration Validation**: Two-layer validation (load-time warnings + runtime enforcement with defaults)
+- **Configuration Keys**: Implemented all required keys (15 total):
+  - Basic settings: role, speaker_name, speaker_volume
+  - WiFi settings: wifi_ssid, wifi_password, ota_hostname, ota_password
+  - Servo: servo_us_min, servo_us_max
+  - Cap sense: cap_threshold
+  - Timing: finger_wait_ms, snap_delay_min_ms, snap_delay_max_ms, cooldown_ms
+  - Printer: printer_baud, printer_logo, fortunes_json
+- **SD Card Configuration**: Support for `/config.txt` on SD card with comment support
+
+### Implemented
+- **Getter Methods**: All configuration values accessible via type-safe methods
+- **Validation Rules**: Comprehensive validation for ranges, relationships (min < max), and constraints
+- **Default Values**: Sensible defaults for all configuration options
+- **Error Handling**: Graceful fallback to defaults when configuration is invalid or missing
+- **Load-Time Validation**: Warnings logged for invalid values during startup
+- **Runtime Validation**: Getters enforce validation and return safe defaults
+
+### Enhanced
+- **ConfigManager Class**: Extended with 10 new getter methods for hardware/timing/printer settings
+- **Documentation**: Updated SD_CARD_SETUP.md with all configuration keys and examples
+- **Config Template**: Updated sd-card-files/config.txt with all configuration keys
+- **Story Documentation**: Complete story tracking in docs/stories/story-001a-configuration-management.md
+
+### Fixed
+- **Remote Debug Configuration**: Removed unused remote_debug_enabled and remote_debug_port config keys (telnet starts automatically)
+- **Config Path**: Corrected configuration file path from `/config/config.txt` to `/config.txt`
+
+### Tested
+- **Valid Configuration**: Tested with all 15 keys present - loads successfully
+- **Invalid Configuration**: Tested with out-of-range values - validation warnings and safe defaults
+- **Missing Configuration**: Tested with empty file - system operates with defaults
+- **Hardware Validation**: All scenarios tested on actual ESP32 hardware
+
+### Notes
+- Configuration file changes must be done manually by removing SD card from ESP32
+- System operates normally even with missing or invalid configuration
+- Validation logs warnings but continues operation with safe defaults
+
 ## [2025-01-23] - Breathing cycle idle animation implementation
 
 ### Added

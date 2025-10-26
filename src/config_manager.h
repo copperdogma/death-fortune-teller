@@ -26,10 +26,25 @@ public:
     String getOTAHostname() const;
     String getOTAPassword() const;
 
-    // Remote debug configuration methods
-    bool isRemoteDebugEnabled() const;
-    int getRemoteDebugPort() const;
     bool isBluetoothEnabled() const;
+
+    // Servo configuration (microseconds)
+    int getServoUSMin() const;
+    int getServoUSMax() const;
+
+    // Capacitive sensor configuration
+    float getCapThreshold() const;
+
+    // Timing configuration
+    unsigned long getFingerWaitMs() const;
+    unsigned long getSnapDelayMinMs() const;
+    unsigned long getSnapDelayMaxMs() const;
+    unsigned long getCooldownMs() const;
+
+    // Printer configuration
+    int getPrinterBaud() const;
+    String getPrinterLogo() const;
+    String getFortunesJson() const;
 
 private:
     ConfigManager() {}

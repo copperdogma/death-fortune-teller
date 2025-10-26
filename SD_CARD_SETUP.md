@@ -46,9 +46,24 @@ wifi_password=YourPassword
 ota_hostname=death-fortune-teller
 ota_password=your_secure_ota_password
 
-# Remote debug settings (Phase 2: Wireless Serial Monitor)
-#remote_debug_enabled=true
-#remote_debug_port=23
+
+# Jaw servo (microseconds) - pins hardcoded in firmware
+servo_us_min=500
+servo_us_max=2500
+
+# Cap sense - threshold configurable per skull
+cap_threshold=0.002
+
+# Timing
+finger_wait_ms=6000
+snap_delay_min_ms=1000
+snap_delay_max_ms=3000
+cooldown_ms=12000
+
+# Printer - pins hardcoded in firmware
+printer_baud=9600
+printer_logo=/printer/logo_384w.bmp
+fortunes_json=/printer/fortunes_littlekid.json
 ```
 
 ### 2. Configure WiFi Settings
@@ -68,6 +83,16 @@ ota_password=your_secure_ota_password
 role=primary
 speaker_name=JBL Flip 5
 speaker_volume=100
+servo_us_min=500
+servo_us_max=2500
+cap_threshold=0.002
+finger_wait_ms=6000
+snap_delay_min_ms=1000
+snap_delay_max_ms=3000
+cooldown_ms=12000
+printer_baud=9600
+printer_logo=/printer/logo_384w.bmp
+fortunes_json=/printer/fortunes_littlekid.json
 ```
 
 #### With WiFi and OTA Password Protection
@@ -79,6 +104,16 @@ wifi_ssid=MyHomeNetwork
 wifi_password=MyPassword123
 ota_hostname=death-fortune-teller
 ota_password=MyOTAPassword456
+servo_us_min=500
+servo_us_max=2500
+cap_threshold=0.002
+finger_wait_ms=6000
+snap_delay_min_ms=1000
+snap_delay_max_ms=3000
+cooldown_ms=12000
+printer_baud=9600
+printer_logo=/printer/logo_384w.bmp
+fortunes_json=/printer/fortunes_littlekid.json
 ```
 
 ## Testing WiFi Connection

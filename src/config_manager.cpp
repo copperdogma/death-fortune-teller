@@ -60,6 +60,50 @@ bool ConfigManager::loadConfig()
     m_servoMinDegrees = 0;  // Default min degrees
     m_servoMaxDegrees = 80; // Default max degrees
 
+    // Note: Validation happens in getter methods - they return default values if invalid
+    // We just validate here to log warnings
+    int servoMin = getValue("servo_us_min", "500").toInt();
+    int servoMax = getValue("servo_us_max", "2500").toInt();
+    if (servoMin >= servoMax)
+    {
+        LOG_WARN(TAG, "Invalid servo timing (min >= max). Getters will return defaults.");
+    }
+
+    // Validate capacitive threshold
+    float capThreshold = getValue("cap_threshold", "0.002").toFloat();
+    if (capThreshold < 0.001f || capThreshold > 0.1f)
+    {
+        LOG_WARN(TAG, "Invalid cap threshold (0.001-0.1 expected). Getters will return default.");
+    }
+
+    // Validate timing values
+    unsigned long fingerWait = getValue("finger_wait_ms", "6000").toInt();
+    unsigned long snapDelayMin = getValue("snap_delay_min_ms", "1000").toInt();
+    unsigned long snapDelayMax = getValue("snap_delay_max_ms", "3000").toInt();
+    unsigned long cooldown = getValue("cooldown_ms", "12000").toInt();
+
+    if (snapDelayMin >= snapDelayMax)
+    {
+        LOG_WARN(TAG, "Invalid snap delay timing (min >= max). Getters will return defaults.");
+    }
+
+    if (fingerWait < 1000)
+    {
+        LOG_WARN(TAG, "Finger wait timeout too short (< 1000ms). Getters will return default.");
+    }
+
+    if (cooldown < 5000)
+    {
+        LOG_WARN(TAG, "Cooldown period too short (< 5000ms). Getters will return default.");
+    }
+
+    // Validate printer baud rate
+    int printerBaud = getValue("printer_baud", "9600").toInt();
+    if (printerBaud < 1200 || printerBaud > 115200)
+    {
+        LOG_WARN(TAG, "Invalid printer baud rate. Getters will return default of 9600.");
+    }
+
     return true;
 }
 
@@ -141,17 +185,93 @@ String ConfigManager::getOTAPassword() const
     return getValue("ota_password", "");
 }
 
-bool ConfigManager::isRemoteDebugEnabled() const
-{
-    return getValue("remote_debug_enabled", "false").equalsIgnoreCase("true");
-}
-
-int ConfigManager::getRemoteDebugPort() const
-{
-    return getValue("remote_debug_port", "23").toInt();
-}
-
 bool ConfigManager::isBluetoothEnabled() const
 {
     return !getValue("bluetooth_enabled", "true").equalsIgnoreCase("false");
+}
+
+int ConfigManager::getServoUSMin() const
+{
+    int value = getValue("servo_us_min", "500").toInt();
+    int max = getServoUSMax();
+    if (value >= max || value < 0) {
+        return 500; // Default
+    }
+    return value;
+}
+
+int ConfigManager::getServoUSMax() const
+{
+    int value = getValue("servo_us_max", "2500").toInt();
+    int min = getValue("servo_us_min", "500").toInt(); // Get raw value
+    if (value <= min || value > 5000) {
+        return 2500; // Default
+    }
+    return value;
+}
+
+float ConfigManager::getCapThreshold() const
+{
+    float value = getValue("cap_threshold", "0.002").toFloat();
+    if (value < 0.001f || value > 0.1f) {
+        return 0.002f; // Default
+    }
+    return value;
+}
+
+unsigned long ConfigManager::getFingerWaitMs() const
+{
+    unsigned long value = getValue("finger_wait_ms", "6000").toInt();
+    if (value < 1000) {
+        return 6000; // Default
+    }
+    return value;
+}
+
+unsigned long ConfigManager::getSnapDelayMinMs() const
+{
+    unsigned long value = getValue("snap_delay_min_ms", "1000").toInt();
+    unsigned long max = getValue("snap_delay_max_ms", "3000").toInt(); // Get raw value
+    if (value >= max || value < 100) {
+        return 1000; // Default
+    }
+    return value;
+}
+
+unsigned long ConfigManager::getSnapDelayMaxMs() const
+{
+    unsigned long value = getValue("snap_delay_max_ms", "3000").toInt();
+    unsigned long min = getValue("snap_delay_min_ms", "1000").toInt(); // Get raw value
+    if (value <= min || value > 10000) {
+        return 3000; // Default
+    }
+    return value;
+}
+
+unsigned long ConfigManager::getCooldownMs() const
+{
+    unsigned long value = getValue("cooldown_ms", "12000").toInt();
+    if (value < 5000) {
+        return 12000; // Default
+    }
+    return value;
+}
+
+int ConfigManager::getPrinterBaud() const
+{
+    int value = getValue("printer_baud", "9600").toInt();
+    if (value < 1200 || value > 115200) {
+        return 9600; // Default
+    }
+    return value;
+}
+
+String ConfigManager::getPrinterLogo() const
+{
+    return getValue("printer_logo", "/printer/logo_384w.bmp");
+}
+
+String ConfigManager::getFortunesJson() const
+{
+    return getValue("fortunes_json", "/printer/fortunes_littlekid.json");
 }

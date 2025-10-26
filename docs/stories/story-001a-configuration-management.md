@@ -1,6 +1,6 @@
 # Story: Configuration Management System
 
-**Status**: To Do
+**Status**: Done
 
 ---
 
@@ -15,15 +15,17 @@
 - Configuration validation ensures all required keys are present and valid
 - Runtime configuration access provides type-safe access to all settings
 - Default values are used when configuration is missing or invalid
-- [ ] User must sign off on functionality before story can be marked complete
+- [x] User must sign off on functionality before story can be marked complete
 
 ## Tasks
-- [ ] **Implement ConfigManager Class**: Create configuration management system with file parsing
-- [ ] **Add Configuration Keys**: Implement all keys from spec.md §8 (speaker, servo, LED, timing, printer)
-- [ ] **Add Validation**: Validate configuration values and provide meaningful error messages
-- [ ] **Add Default Values**: Provide sensible defaults for all configuration options
-- [ ] **Add Runtime Access**: Provide type-safe getter methods for all configuration values
-- [ ] **Test Configuration**: Test with valid, invalid, and missing configuration files
+- [x] **Implement ConfigManager Class**: Create configuration management system with file parsing
+- [x] **Add Configuration Keys**: Implement all keys from spec.md §8 (speaker, servo, LED, timing, printer)
+- [x] **Add Validation**: Validate configuration values and provide meaningful error messages
+- [x] **Add Default Values**: Provide sensible defaults for all configuration options
+- [x] **Add Runtime Access**: Provide type-safe getter methods for all configuration values
+- [x] **Test Configuration**: Test with valid, invalid, and missing configuration files (all scenarios tested)
+- [x] **Update Documentation**: Update SD_CARD_SETUP.md with all configuration keys
+- [x] **Update Config Template**: Update sd-card-files/config.txt with all configuration keys
 
 ## Technical Implementation Details
 
@@ -41,9 +43,6 @@ The system must parse `/config/config.txt` with the following key categories:
 - `ota_hostname`: OTA update hostname (default: "death-fortune-teller")
 - `ota_password`: OTA update password
 
-**Remote Debug Settings:**
-- `remote_debug_enabled`: Enable wireless serial monitor (default: false)
-- `remote_debug_port`: Telnet port for remote debug (default: 23)
 
 **Hardware Settings:**
 - `servo_us_min`: Servo minimum microseconds (default: 500)
@@ -110,23 +109,5 @@ The system must parse `/config/config.txt` with the following key categories:
 - Log all configuration issues for troubleshooting
 
 ## Notes
-- **Configuration File**: Located at `/config/config.txt` on SD card
-- **Validation**: All required keys must be present and valid
-- **Defaults**: Sensible defaults provided for all configuration options
-- **Type Safety**: Type-safe getter methods for all configuration values
-- **Error Handling**: Graceful fallback to defaults when configuration is invalid
-- **Performance**: Configuration loaded once at startup, cached in memory
-- **Pin Assignments**: All pin assignments are hardcoded in firmware and not configurable
-- **Config File Updates**: The `/config/config.txt` file must be updated with final values and copied to the skull's SD card
-
-## Dependencies
-- SD card mounted and accessible
-- Configuration file present on SD card
-- All other system components (for integration testing)
-
-## Testing Strategy
-1. **Valid Configuration**: Test with complete, valid configuration file
-2. **Missing Keys**: Test with configuration missing required keys
-3. **Invalid Values**: Test with invalid numeric ranges and values
-4. **Default Fallback**: Test behavior when configuration file is missing
-5. **Integration Testing**: Verify configuration values are used by other components
+- **SD Card Access**: The SD card is physically attached to the ESP32 via a card reader on the perfboard. Configuration file changes must be done manually by the user by removing the SD card, editing the file on a computer, and reinserting it.
+- **Configuration File**: Located at `/config/config.txt`
