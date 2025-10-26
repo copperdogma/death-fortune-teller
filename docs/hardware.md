@@ -48,8 +48,8 @@ This document catalogs the bill of materials and pin assignments for the Death F
 - **Printer Power**: 5V ≥2A supply (or 9V with regulator)
 
 ### Power System
-- **5V Regulator**: For servo motor and thermal printer
-- **3.3V Regulator**: For ESP32, SD card, and sensors
+- **5V Regulator**: For servo motor, thermal printer, and SD card module
+- **3.3V Regulator**: For ESP32 and sensors
 - **Bulk Capacitor**: 1000-2200 µF near thermal printer
 - **Power Connectors**: Appropriate connectors for power distribution
 
@@ -204,14 +204,14 @@ The following pins have multiple conflicting assignments that need resolution:
 ## Wiring Connections
 
 ### Power Distribution
-1. **5V Rail**: Connect to servo motor, thermal printer, and voltage regulator input
-2. **3.3V Rail**: Connect to ESP32, SD card module, and sensors
+1. **5V Rail**: Connect to servo motor, thermal printer, SD card module, and voltage regulator input
+2. **3.3V Rail**: Connect to ESP32 and sensors
 3. **Common Ground**: All components share a common ground reference
 
 ### Signal Connections
 1. **LEDs**: Connect eye LEDs to GPIO 32/33 with 100Ω current limiting resistor
 2. **Servo**: Connect control wire to GPIO 15, power to 5V rail, ground to common ground
-3. **SD Card**: Connect SPI pins as specified, power to 3.3V
+3. **SD Card**: Connect SPI pins as specified, power to 5V
 4. **UART**: Connect RX/TX pins between ESP32-WROVER and ESP32-C3 SuperMini
 5. **Thermal Printer**: Connect UART pins to ESP32-WROVER
 6. **Touch Sensor**: Connect electrode to GPIO 2 or GPIO 4 (choose one)
@@ -292,8 +292,8 @@ ESP32-WROVER (FREENOVE) Connections:
 │ GPIO4 (Pin 19) ─────────┼───→ Touch Electrode
 │ GPIO27 (Pin 12) ────────┼───→ External Cap Sensor
 │                         │
-│ 3.3V ───────────────────┼───→ All 3.3V devices
-│ 5V ─────────────────────┼───→ Servo + Printer Power
+│ 3.3V ───────────────────┼───→ ESP32 + Sensors
+│ 5V ─────────────────────┼───→ Servo + Printer + SD Card Power
 │ GND ────────────────────┼───→ Common Ground
 └─────────────────────────┘
 ```
@@ -430,16 +430,16 @@ USB-C GND ───────────────────────�
 | Servo Motor (HS-125MG) | 1200mA stall | 5V |
 | Thermal Printer | 2000mA peak | 5V |
 | LEDs (3x) | 60mA total | 3.3V |
-| SD Card | 100mA peak | 3.3V |
-| **Total 5V Rail** | **≥3A required** | 5V |
-| **Total 3.3V Rail** | **≥600mA required** | 3.3V |
+| SD Card Module | 200mA peak | 5V |
+| **Total 5V Rail** | **≥3.1A required** | 5V |
+| **Total 3.3V Rail** | **≥500mA required** | 3.3V |
 
 ## Troubleshooting
 
 ### Common Issues and Solutions
 
 1. **SD Card Not Detected**
-   - Verify 3.3V power supply
+   - Verify 5V power supply
    - Check SPI connections (especially CS pin)
    - Ensure SD card is formatted as FAT32
    - Try lower SPI clock speed initially
