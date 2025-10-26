@@ -82,6 +82,7 @@ void startFortuneFlow();
 void playRandomSkit();
 void testSkitSelection();
 void handleFortuneFlow(unsigned long currentTime);
+void breathingJawMovement();
 
 // State machine
 enum class DeathState {
@@ -102,6 +103,12 @@ bool fingerDetected = false;
 unsigned long fingerDetectionStart = 0;
 unsigned long snapDelayStart = 0;
 int snapDelayMs = 0;
+
+// Breathing cycle state
+unsigned long lastJawMovementTime = 0;
+const unsigned long BREATHING_INTERVAL = 7000;        // 7 seconds between breaths
+const int BREATHING_JAW_ANGLE = 30;                   // 30 degrees opening
+const int BREATHING_MOVEMENT_DURATION = 2000;         // 2 seconds per movement
 
 void setup() {
     Serial.begin(115200);
@@ -435,6 +442,12 @@ void loop() {
             break;
     }
 
+    // Check if it's time to move the jaw for breathing
+    if (currentTime - lastJawMovementTime >= BREATHING_INTERVAL && !audioPlayer->isAudioPlaying()) {
+        breathingJawMovement();
+        lastJawMovementTime = currentTime;
+    }
+
     delay(1);
 }
 
@@ -509,6 +522,14 @@ void testSkitSelection() {
     }
     
     LOG_INFO(FLOW_TAG, "Skit selection test completed");
+}
+
+void breathingJawMovement() {
+    if (!audioPlayer->isAudioPlaying()) {
+        servoController.smoothMove(BREATHING_JAW_ANGLE, BREATHING_MOVEMENT_DURATION);
+        delay(100); // Short pause at open position
+        servoController.smoothMove(0, BREATHING_MOVEMENT_DURATION);
+    }
 }
 
 void handleFortuneFlow(unsigned long currentTime) {

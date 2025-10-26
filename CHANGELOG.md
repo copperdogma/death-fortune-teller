@@ -1,5 +1,30 @@
 # Changelog
 
+## [2025-01-23] - Breathing cycle idle animation implementation
+
+### Added
+- **Breathing Cycle Animation**: Idle jaw movement that opens and closes every 7 seconds when no audio is playing
+- **Story 001b Documentation**: Complete story documentation in `docs/stories/story-001b-breathing-cycle.md`
+- **Issues Tracking**: New `docs/issues.md` file for tracking outstanding issues and known limitations
+- **Servo Troubleshooting Log**: Detailed investigation log in `ai-work/issues/servo-issues.md` documenting servo smoothness issue
+
+### Implemented
+- **Breathing Function**: `breathingJawMovement()` function with configurable timing and angles
+- **Loop Integration**: Automatic breathing cycle timing check in main loop with audio-aware activation
+- **Servo Timer Width**: Increased PWM resolution to 20-bit (1,048,576 ticks) for finer servo control
+- **Progress Clamping**: Added bounds checking to smoothMove() interpolation for consistent behavior
+
+### Enhanced
+- **Servo Controller**: Improved PWM resolution with `servo.setTimerWidth(20)` for smoother motion
+- **Code Documentation**: Clear inline comments explaining breathing cycle timing and servo control
+- **Story Status Tracking**: Updated story index to reflect completed breathing cycle implementation
+
+### Known Limitations
+- **Servo Motion Quality**: Motion exhibits visible stepping/jerky behavior compared to TwoSkulls reference implementation
+- **Library Limitation**: ESP32Servo library differs from Arduino Servo.h in PWM generation, affecting motion smoothness
+- **Investigation**: Multiple approaches tested (timer width, microsecond precision, update frequency) with no complete resolution
+- Detailed investigation documented in `ai-work/issues/servo-issues.md`
+
 ## [2025-01-23] - Audio conversion system for ESP32 deployment
 
 ### Added

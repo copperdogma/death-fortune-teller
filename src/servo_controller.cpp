@@ -15,7 +15,13 @@ void ServoController::initialize(int pin, int minDeg, int maxDeg)
 {
     // Set member variables with provided values
     servoPin = pin;
-    servo.attach(servoPin);
+    
+    // Increase timer width to 20-bit (maximum) for finer PWM resolution
+    // Default is 10-bit (1024 ticks), max is 20-bit (1,048,576 ticks)
+    // This should reduce quantization and stepping
+    servo.setTimerWidth(20);
+    
+    servo.attach(servoPin); // Match TwoSkulls exactly
     setMinMaxDegrees(minDeg, maxDeg);
     setPosition(0); // Initialize to closed position
 
@@ -130,10 +136,16 @@ void ServoController::smoothMove(int targetPosition, int duration) {
         
         unsigned long currentTime = millis();
         float progress = static_cast<float>(currentTime - startTime) / duration;
+        
+        // Clamp progress to [0, 1]
+        if (progress < 0.0f) progress = 0.0f;
+        if (progress > 1.0f) progress = 1.0f;
+        
+        // Linear interpolation
         int newPosition = startPosition + (targetPosition - startPosition) * progress;
         
         setPosition(newPosition);
-        delay(20); // Small delay to prevent overwhelming the servo
+        delay(20); // 20ms update rate to match servo control frequency
     }
     
     // Ensure we reach the final position if not interrupted
