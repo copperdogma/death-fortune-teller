@@ -1,5 +1,25 @@
 # Changelog
 
+## [2025-01-23] - Audio conversion system for ESP32 deployment
+
+### Added
+- **Audio Conversion Pipeline**: Complete system for converting M4A files to ESP32-compatible WAV format
+- **Audio Specifications Documentation**: `audio-raw/audio-specs-for-ai.md` with detailed format requirements
+- **Automated Conversion Script**: `audio-raw/convert_audio.sh` with intelligent silence trimming and normalization
+- **Smart Silence Detection**: Advanced FFmpeg-based silence removal with natural audio buffer preservation
+- **Peak Normalization**: Loudness normalization using EBU R128 standard for consistent audio levels
+
+### Implemented
+- **WAV Format Compliance**: 44.1kHz, 16-bit, stereo PCM format required by ESP32 audio player
+- **Intelligent Silence Trimming**: Detects speech boundaries and preserves 0.5s of original audio context
+- **Batch Processing**: Automated conversion of entire directories with proper naming conventions
+- **Quality Optimization**: Tuned parameters for optimal balance between tight audio and natural spacing
+
+### Enhanced
+- **File Naming**: Automatic conversion from "Death - " prefix to lowercase underscore format
+- **Error Handling**: Robust conversion pipeline with detailed success/failure reporting
+- **Audio Quality**: Professional-grade normalization and silence removal for ESP32 deployment
+
 ## [2025-10-26] - Helper script regression verification
 
 ### Added
