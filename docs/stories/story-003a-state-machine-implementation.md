@@ -53,13 +53,40 @@
 - PRINT_FORTUNE: Print fortune while talking
 - FORTUNE_COMPLETE: Fortune flow complete
 
+### Matter Controller State Mapping
+
+**Requirement**: Death's state machine must align with Matter controller's command codes and state definitions.
+
+**Command Code to State Mapping**:
+- `0x01` (CMD_FAR_MOTION) → Trigger FAR_MOTION_DETECTED event
+- `0x02` (CMD_NEAR_MOTION) → Trigger NEAR_MOTION_DETECTED event  
+- `0x03` (CMD_PLAY_WELCOME) → Force transition to PLAY_WELCOME state
+- `0x04` (CMD_WAIT_FOR_NEAR) → Force transition to WAIT_FOR_NEAR state
+- `0x05` (CMD_PLAY_FINGER_PROMPT) → Force transition to PLAY_FINGER_PROMPT state
+- `0x06` (CMD_MOUTH_OPEN_WAIT_FINGER) → Force transition to MOUTH_OPEN_WAIT_FINGER state
+- `0x07` (CMD_FINGER_DETECTED) → Force transition to FINGER_DETECTED state
+- `0x08` (CMD_SNAP_WITH_FINGER) → Force transition to SNAP_WITH_FINGER state
+- `0x09` (CMD_SNAP_NO_FINGER) → Force transition to SNAP_NO_FINGER state
+- `0x0A` (CMD_FORTUNE_FLOW) → Force transition to FORTUNE_FLOW state
+- `0x0B` (CMD_FORTUNE_DONE) → Force transition to FORTUNE_DONE state
+- `0x0C` (CMD_COOLDOWN) → Force transition to COOLDOWN state
+
+**State Forcing Behavior**:
+- Matter controller can force Death into any state via UART command
+- State forcing commands (0x03-0x0C) may override busy state (Matter controller has priority)
+- Trigger commands (0x01-0x02) respect busy state and debounce logic
+- Death must validate forced state transitions (e.g., don't allow invalid sequences)
+
 ### State Transition Logic
 
 **Trigger Handling:**
-- FAR trigger: Only accepted in IDLE state, starts welcome sequence
-- NEAR trigger: Only accepted in WAIT_FOR_NEAR state, starts finger prompt
-- Busy policy: Drop all triggers while system is active
-- Debounce: 2-second debounce for duplicate triggers
+- FAR trigger (0x01): Only accepted in IDLE state, starts welcome sequence
+- NEAR trigger (0x02): **CRITICAL** - Only accepted in WAIT_FOR_NEAR state, starts finger prompt
+  - This means after FAR_MOTION_DETECTED → PLAY_WELCOME, system must be in WAIT_FOR_NEAR before accepting NEAR_MOTION_DETECTED
+  - Any NEAR_MOTION_DETECTED received outside WAIT_FOR_NEAR state must be dropped
+- State forcing (0x03-0x0C): Matter controller can force transitions even when busy
+- Busy policy: Drop trigger commands while system is active (but allow forced state transitions)
+- Debounce: 2-second debounce for duplicate trigger commands
 
 **State Transitions:**
 - IDLE → FAR → PLAY_WELCOME → (complete) → WAIT_FOR_NEAR
@@ -68,6 +95,11 @@
 - MOUTH_OPEN_WAIT_FINGER: No finger (timeout) → SNAP_NO_FINGER → FORTUNE_FLOW
 - FORTUNE_FLOW: Complete fortune sequence with template selection
 - FORTUNE_COMPLETE → FORTUNE_DONE → (goodbye skit) → COOLDOWN → IDLE
+
+**Critical State Constraints:**
+- NEAR_MOTION_DETECTED can ONLY be processed in WAIT_FOR_NEAR state
+- This enforces the proper sequence: FAR → WELCOME → WAIT_FOR_NEAR → NEAR → FINGER_PROMPT
+- Any NEAR_MOTION_DETECTED received in other states (IDLE, PLAY_WELCOME, etc.) must be dropped
 
 ### Timer Management
 
@@ -84,9 +116,11 @@
 ### Integration Requirements
 
 **UART Integration:**
-- Handle TRIGGER_FAR and TRIGGER_NEAR commands
-- Implement busy policy and debounce logic
+- Handle all 12 command codes from Matter controller
+- Support both trigger-based (0x01-0x02) and state-forcing (0x03-0x0C) commands
+- Implement busy policy with exceptions for state forcing
 - Log all state transitions for debugging
+- Map Matter controller command codes to Death's internal state enum
 
 **Finger Detection Integration:**
 - Monitor capacitive sensor during MOUTH_OPEN_WAIT_FINGER state
@@ -103,13 +137,27 @@
 - Control LED for visual feedback
 - Control thermal printer for fortune output
 
+## Existing Code to Update
+
+**File: `src/main.cpp`**
+- Line 87-92: `DeathState` enum needs expansion from 4 states to 11+ states
+- Line 453-473: `handleUARTCommand()` needs to handle all 12 command codes, not just FAR/NEAR
+- Line 455-458: Busy policy needs to allow state forcing commands even when busy
+- Line 422-442: State machine switch statement needs cases for all states
+- Line 534-557: `handleFortuneFlow()` is incomplete stub, needs full implementation
+
+**File: `src/uart_controller.h`**
+- Line 6-12: `UARTCommand` enum needs expansion for all states
+
 ## Notes
 - **State Machine**: Complete implementation of all states from spec.md §3
-- **Busy Policy**: Drop all commands while system is active
-- **Debounce**: 2-second debounce for duplicate triggers
+- **Busy Policy**: Drop trigger commands while system is active, but allow state forcing commands
+- **Debounce**: 2-second debounce for duplicate trigger commands (0x01-0x02)
 - **Timer Management**: Handle all timing requirements
 - **Integration**: Works with UART triggers and finger detection
 - **Logging**: Comprehensive state transition logging for debugging
+- **Critical Constraint**: NEAR_MOTION_DETECTED can ONLY be processed in WAIT_FOR_NEAR state (per spec.md §3)
+- **Matter Controller Alignment**: All state names and command codes must match Matter controller's canonical definitions
 
 ## Dependencies
 - Story 003 (Matter UART Trigger Handling) - UART command integration
@@ -119,8 +167,8 @@
 
 ## **📋 State Flow (Actual Flow)**
 
-1. **IDLE** → TRIGGER_FAR → **PLAY_WELCOME** → (complete) → **WAIT_FOR_NEAR**
-2. **WAIT_FOR_NEAR** → TRIGGER_NEAR → **PLAY_FINGER_PROMPT** → (complete) → **MOUTH_OPEN_WAIT_FINGER**
+1. **IDLE** → FAR_MOTION_DETECTED → **PLAY_WELCOME** → (complete) → **WAIT_FOR_NEAR**
+2. **WAIT_FOR_NEAR** → NEAR_MOTION_DETECTED → **PLAY_FINGER_PROMPT** → (complete) → **MOUTH_OPEN_WAIT_FINGER**
 3. **MOUTH_OPEN_WAIT_FINGER**:
    - Finger detected → **FINGER_DETECTED** → (snap delay) → **SNAP_WITH_FINGER** → (play finger snap skit) → **FORTUNE_FLOW**
    - No finger (timeout) → **SNAP_NO_FINGER** → (play no finger skit) → **FORTUNE_FLOW**

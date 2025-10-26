@@ -2,6 +2,8 @@
 
 An animatronic skeleton that tells fortunes, built with ESP32 and PlatformIO.
 
+> **🔗 Related Project**: [Death Matter Controller](https://github.com/copperdogma/death-matter-controller) - ESP32-C3 Matter controller for Apple Home integration
+
 ## Project Overview
 
 This project is based on the TwoSkulls codebase but adapted for a single skull with Matter control integration. The skull features:

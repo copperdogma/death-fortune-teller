@@ -14,8 +14,8 @@ NOTE: This file is for the user to write notes to the AI for it to investigate/r
 MATTER CONTROLLER UPDATES REQUIRED
 The PoC Matter controller needs updates to:
 - Add Zone Trigger Logic:
-  - Far zone occupancy → send TRIGGER_FAR (0x05)
-  - Near zone occupancy → send TRIGGER_NEAR (0x06)
+  - Far zone occupancy → send FAR_MOTION_DETECTED (0x05)
+  - Near zone occupancy → send NEAR_MOTION_DETECTED (0x06)
 - Integrate with Occupancy Sensor: Connect to matter-two-zone-occupancy-sensor for zone detection
 - Maintain Existing Protocol: Keep all existing PoC commands (HELLO, SET_MODE, PING, etc.)
 

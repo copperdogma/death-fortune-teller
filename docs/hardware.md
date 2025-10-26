@@ -33,7 +33,7 @@ This document catalogs the bill of materials and pin assignments for the Death F
 - **SD Card**: MicroSD card with audio files and configuration
 
 ### Visual System
-- **Eye LEDs**: Pink LEDs (x2) with 100Ω current limiting resistor
+- **Eye LED**: Pink LED (x1) with 100Ω current limiting resistor
 - **Mouth LED**: Pink LED for mouth illumination
 
 ### Motion System
@@ -56,9 +56,8 @@ This document catalogs the bill of materials and pin assignments for the Death F
 ## Current Pin Assignments
 
 ### LED Control
-- **GPIO 32**: Left Eye LED (PWM Channel 0)
-- **GPIO 33**: Right Eye LED (PWM Channel 1)
-- **GPIO 2**: Mouth LED ⚠️ **POTENTIAL CONFLICT**
+- **GPIO 32**: Eye LED (PWM Channel 0)
+- **GPIO 33**: Mouth LED (PWM Channel 1)
 
 ### Servo Control
 - **GPIO 15**: Servo control pin (PWM for jaw movement)
@@ -209,7 +208,7 @@ The following pins have multiple conflicting assignments that need resolution:
 3. **Common Ground**: All components share a common ground reference
 
 ### Signal Connections
-1. **LEDs**: Connect eye LEDs to GPIO 32/33 with 100Ω current limiting resistor
+1. **LEDs**: Connect eye LED to GPIO 32 and mouth LED to GPIO 33 with 100Ω current limiting resistors
 2. **Servo**: Connect control wire to GPIO 15, power to 5V rail, ground to common ground
 3. **SD Card**: Connect SPI pins as specified, power to 5V
 4. **UART**: Connect RX/TX pins between ESP32-WROVER and ESP32-C3 SuperMini
@@ -250,9 +249,8 @@ The ESP32-WROVER has **3 hardware UART interfaces** (UART0, UART1, UART2), allow
 #define SD_MISO_PIN         19  // GPIO19 - Master In Slave Out (VSPI default)
 
 // LEDs
-#define LEFT_EYE_PIN        32  // GPIO32 - PWM Channel 0
-#define RIGHT_EYE_PIN       33  // GPIO33 - PWM Channel 1  
-#define MOUTH_LED_PIN       25  // GPIO25 - PWM Channel 2 (moved from GPIO2)
+#define EYE_LED_PIN         32  // GPIO32 - PWM Channel 0
+#define MOUTH_LED_PIN       33  // GPIO33 - PWM Channel 1
 
 // Servo
 #define SERVO_PIN           15  // GPIO15 - PWM for jaw movement
@@ -283,9 +281,8 @@ ESP32-WROVER (FREENOVE) Connections:
 │ GPIO23 (Pin 27) ────────┼───→ SD Card MOSI
 │ GPIO5 (Pin 22) ─────────┼───→ SD Card CS
 │                         │
-│ GPIO32 (Pin 8) ─────────┼───→ Left Eye LED (via 100Ω)
-│ GPIO33 (Pin 9) ─────────┼───→ Right Eye LED (via 100Ω)
-│ GPIO25 (Pin 10) ────────┼───→ Mouth LED (via 100Ω)
+│ GPIO32 (Pin 8) ─────────┼───→ Eye LED (via 100Ω)
+│ GPIO33 (Pin 9) ─────────┼───→ Mouth LED (via 100Ω)
 │                         │
 │ GPIO15 (Pin 16) ────────┼───→ Servo Control Signal
 │                         │
@@ -429,7 +426,7 @@ USB-C GND ───────────────────────�
 | ESP32-C3 | 100mA peak | 3.3V |
 | Servo Motor (HS-125MG) | 1200mA stall | 5V |
 | Thermal Printer | 2000mA peak | 5V |
-| LEDs (3x) | 60mA total | 3.3V |
+| LEDs (2x) | 40mA total | 3.3V |
 | SD Card Module | 200mA peak | 5V |
 | **Total 5V Rail** | **≥3.1A required** | 5V |
 | **Total 3.3V Rail** | **≥500mA required** | 3.3V |

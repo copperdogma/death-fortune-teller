@@ -32,7 +32,7 @@ Repo strategy
 1) Hardware & System Overview
 
 Main MCU (Skull): ESP32 WROOM/WROVER (classic ESP32)
-	•	Responsibilities: SD WAV playback over A2DP, jaw servo sync via audio analysis, mouth LED, one eye (physically one connected, firmware still exposes both), capacitive finger sensor, thermal printer, UART link to skull Matter node.
+	•	Responsibilities: SD WAV playback over A2DP, jaw servo sync via audio analysis, pink mouth LED, one pink eye LED, capacitive finger sensor, thermal printer, UART link to skull Matter node.
 
 Matter devices (separate MCUs):
 	•	Two-zone occupancy sensor (Matter): exposes far and near occupancy in Apple Home.
@@ -67,8 +67,8 @@ Debounce/precedence:
 3) State Machine (runtime)
 
 IDLE
- ├─ on TRIGGER_FAR  → PLAY_WELCOME  → (end) → WAIT_FOR_NEAR
- └─ on TRIGGER_NEAR → (only if in WAIT_FOR_NEAR) → PLAY_FINGER_PROMPT → (end) → MOUTH_OPEN_WAIT_FINGER
+ ├─ on FAR_MOTION_DETECTED  → PLAY_WELCOME  → (end) → WAIT_FOR_NEAR
+ └─ on NEAR_MOTION_DETECTED → (only if in WAIT_FOR_NEAR) → PLAY_FINGER_PROMPT → (end) → MOUTH_OPEN_WAIT_FINGER
 
 MOUTH_OPEN_WAIT_FINGER:
   ├─ finger detected → FINGER_DETECTED → (random 1–3s delay) → SNAP_WITH_FINGER → (play finger snap skit) → FORTUNE_FLOW
@@ -173,32 +173,38 @@ During printing we must keep the jaw talking. Two implementation options (decide
 
 6) UART Link (Skull Matter Node → Skull Main)
 
-Transport (from PoC you provided):
-	•	UART1 at 115200 8N1, TX=21, RX=20, RX buf=1024.
-	•	Frame format: 0xA5 (start), then [LEN][CMD][PAYLOAD...][CRC8]
-	•	LEN = 1 + payload_len (the “1” accounts for CMD)
-	•	CRC-8 poly 0x31, init 0x00, computed over LEN+CMD+PAYLOAD.
+**Requirement**: Death must receive state transition commands from the Matter controller via UART.
 
-Commands used in Death (sender = skull Matter node):
-	•	0x02 SET_MODE {u8 mode} — (future) 0=LittleKid, 1=BigKid, 2=TakeOne, 3=Closed
-	•	0x05 TRIGGER_FAR — no payload
-	•	0x06 TRIGGER_NEAR — no payload
-	•	0x04 PING — optional for diagnostics only
+**Key Requirements**:
+- Death must align its state machine with the Matter controller's state definitions
+- Matter controller can send commands to trigger state transitions (both trigger-based like FAR/NEAR and direct state forcing)
+- UART communication is one-way: Matter controller sends, Death receives (no ACK/NAK expected)
+- Death must debounce duplicate commands (2 s) and handle busy state appropriately
+- Matter controller may send rapid/repeated commands (Apple Home jank) — Death side is authoritative on actual state
 
-Commands explicitly not required for MVP: 0x03 legacy TRIGGER (unused).
+**State Alignment**: Death's state machine must map to the Matter controller's 12 operational states:
+1. FAR Motion (trigger)
+2. NEAR Motion (trigger)  
+3. Play Welcome
+4. Wait For Near
+5. Play Finger Prompt
+6. Mouth Open Wait Finger
+7. Finger Detected
+8. Snap With Finger
+9. Snap No Finger
+10. Fortune Flow
+11. Fortune Done
+12. Cooldown
 
-Directionality & robustness
-	•	One-way intended use: Matter node sends, skull does not reply (no ACK/NAK expected).
-	•	Skull debounces duplicates (2 s) and drops while busy.
-	•	Matter node may spam (Apple Home jank) — acceptable; skull side is authoritative.
+**Implementation Note**: See story-003 and story-003a for UART protocol details and state machine implementation requirements.
 
 ⸻
 
 7) Peripherals & Signals
 	•	Jaw servo: open-only; snap = release. Config in microseconds (min/mid/max) to ease per-servo calibration.
 	•	Capacitive finger: boot-time calibration (mouth open, quiet electronics). Detection requires ≥120 ms solid.
-	•	Mouth LED: on during prompt; slow pulse while waiting for finger.
-	•	Eyes: firmware still drives EYES (two channels/patterns). For 2025, one eye is physically disconnected; keep optional header for future.
+	•	Mouth LED: pink LED on during prompt; slow pulse while waiting for finger.
+	•	Eye: single pink LED for visual effects during operation.
 	•	Printer: 58 mm TTL; use PoC defaults (baud/density/feed). Print logo then fortune. If printer error (paper/overtemp/absent), play a global fallback line.
 	•	Power: 5 V rail ≥3 A for printer + 1000–2200 µF bulk near the printer; separate/stout wiring; common ground.
 
@@ -276,13 +282,13 @@ LED fault cue: 3 quick blinks for printer faults (in addition to serial logs).
 	1.	PIO + Board + Partitions: build and flash a stub; confirm serial.
 	2.	SD + A2DP + WAV: mount SD, play Initialized.wav to BT speaker reliably.
 	3.	Jaw sync: run FFT-driven jaw on the WAV (plausible motion).
-	4.	UART: accept TRIGGER_FAR/NEAR frames (no responses). Confirm debounce and busy drop.
+	4.	UART: accept FAR_MOTION_DETECTED/NEAR frames (no responses). Confirm debounce and busy drop.
 	5.	Cap sense: boot calibration, detect ≥120 ms solid.
-	6.	Mouth LED: prompt on, pulse while waiting.
+	6.	Mouth LED: pink LED prompt on, pulse while waiting.
 	7.	Snap: random 1–3 s after solid finger detection, release only.
 	8.	Printer: print logo + sample fortune; confirm while A2DP playing.
 	9.	Skits: welcome directory + fortune directory; weighted random; no immediate repeat.
-	10.	Home automations: wire far → TRIGGER_FAR, near → TRIGGER_NEAR; confirm busy-drop behavior aligns with expectations.
+	10.	Home automations: wire far → FAR_MOTION_DETECTED, near → NEAR_MOTION_DETECTED; confirm busy-drop behavior aligns with expectations.
 
 Pass criteria: No crashes; audio solid; servo motion natural; printing during speech stable; triggers behave per spec.
 
@@ -307,12 +313,12 @@ Option 2: Live mix (two PCM streams; analyze speech; more code).
 
 14) Acceptance Checklist (MVP)
 	•	Plays Initialized.wav to your BT speaker on boot.
-	•	TRIGGER_FAR causes a welcome skit; NEAR during welcome is ignored; returns to IDLE.
-	•	TRIGGER_NEAR runs full fortune flow: prompt → mouth open → LED pulse → finger detect → random 1–3 s → snap → print while speaking → cooldown.
+	•	FAR_MOTION_DETECTED causes a welcome skit; NEAR during welcome is ignored; returns to IDLE.
+	•	NEAR_MOTION_DETECTED runs full fortune flow: prompt → mouth open → pink LED pulse → finger detect → random 1–3 s → snap → print while speaking → cooldown.
 	•	Fortunes generated from validated JSON; logo prints first.
 	•	Busy policy enforced (everything is dropped while active).
 	•	Debounce works (duplicate triggers within 2 s are ignored).
-	•	Single-eye hardware works; firmware still drives EYES.
+	•	Single pink eye LED works correctly.
 	•	Serial test console + printer fault LED blinks work.
 
 ⸻
@@ -334,5 +340,5 @@ Appendix A — UART constants from your PoC
 	•	Commands present in PoC:
 HELLO=0x01, SET_MODE=0x02, TRIGGER=0x03 (legacy), PING=0x04; statuses 0x10/0x11; responses 0x80–0x83.
 	•	Death additions for clarity:
-TRIGGER_FAR=0x05, TRIGGER_NEAR=0x06 (no payload).
+FAR_MOTION_DETECTED=0x05, NEAR_MOTION_DETECTED=0x06 (no payload).
 (Matter node uses these; skull expects no replies to be read by the node.)

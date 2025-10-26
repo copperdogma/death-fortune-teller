@@ -1,5 +1,30 @@
 # Changelog
 
+## [2025-01-25] - Matter Controller Alignment and Documentation Updates
+
+### Added
+- **Matter Controller Link**: Added link to Death Matter Controller repository in README.md
+- **State Mapping Documentation**: Complete mapping of all 12 Matter controller command codes (0x01-0x0C) to Death state machine states
+- **State Forcing Requirements**: Documented requirements for Matter controller to force state transitions via UART commands
+
+### Changed
+- **spec.md §6**: Removed UART implementation details, focused on requirements and state alignment with Matter controller
+- **story-003**: Updated with Matter controller canonical command codes and existing code references
+- **story-003a**: Added Matter Controller State Mapping section with complete command-to-state mapping and state forcing behavior
+- **UART Command Names**: Updated from TRIGGER_FAR/TRIGGER_NEAR to FAR_MOTION_DETECTED/NEAR_MOTION_DETECTED
+- **LED Pin Configuration**: Updated hardware documentation and code to reflect single eye LED (GPIO 32) and mouth LED (GPIO 33)
+
+### Documentation
+- **Requirements Focus**: Spec now focuses on what needs to be done, not how to implement it
+- **Code References**: Stories now include specific file locations and line numbers for existing code that needs updating
+- **Canonical Source**: Established Matter controller repository as canonical source for UART command codes
+
+### Technical Details
+- Matter controller can send 12 different command codes to control Death's state machine
+- Commands 0x01-0x02 are trigger-based (FAR/NEAR motion detected)
+- Commands 0x03-0x0C allow direct state forcing (can override busy state)
+- All command codes must align with Matter controller's canonical definitions
+
 ## [2025-01-25] - LED System Update: Pink LEDs and Resistor Calculation
 
 ### Added

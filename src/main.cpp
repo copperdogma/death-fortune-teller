@@ -27,16 +27,15 @@
 #include "esp_attr.h"
 
 // Pin definitions
-const int LEFT_EYE_PIN = 32;   // GPIO pin for left eye LED
-const int RIGHT_EYE_PIN = 33;  // GPIO pin for right eye LED
+const int EYE_LED_PIN = 32;    // GPIO pin for eye LED
+const int MOUTH_LED_PIN = 33;  // GPIO pin for mouth LED
 const int SERVO_PIN = 15;      // Servo control pin
-const int MOUTH_LED_PIN = 2;   // Mouth LED pin
 const int CAP_SENSE_PIN = 4;   // Capacitive finger sensor pin
 const int PRINTER_TX_PIN = 21; // Thermal printer TX pin
 const int PRINTER_RX_PIN = 20; // Thermal printer RX pin
 
 // Global objects
-LightController lightController(LEFT_EYE_PIN, RIGHT_EYE_PIN);
+LightController lightController(EYE_LED_PIN, MOUTH_LED_PIN);
 ServoController servoController;
 SDCardManager *sdCardManager = nullptr;
 AudioPlayer *audioPlayer = nullptr;
@@ -461,10 +460,10 @@ void handleUARTCommand(UARTCommand cmd) {
         return;
     }
     switch (cmd) {
-        case UARTCommand::TRIGGER_FAR:
+        case UARTCommand::FAR_MOTION_DETECTED:
             startWelcomeSequence();
             break;
-        case UARTCommand::TRIGGER_NEAR:
+        case UARTCommand::NEAR_MOTION_DETECTED:
             startFortuneFlow();
             break;
         default:

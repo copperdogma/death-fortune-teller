@@ -6,8 +6,8 @@
 enum class UARTCommand {
     NONE,
     SET_MODE,
-    TRIGGER_FAR,
-    TRIGGER_NEAR,
+    FAR_MOTION_DETECTED,
+    NEAR_MOTION_DETECTED,
     PING
 };
 
@@ -22,8 +22,8 @@ public:
 private:
     static constexpr uint8_t FRAME_START = 0xA5;
     static constexpr uint8_t CMD_SET_MODE = 0x02;
-    static constexpr uint8_t CMD_TRIGGER_FAR = 0x05;
-    static constexpr uint8_t CMD_TRIGGER_NEAR = 0x06;
+    static constexpr uint8_t CMD_FAR_MOTION_DETECTED = 0x05;
+    static constexpr uint8_t CMD_NEAR_MOTION_DETECTED = 0x06;
     static constexpr uint8_t CMD_PING = 0x04;
     
     static constexpr int UART_BAUD = 115200;

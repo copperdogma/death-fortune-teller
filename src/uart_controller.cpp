@@ -79,8 +79,8 @@ uint8_t UARTController::calculateCRC8(uint8_t* data, size_t length) {
 UARTCommand UARTController::commandFromByte(uint8_t cmd) {
     switch (cmd) {
         case CMD_SET_MODE: return UARTCommand::SET_MODE;
-        case CMD_TRIGGER_FAR: return UARTCommand::TRIGGER_FAR;
-        case CMD_TRIGGER_NEAR: return UARTCommand::TRIGGER_NEAR;
+        case CMD_FAR_MOTION_DETECTED: return UARTCommand::FAR_MOTION_DETECTED;
+        case CMD_NEAR_MOTION_DETECTED: return UARTCommand::NEAR_MOTION_DETECTED;
         case CMD_PING: return UARTCommand::PING;
         default: return UARTCommand::NONE;
     }
