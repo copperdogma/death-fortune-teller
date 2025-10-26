@@ -33,8 +33,8 @@ This document catalogs the bill of materials and pin assignments for the Death F
 - **SD Card**: MicroSD card with audio files and configuration
 
 ### Visual System
-- **Eye LEDs**: Red LEDs (x2) with 100Ω current limiting resistor
-- **Mouth LED**: Additional LED for mouth illumination
+- **Eye LEDs**: Pink LEDs (x2) with 100Ω current limiting resistor
+- **Mouth LED**: Pink LED for mouth illumination
 
 ### Motion System
 - **Servo Motor**: Hitec HS-125MG (4.8v-6v, 3.0-3.5kg.cm torque, 1.2A stall current)

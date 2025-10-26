@@ -4,22 +4,48 @@
 
 This shows exactly how to wire all 3 LEDs with a single connector, keeping the servo completely separate.
 
+## ⚡ Resistor Calculation
+
+### LED Circuit Analysis
+```
+ESP32 GPIO Output: 3.3V
+LED Forward Voltage (Vf): 3.0-3.2V (pink LED from BOJACK specs)
+Desired LED Current: 20mA (safe operating current)
+
+Resistor Value = (Vcc - Vf) / I
+R = (3.3V - 3.1V) / 0.020A  (using 3.1V average)
+R = 0.2V / 0.020A
+R = 10Ω
+
+Recommended: 100Ω (provides safety margin)
+```
+
+### Why 100Ω Instead of 10Ω?
+- **Safety margin**: Prevents LED damage from voltage spikes
+- **Longer LED life**: Lower current reduces heat and aging
+- **ESP32 protection**: Reduces current draw on GPIO pins
+- **Standard value**: 100Ω is a common resistor size
+- **Brightness**: Still provides excellent visibility
+- **Voltage tolerance**: Accounts for ESP32 voltage variations (3.0-3.6V)
+
+**✅ Confirmed: 100Ω is the correct choice for this application**
+
 ## 📌 Connection Overview
 
 ```
 ESP32-WROVER                     SKULL
 ┌────────────┐                   ┌─────────────────┐
 │            │                   │                 │
-│ Pin 12 ────┼──[GREEN]──────────┼──→ Left Eye    │
-│ Pin 13 ────┼──[GREEN]──────────┼──→ Right Eye   │
-│ Pin 14 ────┼──[GREEN]──────────┼──→ Mouth       │
+│ Pin 12 ────┼──[PINK]───────────┼──→ Left Eye    │
+│ Pin 13 ────┼──[PINK]───────────┼──→ Right Eye   │
+│ Pin 14 ────┼──[PINK]───────────┼──→ Mouth       │
 │ GND    ────┼──[BLACK]──────────┼──→ Common GND  │
 │            │                   │                 │
 │ Pin 15 ────┼═══[3-PIN SERVO]═══┼──→ Jaw Motor   │
 │            │   (separate)       │                 │
 └────────────┘                   └─────────────────┘
 
-LED Cable: Single 4-wire ribbon or bundle
+LED Cable: Single 4-wire ribbon or bundle (pink LEDs)
 Servo: Standard 3-pin servo connector (separate)
 ```
 
@@ -33,9 +59,9 @@ Female on Board Side:           Male on LED Cable:
 │ 1 2 3 4      │◄───────────────┤ 1 2 3 4      │
 └──────────────┘                └──────────────┘
  │ │ │ └─ GND                    │ │ │ └─ GND (Black)
- │ │ └─── Mouth (GPIO12)         │ │ └─── Mouth (Green)
- │ └───── R.Eye (GPIO14)         │ └───── R.Eye (Green)
- └─────── L.Eye (GPIO27)         └─────── L.Eye (Green)
+ │ │ └─── Mouth (GPIO12)         │ │ └─── Mouth (Pink)
+ │ └───── R.Eye (GPIO14)         │ └───── R.Eye (Pink)
+ └─────── L.Eye (GPIO27)         └─────── L.Eye (Pink)
 
 JST-XH: 2.54mm pitch, locking, reliable
 Perfect for permanent installation
@@ -123,9 +149,9 @@ Actual connections:
                (Common GND)
 
 LEDs:
-- LED1: Left Eye (red LED)
-- LED2: Right Eye (red LED)  
-- LED3: Mouth (red or white LED)
+- LED1: Left Eye (pink LED)
+- LED2: Right Eye (pink LED)  
+- LED3: Mouth (pink LED)
 ```
 
 ## 🎨 Cable Management

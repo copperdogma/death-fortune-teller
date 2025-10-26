@@ -1,5 +1,26 @@
 # Changelog
 
+## [2025-01-25] - LED System Update: Pink LEDs and Resistor Calculation
+
+### Added
+- **Resistor Calculation Section**: Added comprehensive resistor calculation for pink LEDs in hardware-led_cluster_wiring_diagram.md
+- **BOJACK LED Specifications**: Documented pink LED specifications (3.0-3.2V forward voltage, 20mA current)
+
+### Changed
+- **LED Color Specification**: Updated all documentation to specify pink LEDs instead of red/green
+  - Hardware documentation (hardware.md)
+  - LED cluster wiring diagram (hardware-led_cluster_wiring_diagram.md)
+  - System specification (spec.md)
+- **Resistor Calculation**: Recalculated resistor value based on pink LED forward voltage (3.0-3.2V)
+  - Theoretical value: 10Ω (vs 60Ω for red LEDs)
+  - Confirmed 100Ω is still correct for safety margin and voltage tolerance
+
+### Technical Details
+- Pink LED forward voltage: 3.0-3.2V (from BOJACK specs)
+- ESP32 GPIO output: 3.3V
+- Resistor calculation: R = (3.3V - 3.1V) / 0.020A = 10Ω
+- Recommended 100Ω provides safety margin for voltage spikes and ESP32 variations
+
 ## [2025-01-25] - Configuration Management System (Story 001a)
 
 ### Added
