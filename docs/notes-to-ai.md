@@ -10,6 +10,18 @@ NOTE: This file is for the user to write notes to the AI for it to investigate/r
 
 - do we NEED to be arduino compatible? why?
 
+## Hardware To Do List
+[x] WROVER up and running
+[x] LED working
+[x] SD card working
+[x] Servo working
+[ ] Servo breathing animation working
+[x] Hooking up to Bluetooth speaker and playing audio
+[ ] Servo syncing to audio properly within min/max range
+[ ] SuperMini Matter controller up and running
+[ ] UART comms working
+[ ] Thermal printer working
+[ ] Capacitive sensor working
 
 QUESTIONS
 - if the UART comms fails completely what should we do? currrently we just require a manual reboot. If we can detect failure cases, what should we do in general? How to alert the operator?

@@ -418,6 +418,16 @@ void setup() {
 }
 
 void loop() {
+    // Update audio player (fills buffer, handles playback events)
+    if (audioPlayer) {
+        audioPlayer->update();
+    }
+    
+    // Update Bluetooth controller (processes media start, connection retry)
+    if (bluetoothController) {
+        bluetoothController->update();
+    }
+    
     // Handle serial commands
     while (Serial.available()) {
         char c = Serial.read();

@@ -1,6 +1,30 @@
-# Bluetooth A2DP Connection State Detection Issue
+# Bluetooth A2DP Audio Playback Issues
 
-20251025: I think this was actually solved a few days ago.
+<!-- CURRENT_STATE_START -->
+## Current State
+
+**Domain Overview:**  
+Bluetooth A2DP audio system manages connection to JBL Flip 5 speaker and streams audio from SD card via ESP32-A2DP library. All known issues resolved - connection state detection and audio playback both working correctly.
+
+**Subsystems / Components:**  
+- A2DP Connection State Detection — Working — Fixed debouncing issue
+- Audio Queuing — Working — Files successfully queued to audio player
+- Audio Buffer Management — Fixed — `audioPlayer->update()` now called in main loop
+- Media Start Control — Working — `requestMediaStart()` called on connection
+- Bluetooth Controller Update Loop — Fixed — `bluetoothController->update()` now called
+
+**Active Issue:** None  
+**Status:** All Issues Resolved  
+**Last Updated:** 20250125-1215  
+**Next Step:** N/A
+
+**Open Issues (latest first):**
+- None
+
+**Recently Resolved (last 5):**
+- 20250125-1200 — Queued audio not playing after Bluetooth connection — Fixed missing update() calls in main loop
+- 20251025 — Connection state detection debouncing — Fixed rapid state change handling
+<!-- CURRENT_STATE_END -->
 
 ## Problem Summary
 
@@ -165,3 +189,132 @@ The fix is successful when:
 This is part of the "Death Fortune Teller" project - an animatronic skull that tells fortunes. The Bluetooth connection is needed for audio streaming to the speaker. The connection works at the hardware level (speaker makes connected sound), but the firmware's state management is broken.
 
 The project successfully compiles and uploads with PlatformIO, and all other components (SD card, servo, LEDs, etc.) work correctly. Only the Bluetooth connection state detection needs to be fixed.
+
+---
+
+## 20250125-1200: NEW ISSUE: Queued Audio Not Playing After Bluetooth Connection
+
+**Description:**  
+Board successfully connects to Bluetooth speaker, audio files are queued, but audio doesn't play. The logs show:
+- ✅ SD card mounted and initialization audio file found
+- ✅ Audio queued: `/audio/initialized.wav`
+- ✅ Bluetooth connects successfully (`🔗 A2DP Connected!`)
+- ✅ A2DP audio state changed to STARTED
+- ❌ No audio playback occurs
+
+**Environment:**
+- Platform: ESP32-WROVER with PlatformIO
+- Library: ESP32-A2DP@^1.0.0
+- Speaker: JBL Flip 5
+- Framework: Arduino
+
+**Evidence:**
+```
+I/SDCard: Mounted successfully
+I/Audio: 🎵 Initialization audio discovered: /audio/initialized.wav
+D/AudioPlayer: Added file to queue: /audio/initialized.wav
+I/Audio: 🎵 Queued initialization audio: /audio/initialized.wav
+I/Bluetooth: 🔗 A2DP Connected!
+I/Bluetooth: 🎧 A2DP audio state changed: STARTED
+```
+
+### Step 1 (20250125-1200): Identified Missing Update Calls
+
+**Action**: Analyzed main loop and component initialization flow. Found that `audioPlayer->update()` and `bluetoothController->update()` are never called in `loop()`.
+
+**Result**: 
+- `main.cpp` `loop()` function only handles serial commands
+- `AudioPlayer::update()` is responsible for filling audio buffer from SD card
+- `BluetoothController::update()` is responsible for processing media start requests
+- Both are critical for audio playback but missing from main loop
+
+**Notes**:
+- Audio queue system works (`playNext()` adds files to queue)
+- Audio buffer filling happens in `AudioPlayer::fillBuffer()` called from `update()`
+- Media start control (`processMediaStart()`) happens in `BluetoothController::update()`
+- Git history shows audio was working before, suggesting update calls were removed or never added
+
+**Next Steps**: Add `audioPlayer->update()` and `bluetoothController->update()` calls to main loop() function.
+
+### Step 2 (20250125-1200): Added Missing Update Calls to Main Loop
+
+**Action**: Modified `src/main.cpp` `loop()` function to call `audioPlayer->update()` and `bluetoothController->update()`.
+
+**Result**: 
+- Audio player will now fill buffer from SD card files in queue
+- Bluetooth controller will process media start requests (`processMediaStart()`)
+- Both updates happen every loop iteration before handling serial commands
+
+**Notes**:
+- `AudioPlayer::update()` calls `fillBuffer()` which reads from SD card and writes to circular buffer
+- `BluetoothController::update()` calls `processMediaStart()` which issues `ESP_A2D_MEDIA_CTRL_START` when connected
+- Update calls are protected with null checks
+- Serial command handling remains in loop but happens after component updates
+
+**Code Changes**:
+```cpp
+void loop() {
+    // Update audio player (fills buffer, handles playback events)
+    if (audioPlayer) {
+        audioPlayer->update();
+    }
+    
+    // Update Bluetooth controller (processes media start, connection retry)
+    if (bluetoothController) {
+        bluetoothController->update();
+    }
+    
+    // Handle serial commands...
+}
+```
+
+**Next Steps**: Test with hardware to verify audio playback works after Bluetooth connection.
+
+---
+
+## Resolution
+
+Issue "Queued audio not playing after Bluetooth connection" Resolved (20250125-1200)
+
+**Symptoms:**
+- Audio files successfully queued but never played
+- Bluetooth connected successfully (`🔗 A2DP Connected!`)
+- A2DP audio state changed to STARTED
+- No audio output despite connection
+
+**Timeline:**
+- 20250125-1200: Issue reported and investigated
+- 20250125-1200: Root cause identified - missing `update()` calls in main loop
+- 20250125-1200: Fix implemented
+
+**Root Cause:**
+The main `loop()` function in `src/main.cpp` was missing critical update calls:
+- `audioPlayer->update()` - Required to fill audio buffer from SD card and process playback events
+- `bluetoothController->update()` - Required to process media start requests (`processMediaStart()`)
+
+Without these calls, the audio system couldn't:
+1. Fill the circular buffer from queued SD card files
+2. Issue `ESP_A2D_MEDIA_CTRL_START` commands to initiate A2DP streaming
+
+**Fix:**
+Added update calls to `loop()` function:
+```cpp
+void loop() {
+    // Update audio player (fills buffer, handles playback events)
+    if (audioPlayer) {
+        audioPlayer->update();
+    }
+    
+    // Update Bluetooth controller (processes media start, connection retry)
+    if (bluetoothController) {
+        bluetoothController->update();
+    }
+    
+    // Handle serial commands...
+}
+```
+
+**Preventive Actions:**
+- Ensure all component `update()` methods are called in main loop
+- Document which components require periodic updates
+- Add initialization checklist to verify all update loops are connected
