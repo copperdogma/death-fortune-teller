@@ -16,6 +16,7 @@ Death, the Fortune Telling Skeleton
 | 002b     | Skit Category Support & Directory Structure | High     | To Do  | /docs/stories/story-002b-skit-category-support.md       |
 | 003      | Matter UART Trigger Handling            | High     | To Do  | /docs/stories/story-003-matter-uart-trigger-handling.md |
 | 003a     | State Machine Implementation            | High     | To Do  | /docs/stories/story-003a-state-machine-implementation.md |
+| 003b     | Built-in SD Card Migration              | High     | To Do  | /docs/stories/story-003b-built-in-sd-card-migration.md |
 | 004      | Capacitive Finger Detection & Snap Flow | High     | To Do  | /docs/stories/story-004-cap-sense-snap-flow.md          |
 | 004a     | LED Control System & Fault Indicators   | High     | To Do  | /docs/stories/story-004a-led-control-system.md         |
 | 005      | Thermal Printer Fortune Output          | Medium   | To Do  | /docs/stories/story-005-thermal-printer-fortune.md      |
