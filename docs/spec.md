@@ -118,7 +118,7 @@ SD layout (proposed):
   /goodbye/          # goodbye skits
     goodbye_01.wav
     goodbye_02.wav
-  Initialized.wav    # boot self-test line
+  initialized.wav    # boot self-test line
 
 /printer/
   logo_384w.bmp      # 1-bit, 384px wide

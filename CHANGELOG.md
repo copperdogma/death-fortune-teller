@@ -1,5 +1,43 @@
 # Changelog
 
+## [2025-01-25] - Hardware Milestone: ESP32-WROVER Fully Operational
+
+### Milestone Achievement
+**Hardware System Successfully Bootstrapped!**
+
+Successfully deployed and tested complete ESP32-WROVER hardware system with:
+- **ESP32-WROVER Breakout Board**: Main control board with WROVER module
+- **SD Card Reader**: Functional SD card mounting and file reading
+- **LED System**: Eye LED (GPIO 32) and mouth LED (GPIO 33) operational
+- **ESP32 Super Mini Breakout**: Acting as 5V power distribution board
+- **Bluetooth A2DP**: Full audio streaming to external speaker
+- **Audio Playback**: WAV file playback from SD card working end-to-end
+
+### Verified Working Features
+- ✅ Eye LED startup flash sequence
+- ✅ SD card mounting and content loading
+- ✅ Audio file enqueuing (`initialized.wav`)
+- ✅ Bluetooth speaker connection and pairing
+- ✅ Audio playback with synchronized streaming
+- ✅ All initialization sequences complete without crashes
+
+### Fixed
+- **SkitSelector Crash**: Fixed LoadProhibited crash when SkitSelector initialized with empty skit list
+  - Added empty vector check in `selectNextSkit()` method
+  - Returns empty `ParsedSkit` instead of accessing invalid memory
+  - Added graceful handling in `testSkitSelection()` for zero-skits scenario
+- **Jaw Sync Test Override**: Removed temporary test code that was overriding initialization audio
+
+### Changed
+- **Initialization Audio**: Simplified to use `/audio/initialized.wav` directly
+- **Error Handling**: Improved robustness when SD card has no skits available
+
+### Technical Notes
+- System successfully handles edge cases (empty skit lists, missing audio files)
+- Bluetooth connection and audio streaming verified working
+- SD card content loading operational
+- All major subsystems initialized and functional
+
 ## [2025-01-25] - Matter Controller Alignment and Documentation Updates
 
 ### Added

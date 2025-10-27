@@ -177,20 +177,24 @@ void setup() {
         isPrimary = true;
     }
 
-    initializationAudioPath = isPrimary ? sdCardContent.primaryInitAudio : sdCardContent.secondaryInitAudio;
-    if (initializationAudioPath.length() == 0 && sdCardContent.primaryInitAudio.length() > 0) {
-        initializationAudioPath = sdCardContent.primaryInitAudio;
-    }
+    // KILL THIS:
+    // initializationAudioPath = isPrimary ? sdCardContent.primaryInitAudio : sdCardContent.secondaryInitAudio;
+    // if (initializationAudioPath.length() == 0 && sdCardContent.primaryInitAudio.length() > 0) {
+    //     initializationAudioPath = sdCardContent.primaryInitAudio;
+    // }
+    // if (initializationAudioPath.length() == 0) {
+    //     initializationAudioPath = "/audio/Initialized - Primary.wav";
+    //     LOG_INFO(AUDIO_TAG, "🎵 Initialization audio fallback: /audio/Initialized - Primary.wav");
+    // } else {
+    //     LOG_INFO(AUDIO_TAG, "🎵 Initialization audio discovered: %s", initializationAudioPath.c_str());
+    // }
+
+    initializationAudioPath = "/audio/initialized.wav";
     if (initializationAudioPath.length() == 0) {
-        initializationAudioPath = "/audio/Initialized - Primary.wav";
-        LOG_INFO(AUDIO_TAG, "🎵 Initialization audio fallback: /audio/Initialized - Primary.wav");
+        LOG_INFO(AUDIO_TAG, "🎵 Initialization audio missing: /audio/initialized.wav");
     } else {
         LOG_INFO(AUDIO_TAG, "🎵 Initialization audio discovered: %s", initializationAudioPath.c_str());
     }
-
-    const char *JAW_SYNC_TEST_AUDIO = "/audio/Skit - imitations.wav";
-    LOG_INFO(AUDIO_TAG, "🔬 Jaw sync test override: %s", JAW_SYNC_TEST_AUDIO);
-    initializationAudioPath = JAW_SYNC_TEST_AUDIO;
 
     audioPlayer = new AudioPlayer(*sdCardManager);
     audioPlayer->setPlaybackStartCallback([](const String &filePath) {
@@ -513,9 +517,22 @@ void testSkitSelection() {
     
     LOG_INFO(FLOW_TAG, "Testing skit selection (repeat prevention)...");
     
+    // Test first selection to check if any skits are available
+    ParsedSkit firstSkit = skitSelector->selectNextSkit();
+    if (firstSkit.audioFile.isEmpty()) {
+        LOG_WARN(FLOW_TAG, "No skits available for testing");
+        return;
+    }
+    
+    LOG_INFO(FLOW_TAG, "Test selection 1: %s", firstSkit.audioFile.c_str());
+    
     // Test multiple selections to verify no immediate repeats
-    for (int i = 0; i < 5; i++) {
+    for (int i = 1; i < 5; i++) {
         ParsedSkit selectedSkit = skitSelector->selectNextSkit();
+        if (selectedSkit.audioFile.isEmpty()) {
+            LOG_WARN(FLOW_TAG, "No skits available for test selection %d", i + 1);
+            break;
+        }
         LOG_INFO(FLOW_TAG, "Test selection %d: %s", i + 1, selectedSkit.audioFile.c_str());
         delay(100); // Small delay to ensure different timestamps
     }

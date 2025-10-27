@@ -472,6 +472,14 @@ USB-C GND ───────────────────────�
    - Consider separate regulators for digital and motor power
    - Monitor voltage levels during peak loads
 
+7. **USB-C Not Recognized / Back-Feed Protection Triggered**
+   - **Symptom**: ESP32 doesn't appear as USB device when barrel jack is connected
+   - **Cause**: External power (barrel jack) back-feeds into USB-C port, triggering computer's safety shutdown
+   - **Dev Board Workaround**: Disconnect barrel jack before connecting USB-C for programming
+   - **Permanent Solution**: Add Schottky diode (1N5817/1N5819) between external power and 5V rail
+   - **Why ESP32 boards don't include diodes**: Cost/space optimization; many designs rely on "USB-first" power priority instead
+   - **Production Fix**: Diode cathode (banded end) toward ESP32, prevents power from flowing back into USB-C
+
 ### Debug Commands
 
 ```cpp

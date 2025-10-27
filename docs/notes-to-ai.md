@@ -4,6 +4,8 @@ NOTE: This file is for the user to write notes to the AI for it to investigate/r
 
 ## NOTES
 
+- remove the primary/secondary support seeing as this project is only one skull
+- flash the mouth led after the eye led
 
 - We need to remove the TwoSkulls folder once we have everything we need from there. It was just our working baseline, but we're free to rewrite 100% of it. Same with the "proof-of-concept-modules" folder.
 

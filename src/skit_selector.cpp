@@ -20,6 +20,13 @@ SkitSelector::SkitSelector(const std::vector<ParsedSkit> &skits)
 // Selects the next skit to be played based on weighted random selection
 ParsedSkit SkitSelector::selectNextSkit()
 {
+    // Return empty skit if no skits are available
+    if (m_skitStats.empty())
+    {
+        LOG_WARN(TAG, "No skits available for selection");
+        return ParsedSkit();
+    }
+
     unsigned long currentTime = millis();
     sortSkitsByWeight();
 
@@ -54,7 +61,7 @@ ParsedSkit SkitSelector::selectNextSkit()
     int selectedIndex;
     if (availableSkits.empty())
     {
-        // Only one skit exists
+        // Only one skit exists (we know m_skitStats is not empty from check above)
         selectedIndex = 0;
     }
     else

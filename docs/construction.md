@@ -52,6 +52,85 @@
 - ?? DIAMETER ?? brass rod for jaw movement
 - 
 
+## Prototyping Power Setup
+
+### Problem: USB-C Back-Feed Protection
+
+When using the Freenove ESP32-WROVER breakout board with barrel jack power and USB-C programming cable simultaneously, the computer detects power back-feeding through USB-C and shuts down the connection for safety. This prevents programming via USB-C.
+
+### Solution: Separate Power Rails with Common Ground
+
+Use two separate power supplies with **shared ground** to power the ESP32 and peripherals independently:
+
+#### Required Components
+- **Freenove ESP32-WROVER Breakout Board** (with ESP32-WROVER module)
+- **ESP32-C3 SuperMini Expansion Board** (used as passive breakout/power distribution)
+- **USB-C cable** (for ESP32 programming/power)
+- **USB power bank** or separate 5V supply (for peripherals)
+- **Jumper wires** for ground connection
+
+#### Wiring Configuration
+
+```
+Freenove Breakout Board:
+  ├─ ESP32-WROVER (powered via USB-C)
+  │  ├─ GPIO pins ────> SD Card SPI signals (MOSI, MISO, SCK, CS)
+  │  └─ GND ────────────┐
+  │                     │
+  └─ GND terminal ──────┼───> COMMON GROUND
+                        │
+ESP32-C3 Expansion Board: │
+  (No module inserted - passive breakout)
+  ├─ Pin 1 (5V) ←────── USB Power Bank 5V
+  ├─ Pin 2 (GND) ───────┘ ────┐
+  │                            │
+  ├─ Pin 1 (5V) ───────────────┼───> SD Card VCC
+  └─ Pin 2 (GND) ──────────────┼───> SD Card GND
+                               │
+                               └───> Common Ground (tied to Freenove GND)
+```
+
+#### Step-by-Step Setup
+
+1. **Freenove Breakout Board:**
+   - Insert ESP32-WROVER module
+   - Connect USB-C cable to ESP32 module for programming/power
+   - **Do NOT connect barrel jack power** (prevents back-feed)
+
+2. **ESP32-C3 Expansion Board:**
+   - **Do NOT insert ESP32-C3 module** (used as passive breakout)
+   - Connect USB power bank to Pin 1 (5V) and Pin 2 (GND)
+   - This board now functions as a 5V power distribution hub
+
+3. **SD Card Module:**
+   - VCC → ESP32-C3 expansion board Pin 1 (5V)
+   - GND → ESP32-C3 expansion board Pin 2 (GND)
+   - SPI signals → Freenove breakout board GPIO pins
+
+4. **Common Ground Connection:**
+   - Connect ESP32-C3 expansion board Pin 2 (GND) to Freenove breakout board GND terminal
+   - This is **critical** - both power sources must share the same ground reference for SPI communication to work
+
+#### Why This Works
+
+- **Separate Power Sources:** ESP32 gets power from USB-C; peripherals get power from USB power bank
+- **No Back-Feed:** USB-C only powers ESP32, not the breakout board's 5V rail
+- **Common Ground:** Both supplies share ground reference, enabling reliable SPI/I2C/UART communication
+- **Passive Expansion Board:** ESP32-C3 expansion board without module is just a passive breakout, perfect for power distribution
+
+#### Benefits
+
+- ✅ No USB-C back-feed issues
+- ✅ ESP32 programmable via USB-C
+- ✅ Peripherals get adequate 5V power (SD card needs 200mA+)
+- ✅ Uses existing hardware (no diodes or modifications needed)
+- ✅ Full functionality: programming, debugging, and operation all work
+
+#### Notes
+
+- **Ground is NOT specific to a power source** - multiple DC power supplies can and should share a common ground in the same circuit
+- This is standard practice for multi-supply systems (USB peripherals, Arduino shields, etc.)
+- For production perfboard, add a Schottky diode (1N5817/1N5819) between external power and 5V rail to allow simultaneous USB-C and barrel jack power
 
 ## TEMP ROUGH OUTLINE
 - get plastic skull, ideally one that can be opened up with eyes that already light up)
