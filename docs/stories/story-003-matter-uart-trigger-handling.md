@@ -36,9 +36,9 @@ The Matter controller (https://github.com/copperdogma/death-matter-controller) d
 ## Tasks
  - [x] **Update UART Command Enum**: Expand `UARTCommand` enum in `src/uart_controller.h` to include all 12 states (currently only has FAR_MOTION_DETECTED, NEAR_MOTION_DETECTED, SET_MODE, PING)
  - [x] **Update Command Code Mapping**: Update `commandFromByte()` in `src/uart_controller.cpp` to map all 12 command codes (currently only maps 0x05, 0x06, 0x02, 0x04)
- - [ ] **Add State Forcing Support**: Support direct state forcing (commands 0x03-0x0C) in addition to trigger commands (0x01-0x02)
+ - [x] **Add State Forcing Support**: Support direct state forcing (commands 0x03-0x0C) in addition to trigger commands (0x01-0x02)
  - [x] **Wire UART Processing**: Ensure `handleUARTCommand()` is called from main loop (currently `uartController->update()` is called but commands aren't processed)
- - [ ] **Implement Frame Parsing**: Verify frame-based protocol parsing (0xA5 start byte, CRC-8 validation) handles all command types
+ - [x] **Implement Frame Parsing**: Verify frame-based protocol parsing (0xA5 start byte, CRC-8 validation) handles all command types
  - [x] **Add Command Validation**: Validate that received command codes match Matter controller's canonical values
  - [x] **Add Serial Diagnostics**: Serial console logging for received commands and rejected triggers
 
@@ -57,7 +57,7 @@ The Matter controller (https://github.com/copperdogma/death-matter-controller) d
 - Line 87-92: `DeathState` enum only has 4 states, needs expansion per story-003a
 
 ## Notes
-- Coordinate UART pin assignments with thermal printer to avoid conflicts (currently TX=21, RX=20)
+- Coordinate UART pin assignments with thermal printer to avoid conflicts (currently TX=21, RX=22)
 - Ensure logging verbosity is safe for production once validation completes
 - Busy policy must handle both trigger commands and state forcing commands appropriately
 
@@ -89,10 +89,15 @@ The Matter controller (https://github.com/copperdogma/death-matter-controller) d
 - Verified that all Matter controller triggers issued from the Home app propagate through the C3 and are logged on the WROVER’s serial console, confirming the UART link and diagnostics are working end-to-end.
 - Confirmed the servo subsystem still operates normally with the new UART routing; thermal printer remains untested until it is connected.
 
+### 2025-10-27 — State machine integration
+- Expanded `DeathState` to the full 12-step flow, wired trigger handling with strict busy/debounce policy, and added support for Matter state-forcing commands that can override the busy guard when necessary (`src/main.cpp`).
+- Implemented timer-driven finger wait, snap delay, and cooldown management sourced from config values, plus servo/LED updates for each state transition; logging now records every transition and drop reason.
+- Kept UART parsing on the single-frame assumption from the controller while adding guard rails so missing audio assets skip forward rather than stalling the flow.
+
 #### Work Checklist
 - [x] Extend `UARTCommand` (and related constants) to cover all 12 canonical Matter commands with correct opcode values.
 - [x] Expand `commandFromByte()` and frame parsing so every canonical command produces the correct enum, including validation/error logging for unknown values.
 - [x] Integrate `UARTController::update()` into the main loop and dispatch decoded commands through `handleUARTCommand`.
-- [ ] Update `handleUARTCommand` and the state machine to mirror the 12-state flow defined in story-003a, including trigger vs. direct-state handling.
-- [ ] Implement the required busy/duplicate policy (2 s debounce, drop while active skits/print) once the full state machine is in place.
-- [ ] Add serial diagnostics around received/rejected commands to aid Matter link debugging.
+- [x] Update `handleUARTCommand` and the state machine to mirror the 12-state flow defined in story-003a, including trigger vs. direct-state handling.
+- [x] Implement the required busy/duplicate policy (2 s debounce, drop while active skits/print) once the full state machine is in place.
+- [x] Add serial diagnostics around received/rejected commands to aid Matter link debugging.

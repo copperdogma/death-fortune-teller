@@ -73,37 +73,119 @@ int32_t IRAM_ATTR provideAudioFramesThunk(void *context, Frame *frame, int32_t f
     return player->provideAudioFrames(frame, frameCount);
 }
 
+enum class DeathState {
+    IDLE,
+    PLAY_WELCOME,
+    WAIT_FOR_NEAR,
+    PLAY_FINGER_PROMPT,
+    MOUTH_OPEN_WAIT_FINGER,
+    FINGER_DETECTED,
+    SNAP_WITH_FINGER,
+    SNAP_NO_FINGER,
+    FORTUNE_FLOW,
+    FORTUNE_DONE,
+    COOLDOWN
+};
+
 // Function declarations
 void handleUARTCommand(UARTCommand cmd);
-void startWelcomeSequence();
-void startFortuneFlow();
+void enterState(DeathState newState, const char *reason, bool forced = false);
+void updateStateMachine(unsigned long currentTime);
+void handleAudioPlaybackFinished(const String &filePath);
+bool queueAudioClip(const char *path, const char *description);
 void playRandomSkit();
 void testSkitSelection();
-void handleFortuneFlow(unsigned long currentTime);
 void breathingJawMovement();
 void processCLI(String cmd);
 void printHelp();
 void printSDCardInfo();
-
-// State machine
-enum class DeathState {
-    IDLE,
-    PLAY_WELCOME,
-    FORTUNE_FLOW,
-    COOLDOWN
-};
 
 DeathState currentState = DeathState::IDLE;
 unsigned long stateStartTime = 0;
 unsigned long lastTriggerTime = 0;
 const unsigned long TRIGGER_DEBOUNCE_MS = 2000;
 
+unsigned long fingerWaitMs = 6000;
+unsigned long snapDelayMinMs = 1000;
+unsigned long snapDelayMaxMs = 3000;
+unsigned long cooldownMs = 12000;
+const unsigned long FINGER_STABLE_MS = 120;
+
 // Fortune flow state
 bool mouthOpen = false;
 bool fingerDetected = false;
 unsigned long fingerDetectionStart = 0;
+unsigned long fingerWaitStart = 0;
 unsigned long snapDelayStart = 0;
+unsigned long cooldownStart = 0;
 int snapDelayMs = 0;
+bool snapDelayScheduled = false;
+
+static constexpr const char *AUDIO_WELCOME = "/audio/welcome/welcome_01.wav";
+static constexpr const char *AUDIO_FINGER_PROMPT = "/audio/fortune/finger_prompt.wav";
+static constexpr const char *AUDIO_SNAP_WITH_FINGER = "/audio/fortune/snap_with_finger.wav";
+static constexpr const char *AUDIO_SNAP_NO_FINGER = "/audio/fortune/snap_no_finger.wav";
+static constexpr const char *AUDIO_FORTUNE_FLOW = "/audio/fortune/fortune_01.wav";
+static constexpr const char *AUDIO_FORTUNE_DONE = "/audio/fortune/fortune_done.wav";
+
+bool isTriggerCommand(UARTCommand cmd) {
+    return cmd == UARTCommand::FAR_MOTION_TRIGGER || cmd == UARTCommand::NEAR_MOTION_TRIGGER;
+}
+
+bool isForcedStateCommand(UARTCommand cmd) {
+    switch (cmd) {
+        case UARTCommand::PLAY_WELCOME:
+        case UARTCommand::WAIT_FOR_NEAR:
+        case UARTCommand::PLAY_FINGER_PROMPT:
+        case UARTCommand::MOUTH_OPEN_WAIT_FINGER:
+        case UARTCommand::FINGER_DETECTED:
+        case UARTCommand::SNAP_WITH_FINGER:
+        case UARTCommand::SNAP_NO_FINGER:
+        case UARTCommand::FORTUNE_FLOW:
+        case UARTCommand::FORTUNE_DONE:
+        case UARTCommand::COOLDOWN:
+            return true;
+        default:
+            return false;
+    }
+}
+
+const char *deathStateToString(DeathState state) {
+    switch (state) {
+        case DeathState::IDLE: return "IDLE";
+        case DeathState::PLAY_WELCOME: return "PLAY_WELCOME";
+        case DeathState::WAIT_FOR_NEAR: return "WAIT_FOR_NEAR";
+        case DeathState::PLAY_FINGER_PROMPT: return "PLAY_FINGER_PROMPT";
+        case DeathState::MOUTH_OPEN_WAIT_FINGER: return "MOUTH_OPEN_WAIT_FINGER";
+        case DeathState::FINGER_DETECTED: return "FINGER_DETECTED";
+        case DeathState::SNAP_WITH_FINGER: return "SNAP_WITH_FINGER";
+        case DeathState::SNAP_NO_FINGER: return "SNAP_NO_FINGER";
+        case DeathState::FORTUNE_FLOW: return "FORTUNE_FLOW";
+        case DeathState::FORTUNE_DONE: return "FORTUNE_DONE";
+        case DeathState::COOLDOWN: return "COOLDOWN";
+        default: return "UNKNOWN";
+    }
+}
+
+DeathState stateForCommand(UARTCommand cmd) {
+    switch (cmd) {
+        case UARTCommand::PLAY_WELCOME: return DeathState::PLAY_WELCOME;
+        case UARTCommand::WAIT_FOR_NEAR: return DeathState::WAIT_FOR_NEAR;
+        case UARTCommand::PLAY_FINGER_PROMPT: return DeathState::PLAY_FINGER_PROMPT;
+        case UARTCommand::MOUTH_OPEN_WAIT_FINGER: return DeathState::MOUTH_OPEN_WAIT_FINGER;
+        case UARTCommand::FINGER_DETECTED: return DeathState::FINGER_DETECTED;
+        case UARTCommand::SNAP_WITH_FINGER: return DeathState::SNAP_WITH_FINGER;
+        case UARTCommand::SNAP_NO_FINGER: return DeathState::SNAP_NO_FINGER;
+        case UARTCommand::FORTUNE_FLOW: return DeathState::FORTUNE_FLOW;
+        case UARTCommand::FORTUNE_DONE: return DeathState::FORTUNE_DONE;
+        case UARTCommand::COOLDOWN: return DeathState::COOLDOWN;
+        default: return DeathState::IDLE;
+    }
+}
+
+bool isBusy() {
+    return currentState != DeathState::IDLE;
+}
 
 // Breathing cycle state
 unsigned long lastJawMovementTime = 0;
@@ -192,6 +274,17 @@ void setup() {
     
     // Initialize servo with config values if loaded, otherwise use safe defaults
     if (configLoaded) {
+        fingerWaitMs = config.getFingerWaitMs();
+        snapDelayMinMs = config.getSnapDelayMinMs();
+        snapDelayMaxMs = config.getSnapDelayMaxMs();
+        cooldownMs = config.getCooldownMs();
+        if (snapDelayMinMs > snapDelayMaxMs) {
+            unsigned long temp = snapDelayMinMs;
+            snapDelayMinMs = snapDelayMaxMs;
+            snapDelayMaxMs = temp;
+        }
+        LOG_INFO(FLOW_TAG, "Timer config — fingerWait=%lums snapDelay=%lu-%lums cooldown=%lums",
+                 fingerWaitMs, snapDelayMinMs, snapDelayMaxMs, cooldownMs);
         int minUs = config.getServoUSMin();
         int maxUs = config.getServoUSMax();
         LOG_INFO(TAG, "Initializing servo with config values: %d-%d µs", minUs, maxUs);
@@ -225,6 +318,7 @@ void setup() {
         if (skitSelector && filePath.startsWith("/audio/Skit")) {
             skitSelector->updateSkitPlayCount(filePath);
         }
+        handleAudioPlaybackFinished(filePath);
     });
     audioPlayer->setAudioFramesProvidedCallback([](const String &filePath, const Frame *frames, int32_t frameCount) {
         if (skullAudioAnimator && frameCount > 0) {
@@ -391,6 +485,7 @@ void setup() {
         LOG_WARN(AUDIO_TAG, "⚠️ Initialization audio missing: %s", initializationAudioPath.c_str());
     }
 
+    enterState(DeathState::IDLE, "Boot initialization", true);
     LOG_INFO(TAG, "🎉 Death initialized successfully");
 }
 
@@ -416,7 +511,9 @@ void loop() {
     
     // Check if it's time to move the jaw for breathing
     unsigned long currentTime = millis();
-    if (audioPlayer && currentTime - lastJawMovementTime >= BREATHING_INTERVAL && !audioPlayer->isAudioPlaying()) {
+    updateStateMachine(currentTime);
+    if (audioPlayer && currentState == DeathState::IDLE &&
+        currentTime - lastJawMovementTime >= BREATHING_INTERVAL && !audioPlayer->isAudioPlaying()) {
         breathingJawMovement();
         lastJawMovementTime = currentTime;
     }
@@ -438,49 +535,274 @@ void loop() {
 void handleUARTCommand(UARTCommand cmd) {
     LOG_INFO(STATE_TAG, "Handling UART command: %s", UARTController::commandToString(cmd));
     unsigned long currentTime = millis();
-    if (currentState != DeathState::IDLE) {
-        LOG_WARN(STATE_TAG, "Ignoring command - system busy");
+    if (isTriggerCommand(cmd)) {
+        if (currentTime - lastTriggerTime < TRIGGER_DEBOUNCE_MS) {
+            LOG_WARN(STATE_TAG, "Trigger command debounced");
+            return;
+        }
+
+        if (cmd == UARTCommand::FAR_MOTION_TRIGGER) {
+            if (isBusy()) {
+                LOG_WARN(STATE_TAG, "Ignoring FAR trigger while busy (state=%s)", deathStateToString(currentState));
+                return;
+            }
+            enterState(DeathState::PLAY_WELCOME, "FAR trigger");
+            lastTriggerTime = currentTime;
+            return;
+        }
+
+        if (cmd == UARTCommand::NEAR_MOTION_TRIGGER) {
+            if (currentState != DeathState::WAIT_FOR_NEAR) {
+                LOG_WARN(STATE_TAG, "NEAR trigger dropped - current state %s (must be WAIT_FOR_NEAR)", deathStateToString(currentState));
+                return;
+            }
+            enterState(DeathState::PLAY_FINGER_PROMPT, "NEAR trigger");
+            lastTriggerTime = currentTime;
+            return;
+        }
+    }
+
+    if (isForcedStateCommand(cmd)) {
+        DeathState target = stateForCommand(cmd);
+        LOG_WARN(STATE_TAG, "State forcing command received: %s -> %s", UARTController::commandToString(cmd), deathStateToString(target));
+        enterState(target, "Forced via Matter command", true);
         return;
     }
-    if (currentTime - lastTriggerTime < TRIGGER_DEBOUNCE_MS) {
+
+    if (cmd == UARTCommand::LEGACY_PING || cmd == UARTCommand::LEGACY_SET_MODE) {
+        LOG_WARN(STATE_TAG, "Legacy UART command ignored: %s", UARTController::commandToString(cmd));
         return;
     }
-    bool handled = false;
-    switch (cmd) {
-        case UARTCommand::FAR_MOTION_TRIGGER:
-            startWelcomeSequence();
-            handled = true;
+
+    LOG_WARN(STATE_TAG, "Unhandled UART command: %s", UARTController::commandToString(cmd));
+}
+
+bool queueAudioClip(const char *path, const char *description) {
+    if (!audioPlayer) {
+        LOG_WARN(AUDIO_TAG, "AudioPlayer not initialized; cannot queue %s", description ? description : "clip");
+        return false;
+    }
+    if (!path || path[0] == '\0') {
+        LOG_WARN(AUDIO_TAG, "No audio path provided for %s", description ? description : "clip");
+        return false;
+    }
+    if (!sdCardManager || !sdCardManager->fileExists(path)) {
+        LOG_WARN(AUDIO_TAG, "Audio clip missing for %s: %s", description ? description : "clip", path);
+        return false;
+    }
+    audioPlayer->playNext(String(path));
+    LOG_INFO(AUDIO_TAG, "Queued audio for %s: %s", description ? description : "clip", path);
+    return true;
+}
+
+void enterState(DeathState newState, const char *reason, bool forced) {
+    DeathState previous = currentState;
+    const char *reasonText = (reason && reason[0]) ? reason : "no reason provided";
+
+    if (previous == newState && !forced) {
+        LOG_INFO(STATE_TAG, "State %s already active; ignoring transition request (%s)", deathStateToString(newState), reasonText);
+        return;
+    }
+
+    LOG_INFO(STATE_TAG, "Transition %s -> %s%s (%s)",
+             deathStateToString(previous),
+             deathStateToString(newState),
+             forced ? " [forced]" : "",
+             reasonText);
+
+    currentState = newState;
+    stateStartTime = millis();
+
+    if (newState != DeathState::FINGER_DETECTED) {
+        fingerDetected = false;
+        fingerDetectionStart = 0;
+    }
+    snapDelayScheduled = false;
+    snapDelayMs = 0;
+    snapDelayStart = 0;
+
+    switch (newState) {
+        case DeathState::IDLE:
+            mouthOpen = false;
+            servoController.setPosition(0);
+            lightController.setEyeBrightness(LightController::BRIGHTNESS_DIM);
+            fingerWaitStart = 0;
+            cooldownStart = 0;
             break;
-        case UARTCommand::NEAR_MOTION_TRIGGER:
-            startFortuneFlow();
-            handled = true;
+
+        case DeathState::PLAY_WELCOME:
+            mouthOpen = false;
+            if (!queueAudioClip(AUDIO_WELCOME, "welcome skit")) {
+                enterState(DeathState::WAIT_FOR_NEAR, "Welcome audio missing; advancing", forced);
+                return;
+            }
+            lightController.setEyeBrightness(LightController::BRIGHTNESS_MAX);
             break;
+
+        case DeathState::WAIT_FOR_NEAR:
+            mouthOpen = false;
+            lightController.setEyeBrightness(LightController::BRIGHTNESS_DIM);
+            break;
+
+        case DeathState::PLAY_FINGER_PROMPT:
+            if (!queueAudioClip(AUDIO_FINGER_PROMPT, "finger prompt")) {
+                enterState(DeathState::MOUTH_OPEN_WAIT_FINGER, "Finger prompt audio missing; advancing", forced);
+                return;
+            }
+            lightController.setEyeBrightness(LightController::BRIGHTNESS_MAX);
+            break;
+
+        case DeathState::MOUTH_OPEN_WAIT_FINGER:
+            servoController.setPosition(80);
+            mouthOpen = true;
+            fingerWaitStart = millis();
+            fingerDetected = false;
+            fingerDetectionStart = 0;
+            lightController.setEyeBrightness(LightController::BRIGHTNESS_MAX);
+            break;
+
+        case DeathState::FINGER_DETECTED:
+            fingerDetected = true;
+            snapDelayMs = snapDelayMinMs == snapDelayMaxMs ? snapDelayMinMs
+                                                           : static_cast<int>(random(snapDelayMinMs, snapDelayMaxMs + 1));
+            snapDelayStart = millis();
+            snapDelayScheduled = true;
+            LOG_INFO(FLOW_TAG, "Finger detected; snap delay %d ms", snapDelayMs);
+            break;
+
+        case DeathState::SNAP_WITH_FINGER:
+            servoController.setPosition(0);
+            mouthOpen = false;
+            if (!queueAudioClip(AUDIO_SNAP_WITH_FINGER, "snap with finger")) {
+                enterState(DeathState::FORTUNE_FLOW, "Snap-with-finger audio missing; skipping", forced);
+                return;
+            }
+            break;
+
+        case DeathState::SNAP_NO_FINGER:
+            servoController.setPosition(0);
+            mouthOpen = false;
+            if (!queueAudioClip(AUDIO_SNAP_NO_FINGER, "snap no finger")) {
+                enterState(DeathState::FORTUNE_FLOW, "Snap-no-finger audio missing; skipping", forced);
+                return;
+            }
+            break;
+
+        case DeathState::FORTUNE_FLOW:
+            servoController.setPosition(80);
+            mouthOpen = true;
+            lightController.setEyeBrightness(LightController::BRIGHTNESS_MAX);
+            if (!queueAudioClip(AUDIO_FORTUNE_FLOW, "fortune flow")) {
+                enterState(DeathState::FORTUNE_DONE, "Fortune audio missing; advancing", forced);
+                return;
+            }
+            break;
+
+        case DeathState::FORTUNE_DONE:
+            mouthOpen = false;
+            servoController.setPosition(0);
+            if (!queueAudioClip(AUDIO_FORTUNE_DONE, "fortune done")) {
+                enterState(DeathState::COOLDOWN, "Fortune done audio missing; advancing", forced);
+                return;
+            }
+            break;
+
+        case DeathState::COOLDOWN:
+            mouthOpen = false;
+            servoController.setPosition(0);
+            lightController.setEyeBrightness(LightController::BRIGHTNESS_DIM);
+            cooldownStart = stateStartTime;
+            break;
+    }
+}
+
+void updateStateMachine(unsigned long currentTime) {
+    switch (currentState) {
+        case DeathState::MOUTH_OPEN_WAIT_FINGER: {
+            if (fingerSensor && fingerSensor->isFingerDetected()) {
+                if (!fingerDetected) {
+                    fingerDetected = true;
+                    fingerDetectionStart = currentTime;
+                    LOG_INFO(FLOW_TAG, "Finger contact detected");
+                } else if (currentTime - fingerDetectionStart >= FINGER_STABLE_MS) {
+                    enterState(DeathState::FINGER_DETECTED, "Finger stabilized");
+                    return;
+                }
+            } else {
+                if (fingerDetected && currentTime - fingerDetectionStart >= FINGER_STABLE_MS) {
+                    LOG_INFO(FLOW_TAG, "Finger removed before stabilization");
+                }
+                fingerDetected = false;
+                fingerDetectionStart = 0;
+            }
+
+            if (fingerWaitStart > 0 && currentTime - fingerWaitStart >= fingerWaitMs) {
+                enterState(DeathState::SNAP_NO_FINGER, "Finger wait timeout");
+                return;
+            }
+            break;
+        }
+
+        case DeathState::FINGER_DETECTED: {
+            if (!snapDelayScheduled) {
+                snapDelayMs = snapDelayMinMs == snapDelayMaxMs ? snapDelayMinMs
+                                                               : static_cast<int>(random(snapDelayMinMs, snapDelayMaxMs + 1));
+                snapDelayStart = currentTime;
+                snapDelayScheduled = true;
+                LOG_INFO(FLOW_TAG, "Snap delay scheduled (late): %d ms", snapDelayMs);
+            }
+
+            if (snapDelayScheduled && snapDelayMs > 0 &&
+                currentTime - snapDelayStart >= static_cast<unsigned long>(snapDelayMs)) {
+                enterState(DeathState::SNAP_WITH_FINGER, "Snap delay elapsed");
+                return;
+            }
+
+            if (fingerSensor && !fingerSensor->isFingerDetected()) {
+                LOG_WARN(FLOW_TAG, "Finger removed after detection; continuing countdown");
+            }
+            break;
+        }
+
+        case DeathState::COOLDOWN:
+            if (currentTime - stateStartTime >= cooldownMs) {
+                enterState(DeathState::IDLE, "Cooldown elapsed");
+            }
+            break;
+
         default:
-            LOG_WARN(STATE_TAG, "Command handling not implemented for: %s", UARTController::commandToString(cmd));
             break;
     }
-    if (handled) {
-        lastTriggerTime = currentTime;
+}
+
+void handleAudioPlaybackFinished(const String &filePath) {
+    (void)filePath;
+
+    switch (currentState) {
+        case DeathState::PLAY_WELCOME:
+            enterState(DeathState::WAIT_FOR_NEAR, "Welcome audio finished");
+            break;
+
+        case DeathState::PLAY_FINGER_PROMPT:
+            enterState(DeathState::MOUTH_OPEN_WAIT_FINGER, "Finger prompt finished");
+            break;
+
+        case DeathState::SNAP_WITH_FINGER:
+        case DeathState::SNAP_NO_FINGER:
+            enterState(DeathState::FORTUNE_FLOW, "Snap sequence finished");
+            break;
+
+        case DeathState::FORTUNE_FLOW:
+            enterState(DeathState::FORTUNE_DONE, "Fortune flow audio finished");
+            break;
+
+        case DeathState::FORTUNE_DONE:
+            enterState(DeathState::COOLDOWN, "Fortune done sequence complete");
+            break;
+
+        default:
+            break;
     }
-}
-
-void startWelcomeSequence() {
-    LOG_INFO(FLOW_TAG, "Starting welcome sequence");
-    currentState = DeathState::PLAY_WELCOME;
-    stateStartTime = millis();
-    String welcomeFile = "/audio/welcome/welcome_01.wav";
-    audioPlayer->playNext(welcomeFile);
-}
-
-void startFortuneFlow() {
-    LOG_INFO(FLOW_TAG, "Starting fortune flow");
-    currentState = DeathState::FORTUNE_FLOW;
-    stateStartTime = millis();
-    String promptFile = "/audio/fortune/fortune_01.wav";
-    audioPlayer->playNext(promptFile);
-    servoController.setPosition(80);
-    mouthOpen = true;
-    lightController.setEyeBrightness(LightController::BRIGHTNESS_MAX);
 }
 
 void playRandomSkit() {
@@ -533,31 +855,6 @@ void breathingJawMovement() {
         servoController.smoothMove(BREATHING_JAW_ANGLE, BREATHING_MOVEMENT_DURATION);
         delay(100); // Short pause at open position
         servoController.smoothMove(0, BREATHING_MOVEMENT_DURATION);
-    }
-}
-
-void handleFortuneFlow(unsigned long currentTime) {
-    if (fingerSensor && fingerSensor->isFingerDetected()) {
-        if (!fingerDetected) {
-            fingerDetected = true;
-            fingerDetectionStart = currentTime;
-            LOG_INFO(FLOW_TAG, "Finger detected!");
-        }
-        if (currentTime - fingerDetectionStart >= 120) {
-            if (snapDelayMs == 0) {
-                snapDelayMs = random(1000, 3001);
-                snapDelayStart = currentTime;
-                LOG_INFO(FLOW_TAG, "Starting snap delay: %dms", snapDelayMs);
-            }
-        }
-    } else {
-        fingerDetected = false;
-    }
-
-    if (snapDelayMs > 0 && currentTime - snapDelayStart >= (unsigned long)snapDelayMs) {
-        LOG_INFO(FLOW_TAG, "Snap delay elapsed, triggering fortune flow action");
-        snapDelayMs = 0;
-        // TODO: implement snap action
     }
 }
 

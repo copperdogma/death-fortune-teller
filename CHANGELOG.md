@@ -8,10 +8,12 @@
 
 ### Changed
 - Initialized and polled the Matter UART controller in the main loop so decoded commands reach the existing trigger handlers.
+- Replaced the ad-hoc trigger handlers with the full 12-state flow, timer-driven finger detection, cooldown management, and busy/debounce enforcement defined in story-003a.
 - Updated hardware documentation to reflect the actual ESP32-WROVER pin availability (TX on GPIO21, RX reassigned to GPIO22) and refreshed the story build log with the current checklists.
 
 ### Verified
 - Confirmed all Matter triggers sent from the Home app reach the WROVER and are logged, while servo control remains stable with the new UART routing (printer pending hookup).
+- Exercised state-forcing commands from the Matter controller to ensure busy state overrides behave as expected while retaining the single-frame UART assumption documented in the story log.
 
 ## [2025-01-23] - Refactor Primary/Secondary Skull Support
 
