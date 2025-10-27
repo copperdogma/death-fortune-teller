@@ -1,5 +1,43 @@
 # Changelog
 
+## [2025-01-27] - Servo Initialization Refinement and LED System Updates
+
+### Added
+- **Servo Initialization Command**: Added `servo_init` serial command to manually trigger servo initialization sweep
+- **Overloaded Servo Initialization**: New `initialize()` method accepts microsecond parameters directly for config-driven initialization
+- **Sequential LED Blinking**: New `blinkLights()` method for sequential eye→mouth LED blinking pattern
+- **Mouth LED Blinking**: New `blinkMouth()` method for mouth LED-specific blinking
+
+### Fixed
+- **Double Servo Initialization**: Eliminated annoying double initialization sweep on startup
+  - Servo now initializes only once after SD card/config loading attempt
+  - If SD card fails, servo still initializes with safe defaults (1400-1600µs)
+- **Servo Sweep Timing**: Improved initialization sweep timing using `smoothMove()` with 1.5s per direction
+  - Previous quick `setPosition()` calls caused incomplete sweeps
+  - Now uses same smooth movement logic as breathing cycle
+
+### Changed
+- **Servo Initialization Sequence**: Reordered startup sequence to load SD card/config before servo initialization
+  - Servo uses config values (900-2200µs) if SD card loads successfully
+  - Falls back to safe defaults (1400-1600µs) if SD card fails
+  - Eliminates redundant `reattachWithConfigLimits()` call during startup
+- **LED System Refactoring**: Refactored from dual-eye to eye+mouth LED configuration
+  - Constructor changed from `(leftEyePin, rightEyePin)` to `(eyePin, mouthPin)`
+  - PWM channels renamed: `PWM_CHANNEL_LEFT/RIGHT` → `PWM_CHANNEL_EYE/MOUTH`
+  - Eye LED defaults to max brightness, mouth LED defaults to off
+  - Startup blink now uses sequential `blinkLights()` pattern
+- **Config Manager Defaults**: Updated servo timing defaults for safety
+  - Changed from 500-2500µs (full range) to 1400-1600µs (conservative ±100µs)
+  - Prevents servo damage if config file missing or invalid
+  - Config file can still override to full range if needed
+- **Error Handling**: Improved retry logic with configurable limits (5 attempts) for SD card and config loading
+
+### Technical Details
+- Servo initialization now properly tracks position state after reattach
+- LED blinking uses non-blocking `millis()` timing with `yield()` for ESP32 multitasking
+- All changes tested on hardware and verified working
+- Memory usage remains healthy: 18.9% RAM, 84.3% Flash
+
 ## [2025-01-25] - Hardware Milestone: ESP32-WROVER Fully Operational
 
 ### Milestone Achievement

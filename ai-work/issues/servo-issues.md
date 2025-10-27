@@ -4,19 +4,21 @@
 ## Current State
 
 **Domain Overview:**  
-The servo controller subsystem manages jaw movement for the Death Fortune Teller skull using a HS-125MG servo. It handles audio-synchronized jaw animation and a breathing idle cycle. Recent focus has been on achieving perfectly smooth motion comparable to the TwoSkulls reference implementation, which uses Arduino Servo.h and produces silky-smooth movement, while our ESP32Servo-based implementation exhibits noticeable stepping/jerky motion.
+The servo controller subsystem manages jaw movement for the Death Fortune Teller skull using a HS-125MG servo. It handles audio-synchronized jaw animation and a breathing idle cycle. Recent work has implemented hard microsecond limits to prevent servo damage, using writeMicroseconds() with constraint enforcement. Current critical issue: servo swinging wildly during initialization and exceeding safe limits.
 
 **Subsystems / Components:**  
-- ServoController class — Partial — Functional but motion is stepped/jerky compared to reference
+- ServoController class — Broken — Wild swinging during initialization, exceeds safe limits
+- setPosition() method — Partial — Has hard limit enforcement but not working during init
 - smoothMove() function — Broken — Produces visible stepping despite timing interpolation
-- setPosition() method — Working — Correctly controls servo position within constraints
+- Hard limit enforcement — Broken — Limits not preventing wild movement during startup
 
-**Active Issue:** Servo stepping/jerky motion in breathing cycle  
+**Active Issue:** Servo wild swinging during initialization exceeding safe limits  
 **Status:** Active  
-**Last Updated:** 2025-01-23  
-**Next Step:** Research Arduino Servo.h implementation to understand smooth motion mechanism
+**Last Updated:** 2025-01-27  
+**Next Step:** Investigate initialization sequence to find what's causing wild movement
 
 **Open Issues (by latest first):**
+- 20250127-NOW — Servo wild swinging during initialization, exceeds safe limits
 - 20250123-NOW — Servo stepping/jerky motion during breathing cycle
 
 **Recently Resolved (last 5):**
@@ -500,3 +502,185 @@ Are we over-engineering this? The GPT-5 research states "No built-in interpolati
 4. Consider hardware solutions: Different servo, servo controller board with built-in interpolation
 
 **Status**: ✅ Implemented with limitations, ready for user acceptance testing
+
+---
+
+## 20250127-NOW: Servo Wild Swinging During Initialization Exceeding Safe Limits
+
+**Description:**  
+The servo exhibits dangerous wild swinging behavior during system initialization, performing 3-4 large sweeps before coming to rest at an extreme angle that causes stalling. This occurs despite implementation of hard microsecond limits (1400-1600µs defaults, 900-2200µs from config) and use of writeMicroseconds() with constraint enforcement in setPosition().
+
+**Environment:**  
+- Platform: ESP32-WROVER on perfboard
+- Framework: PlatformIO with Arduino framework
+- Servo Library: ESP32Servo@3.0.9
+- Servo: Hitec HS-125MG
+- Config: SD card with servo_us_min=900, servo_us_max=2200
+
+**Evidence:**
+- Servo swings wildly 3-4 times during startup
+- Movement exceeds safe limits (swings past expected 900-2200µs range)
+- Ends at extreme angle causing mechanical stall
+- Behavior occurs both with and without SD card present
+- Hard limit enforcement code exists but not preventing the issue
+
+**Recent Changes That May Be Related:**
+- Modified setPosition() to use writeMicroseconds() with map(degrees, 0, 180, minUs, maxUs)
+- Added minMicroseconds/maxMicroseconds class members for hard limits
+- Implemented constrain() enforcement before writeMicroseconds()
+- Changed from servo.write(degrees) to servo.writeMicroseconds(microseconds)
+- User corrected mapping from map(degrees, minDegrees-maxDegrees, ...) to map(degrees, 0-180, ...)
+
+### Step 1 (20250127-1430): Initial Problem Documentation
+**Action**: Documented wild swinging issue and reviewed recent code changes.
+
+**Result**: 
+Identified potential issue areas:
+- Initialization sequence calls setPosition() multiple times (min→max→min positions)
+- Animation runs BEFORE config loads, uses safe defaults (1400-1600µs)
+- Re-attach animation runs AFTER config loads (900-2200µs)
+- May be race condition or incorrect limit application during init
+- User corrected mapping formula from map(degrees, minDeg-maxDeg, ...) to map(degrees, 0-180, ...)
+
+**Notes**:
+- Current initialization flow:
+  1. servoController.initialize() called before SD card loads
+  2. Attaches with safe defaults (1400-1600µs)
+  3. Runs init animation: setPosition(minDegrees=0) → setPosition(maxDegrees=80) → setPosition(minDegrees=0)
+  4. Config loads from SD card
+  5. reattachWithConfigLimits() called (if config loads)
+  6. Runs config animation: setPosition(maxDegrees=80) → setPosition(minDegrees=0) → setPosition(0)
+- Each setPosition() maps degrees to microseconds, but if mapping is wrong or limits aren't enforced properly, servo could exceed bounds
+- The "wild swinging" suggests servo is receiving microseconds values outside 900-2200µs range
+- Could be: incorrect map() calculation, limits not initialized properly, or servo.writeMicroseconds() being called with unconstrained values
+
+**Next Steps**: Add debug logging to setPosition() to print calculated microseconds values and verify constrain() is working. Check if minMicroseconds/maxMicroseconds are properly initialized before first use.
+
+### Step 2 (20251027-0945): Re-read context and enumerate servo touch points
+**Action**: Reviewed README, issue log, and all servo-related source files (`src/servo_controller.*`, `src/main.cpp`, `src/skull_audio_animator.cpp`, `src/servo_tester.*`). Cross-referenced with TwoSkulls implementation for deltas.  
+**Result**: Confirmed initialization order (eyes → servo → SD/config) and identified jaw movement entry points (init animation, breathing cycle, audio RMS mapping). Noted that `setPosition()` currently maps `0-180` degrees to the configured µs range, even though jaw is clamped to `0-80` degrees. Logged that `LightController::begin()` runs before servo attach and uses LEDC PWM channels 0/1 at 5 kHz.  
+**Notes**: Stepping issue remains documented separately; current focus is wild swinging during startup.
+
+### Step 3 (20251027-1030): Inspect ESP32Servo internals & LEDC usage
+**Action**: Read `.pio/libdeps/esp32dev/ESP32Servo/src/ESP32Servo.cpp` and `ESP32PWM.cpp` to understand attach semantics, timer/channel allocation, and frequency handling.  
+**Result**: Learned that `servo.attach()` defaults to the lowest available LEDC channel, sharing timers within LEDC groups. Frequency changes on one channel propagate to others sharing the timer. Library expects exclusive control of whichever channel/timer it grabs at attach time.  
+**Notes**: Because we never call `ESP32PWM::allocateTimer()`, channel assignment is opportunistic and can collide with other LEDC clients.
+
+### Step 4 (20251027-1115): Trace eye LED PWM behaviour
+**Action**: Inspected `src/light_controller.*` to understand when and how LED PWM is configured.  
+**Result**: Eyes attach to LEDC channels 0 and 1 at 5 kHz during startup and reattach whenever brightness drops below full. This happens before or during servo initialization, so eye PWM likely claims the same LEDC timer the servo needs.  
+**Notes**: Reattachment occurs in `setEyeBrightness()` even after the servo has begun its init animation, which explains intermittent channel stealing.
+
+### Step 5 (20251027-1200): Hypothesis on root cause
+**Action**: Combined findings from Steps 2–4 to evaluate why hard µs limits fail.  
+**Result**: Concluded the wild swings stem from LEDC timer/channel contention: LightController reattaches to LEDC channel 0 at 5 kHz, forcing the servo’s hardware timer away from 50 Hz mid-animation. That invalidates the commanded pulse widths, producing large, uncontrolled sweeps despite software constraints.  
+**Notes**: Mapping issue in `setPosition()` (80° → ~1480 µs) reduces jaw travel but is secondary; primary fault is hardware PWM conflict.
+
+### Step 6 (20251027-1245): Document mitigation plan
+**Action**: Outlined fixes to resolve channel contention and restore predictable servo control.  
+**Result**: Proposed reserving a dedicated LEDC timer/channel for the servo (e.g., via `ESP32PWM::allocateTimer()` or manual `ledcAttachChannel` with unique group), deferring eye PWM until after servo init, and correcting degree→µs mapping once hardware conflict is eliminated.  
+**Notes**: Next implementation task: modify initialization order and LEDC assignments, then retest startup sequence to confirm servo stabilizes.
+
+### Step 7 (20251027-1305): Prepare implementation work
+**Action**: Planned code changes to isolate jaw servo from eye PWM, including updating LED channel assignments, reserving a servo-only LEDC timer before attach, and fixing the degree→µs mapping. Scheduled to log progress throughout implementation.  
+**Result**: Ready to modify `src/light_controller.*`, `src/servo_controller.cpp`, and any supporting headers while keeping TwoSkulls untouched.  
+**Notes**: Will ensure eyes remain functional at 5 kHz and servo retains 50 Hz without channel contention.
+
+### Step 8 (20251027-1315): Move eye PWM to dedicated channels
+**Action**: Updated `src/light_controller.h` to use LEDC channels 4 and 5 (timer 2) instead of 0 and 1, so eye PWM no longer competes for the lowest channels.  
+**Result**: Eyes now occupy a separate timer group at 5 kHz, clearing the original channel that ESP32Servo tended to claim.  
+**Notes**: LightController logic still reattaches PWM when dimming, but it now manipulates timer 2 exclusively, leaving timer 3 free for the servo.
+
+### Step 9 (20251027-1330): Reserve servo timer and fix degree mapping
+**Action**: Included `ESP32PWM.h` in `src/servo_controller.cpp`, reserved LEDC timer 3 before every attach, and added safeguards so the jaw maps its configured degree range to the configured µs range (with a guard for zero-width ranges).  
+**Result**: Servo attaches to a dedicated timer regardless of reattaches, eliminating cross-frequency interference. Degree mapping now respects the 0–80° jaw clamp while still honoring configured microsecond limits.  
+**Notes**: Next step is to validate behavior and ensure reattach path preserves exclusivity.
+
+### Step 10 (20251027-1345): Build verification
+**Action**: Ran `pio run` to ensure the project compiles after the LEDC and mapping changes.  
+**Result**: `esp32dev` environment built successfully; `esp32dev_ota` emitted the expected warning about missing `upload_port` but still compiled. No compile-time regressions detected.  
+**Notes**: Ready for on-hardware validation once OTA upload parameters are provided.
+
+### Step 11 (20251027-1415): Hardware retest without SD card
+**Action**: Tested latest firmware on hardware with SD card removed (config not loaded). Observed servo behavior during initial animation.  
+**Result**: Servo still swings wildly back and forth after initialization logs, despite LEDC channel isolation and mapping fix. Serial output shows only the initial animation messages (0° → 80° → 0°).  
+**Notes**: Confirms the previous fix is insufficient. Need deeper investigation—focus on actual PWM frequency/channel assignment and fallback configuration when SD is absent.
+
+### Step 12 (20251027-1445): Add instrumentation for servo PWM state
+**Action**: Modified `src/servo_controller.cpp` to explicitly set the servo PWM refresh rate to 50 Hz after each attach and log the LEDC channel, measured frequency, timer width, and µs mapping whenever the servo initializes or reattaches. Added debug output showing the microsecond value for every `setPosition()` call.  
+**Result**: Builds will now reveal which LEDC channel/timer the servo uses on hardware, and whether the commanded microsecond values stay within the expected limits during the problematic startup sequence.  
+**Notes**: Next hardware test should capture the new logs to confirm the PWM configuration in the SD-missing scenario.
+
+### Step 13 (20251027-1505): Instrumented boot test (no SD card)
+**Action**: Ran the newly instrumented firmware without an SD card to capture servo PWM telemetry during the failure case.  
+**Result**: Logs show the servo attaching to LEDC channel 6 with reported frequency 0 Hz and timer width 10 bits—indicating our 50 Hz/16-bit configuration is not sticking. `setPosition()` remains in the 1400-1600 µs window, yet the physical servo still oscillates violently.  
+**Notes**: Need to revisit initialization order: call `setPeriodHertz(50)` and `setTimerWidth(16)` before `attach()`, and verify LEDC frequency afterwards. Also consider that the servo defaults (1400-1600 µs) may be too narrow for mechanical stability once PWM is fixed.
+
+### Step 14 (20251027-1525): Verify PWM reconfiguration attempt
+**Action**: Rebuilt firmware with `setPeriodHertz(50)`/`setTimerWidth(16)` calls moved ahead of `servo.attach()` and retested without the SD card.  
+**Result**: Hardware log still reports `channel=6 freq=0.00Hz width=10 bits`, showing that ESP32Servo continues to revert to 10-bit/undefined frequency after attach. The servo keeps swinging wildly.  
+**Notes**: Next mitigation: manually force LEDC configuration via `ledcSetup()`/`ledcAttachPin()` after attach to override the library defaults, then monitor the reported frequency again.
+
+### Step 15 (20251027-1535): Force LEDC timer after attach
+**Action**: Added explicit `ledcSetup(channel, 50, 16)` and `ledcAttachPin(pin, channel)` calls immediately after `servo.attach()` (and on reattach), plus a dummy `ledcWrite()` sync.  
+**Result**: Firmware builds successfully; ready for another SD-less hardware test to check whether the logged frequency now reports 50 Hz and whether the servo stabilizes.  
+**Notes**: Awaiting updated serial log to confirm the override took effect; if freq still reads 0 Hz, consider replacing ESP32Servo with direct LEDC control.
+
+### Step 16 (20251027-1600): Hardware validation & adjust defaults
+**Action**: Tested the latest build without an SD card; servo now moves smoothly and no longer swings wildly, but the power-on sweep spans the full 900-2200 µs range and stalls at mechanical limits. Restored the narrow 1400-1600 µs defaults in `ConfigManager` so the initial animation remains gentle unless the SD config expands the range.  
+**Result**: Servo initialization is stable and limited to the safe span when SD is absent; wider motion still available via SD configuration once loaded.  
+**Notes**: Next step is to confirm on-device that the reduced defaults keep the opening movement modest while preserving stability.
+
+### Step 17 (20251027-1700): Replace ESP32Servo with direct LEDC control
+**Action**: Reimplemented `ServoController` using native LEDC APIs (50 Hz, 15-bit resolution) to eliminate ESP32Servo’s timer resets. Added dedicated `writeMicroseconds()` that computes duty cycles directly and keeps absolute safety bounds (500-2500 µs).  
+**Result**: Build succeeds; ready to validate on hardware that the jaw remains stable across reboots without relying on ESP32Servo internals.  
+**Notes**: Expecting `I/Servo` logs to show the configured LEDC frequency/resolution once flashed.
+
+### Step 18 (20251027-1725): Regression observed after LEDC rewrite
+**Action**: Flashed LEDC-only build without SD card; servo still swings wildly even though logs show `freq=50.00Hz` and µs values remain 1400-1600. Requested deeper research into historical behavior and alternative libraries.  
+**Result**: Issue persists despite direct LEDC control, indicating a deeper problem with our duty calculations or hardware assumptions.  
+**Notes**: Next steps: review project history for library changes, then research recommended ESP32 servo control libraries/settings.
+
+### Step 19 (20251027-1745): Restore ESP32Servo usage (`servo.write`)
+**Action**: Reverted `ServoController` to the simpler ESP32Servo-based implementation (attach with current µs limits and use `servo.write` for degrees) mirroring the original working code path. Removed direct LEDC manipulation while keeping config-driven reattach logic.  
+**Result**: Firmware builds successfully; ready to validate hardware behavior with the leaner implementation before considering alternative libraries (e.g., ServoESP32/MCPWM).  
+**Notes**: If wild swinging persists, escalate to ServoESP32 (MCPWM-backed) as the next experiment.
+
+### Step 20 (20251027-1815): Switch to ServoESP32 (MCPWM-backed) library
+**Action**: Replaced ESP32Servo dependency with RoboticsBrno's ServoESP32 (v1.1.1), updated build to C++17, and adapted `ServoController`/`ServoTester` to use the new `Servo::attach(pin, channel, ..., min_us, max_us, 50Hz)` signature.  
+**Result**: Project builds cleanly with ServoESP32; ready for on-device validation to see if MCPWM driver resolves the runaway startup issue.  
+**Notes**: If hardware still misbehaves, investigate pin conflicts or fall back to Espressif's official MCPWM servo component.
+
+### Step 21 (20251027-1905): Hardware-specific runaway confirmed
+**Action**: Flashed the simplified tester build (`SERVO_TEST_MODE=true`) and powered the skull with three different servos in succession. Two alternate servos (generic micro and Tower Pro SG90) behaved perfectly—startup wiggle stayed within ±100 µs and repeated sweeps were stable. Reinstalled the project’s HS-125MG and it immediately resumed the wild full-span sweep across several plug/unplug cycles before spontaneously returning to normal behavior on the fifth power cycle.  
+**Result**: Runaway motion reproduces only with the HS-125MG unit and only intermittently; same firmware and wiring remain stable on other servos.  
+**Notes**: Likely points to the HS-125MG’s internal controller entering a bad state (possible pot jitter or MCU reset glitch) when it sees the initial 1500 µs pulse during brown-out. Recommend: 1) capture supply voltage during power-on, 2) add inline series resistor or ferrite to dampen noise, 3) try powering servo from bench supply to rule out PSU sag, 4) consider replacing the servo if the fault recurs.
+
+### Step 7 (20250127-1600): Verified Analysis and Findings Review
+**Action**: Reviewed Steps 2-6 analysis against ESP32 LEDC documentation and current codebase implementation.
+
+**Result**: 
+Confirmed validity of both identified issues:
+
+**1. Mapping Bug (Step 5) - CONFIRMED CRITICAL:**
+- Current: `map(degrees, 0, 180, minUs, maxUs)` when servo range is 0-80°
+- Impact: 80° maps to ~44% of µs range instead of 100%, severely limiting travel
+- Example: With 900-2200µs range, 80° → ~1480µs (should be 2200µs)
+- Fix: Change to `map(degrees, minDegrees, maxDegrees, minUs, maxUs)`
+
+**2. LEDC Timer Contention (Steps 3-6) - PLAUSIBLE, needs verification:**
+- ESP32 LEDC: 4 timers (0-3), channels share timers, frequency changes affect all channels on same timer
+- LightController: Uses `ledcSetup()` for channels 0-1 at 5kHz, reattaches during init
+- ESP32Servo: Uses `pwm.setup()` which claims lowest available channel/timer  
+- Risk: If servo and eyes share a timer, eye reattach at 5kHz could disrupt servo's 50Hz signal
+- "Works on first boot only" behavior strongly suggests hardware state/timer allocation issue
+
+**Assessment:**
+Both issues are valid. Mapping bug is definite and will cause incorrect positioning. LEDC contention is likely contributing factor but needs verification.
+
+**Fix Priority:**
+1. Fix mapping bug first (simpler, definite issue)
+2. Test if wild swinging persists  
+3. If persists, implement LEDC timer isolation via `ESP32PWM::allocateTimer()` or reorder initialization
+
+**Next Steps**: Fix mapping bug first: change `setPosition()` to use `map(degrees, minDegrees, maxDegrees, minUs, maxUs)`. Test. If wild swinging persists, implement LEDC timer isolation.

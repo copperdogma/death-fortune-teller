@@ -82,6 +82,9 @@ void playRandomSkit();
 void testSkitSelection();
 void handleFortuneFlow(unsigned long currentTime);
 void breathingJawMovement();
+void processCLI(String cmd);
+void printHelp();
+void printSDCardInfo();
 
 // State machine
 enum class DeathState {
@@ -109,13 +112,12 @@ const unsigned long BREATHING_INTERVAL = 7000;        // 7 seconds between breat
 const int BREATHING_JAW_ANGLE = 30;                   // 30 degrees opening
 const int BREATHING_MOVEMENT_DURATION = 2000;         // 2 seconds per movement
 
+// Serial command buffer
+String cmdBuffer = "";
+
 void setup() {
     Serial.begin(115200);
     delay(500); // Allow serial to stabilize
-
-    Serial.println("Setup Serial pre-logging");
-    Serial.flush();
-    delay(100);
 
     LoggingManager::instance().begin(&Serial);
     LOG_INFO(TAG, "💀 Death starting…");
@@ -143,27 +145,64 @@ void setup() {
     };
 
 
+    // Normal initialization code continues here...
     lightController.begin();
-    lightController.blinkEyes(3); // Startup blink
+    lightController.blinkLights(3); // Startup blink
 
-    servoController.initialize(SERVO_PIN, 0, 80);
-
+    // Try to mount SD card and load config before initializing servo
     sdCardManager = new SDCardManager();
-    while (!sdCardManager->begin()) {
-        LOG_WARN(TAG, "⚠️ SD card mount failed! Retrying…");
+    bool sdCardMounted = false;
+    bool configLoaded = false;
+    ConfigManager &config = ConfigManager::getInstance();
+    
+    // Try to mount SD card (with retries)
+    int sdRetryCount = 0;
+    const int MAX_SD_RETRIES = 5;
+    while (!sdCardManager->begin() && sdRetryCount < MAX_SD_RETRIES) {
+        LOG_WARN(TAG, "⚠️ SD card mount failed! Retrying… (%d/%d)", sdRetryCount + 1, MAX_SD_RETRIES);
         lightController.blinkEyes(3);
         delay(500);
+        sdRetryCount++;
     }
-    LOG_INFO(TAG, "SD card mounted successfully");
-    sdCardContent = sdCardManager->loadContent();
-
-    ConfigManager &config = ConfigManager::getInstance();
-    while (!config.loadConfig()) {
-        LOG_WARN(TAG, "⚠️ Failed to load config. Retrying…");
-        lightController.blinkEyes(5);
-        delay(500);
+    
+    if (sdRetryCount < MAX_SD_RETRIES) {
+        sdCardMounted = true;
+        LOG_INFO(TAG, "SD card mounted successfully");
+        sdCardContent = sdCardManager->loadContent();
+        
+        // Try to load config
+        int retryCount = 0;
+        const int MAX_RETRIES = 5;
+        
+        while (!config.loadConfig() && retryCount < MAX_RETRIES) {
+            LOG_WARN(TAG, "⚠️ Failed to load config. Retrying… (%d/%d)", retryCount + 1, MAX_RETRIES);
+            lightController.blinkEyes(5);
+            delay(500);
+            retryCount++;
+        }
+        
+        if (retryCount < MAX_RETRIES) {
+            configLoaded = true;
+            LOG_INFO(TAG, "Configuration loaded successfully");
+        } else {
+            LOG_WARN(TAG, "⚠️ Config failed to load after %d retries", MAX_RETRIES);
+        }
+    } else {
+        LOG_WARN(TAG, "⚠️ SD card mount failed after %d retries - using safe defaults", MAX_SD_RETRIES);
     }
-    LOG_INFO(TAG, "Configuration loaded successfully");
+    
+    // Initialize servo with config values if loaded, otherwise use safe defaults
+    if (configLoaded) {
+        int minUs = config.getServoUSMin();
+        int maxUs = config.getServoUSMax();
+        LOG_INFO(TAG, "Initializing servo with config values: %d-%d µs", minUs, maxUs);
+        servoController.initialize(SERVO_PIN, 0, 80, minUs, maxUs);
+    } else {
+        const int SAFE_MIN_US = 1400;
+        const int SAFE_MAX_US = 1600;
+        LOG_INFO(TAG, "Initializing servo with safe defaults: %d-%d µs", SAFE_MIN_US, SAFE_MAX_US);
+        servoController.initialize(SERVO_PIN, 0, 80, SAFE_MIN_US, SAFE_MAX_US);
+    }
 
     String role = config.getRole();
     if (role.length() == 0 || role.equalsIgnoreCase("primary")) {
@@ -281,7 +320,7 @@ void setup() {
                 bluetoothController->resumeAfterOta();
             }
         });
-        otaManager->setOnErrorCallback([&](ota_error_t /*error*/) {
+        otaManager->setOnErrorCallback([&](ota_error_t error) {
             LOG_WARN(OTA_TAG, "⚠️ OTA aborted: resuming peripherals");
             restoreRemoteDebugAfterOta("🛜 RemoteDebug: auto streaming resumed after OTA abort", "🛜 RemoteDebug: auto streaming left disabled after OTA abort");
             if (audioPlayer) {
@@ -379,79 +418,18 @@ void setup() {
 }
 
 void loop() {
-    if (otaManager && otaManager->isUpdating()) {
-        if (wifiManager) {
-            wifiManager->update();
-        }
-        if (otaManager) {
-            otaManager->update();
-        }
-        delay(10);
-        return;
-    }
-
-    unsigned long currentTime = millis();
-    static unsigned long lastStatusLogTime = 0;
-
-    if (bluetoothController) bluetoothController->update();
-    if (audioPlayer) audioPlayer->update();
-    if (uartController) uartController->update();
-    if (thermalPrinter) thermalPrinter->update();
-    if (fingerSensor) fingerSensor->update();
-    if (wifiManager) wifiManager->update();
-    if (otaManager) otaManager->update();
-    if (remoteDebugManager) remoteDebugManager->update();
-
-    if (currentTime - lastStatusLogTime >= 5000) {
-        size_t freeHeap = ESP.getFreeHeap();
-        String statusMsg = "Status: Free mem: " + String(freeHeap) + " bytes, ";
-        statusMsg += "A2DP connected: " + String(bluetoothController && bluetoothController->isA2dpConnected() ? "true" : "false") + ", ";
-        statusMsg += "Retrying: " + String(bluetoothController && bluetoothController->isRetryingConnection() ? "true" : "false") + ", ";
-        statusMsg += "Audio playing: " + String(audioPlayer && audioPlayer->isAudioPlaying() ? "true" : "false") + ", ";
-        statusMsg += "Init queued: " + String(initializationQueued ? "true" : "false") + ", ";
-        statusMsg += "Init played: " + String(initializationPlayed ? "true" : "false") + ", ";
-        if (wifiManager) {
-            statusMsg += "🛜 WiFi: " + String(wifiManager->isConnected() ? "connected" : "disconnected");
-            if (wifiManager->isConnected()) {
-                statusMsg += " (" + wifiManager->getIPAddress() + ")";
-                statusMsg += " RSSI: " + String(WiFi.RSSI()) + "dBm";
+    // Handle serial commands
+    while (Serial.available()) {
+        char c = Serial.read();
+        if (c == '\n' || c == '\r') {
+            if (cmdBuffer.length() > 0) {
+                processCLI(cmdBuffer);
+                cmdBuffer = "";
             }
         } else {
-            statusMsg += "🛜 WiFi: disabled";
+            cmdBuffer += c;
         }
-        LOG_INFO(TAG, "%s", statusMsg.c_str());
-        lastStatusLogTime = currentTime;
     }
-
-    switch (currentState) {
-        case DeathState::IDLE:
-            break;
-
-        case DeathState::PLAY_WELCOME:
-            if (!audioPlayer->isAudioPlaying()) {
-                currentState = DeathState::COOLDOWN;
-                stateStartTime = currentTime;
-            }
-            break;
-
-        case DeathState::FORTUNE_FLOW:
-            handleFortuneFlow(currentTime);
-            break;
-
-        case DeathState::COOLDOWN:
-            if (currentTime - stateStartTime >= 12000) {
-                currentState = DeathState::IDLE;
-            }
-            break;
-    }
-
-    // Check if it's time to move the jaw for breathing
-    if (currentTime - lastJawMovementTime >= BREATHING_INTERVAL && !audioPlayer->isAudioPlaying()) {
-        breathingJawMovement();
-        lastJawMovementTime = currentTime;
-    }
-
-    delay(1);
 }
 
 void handleUARTCommand(UARTCommand cmd) {
@@ -570,5 +548,77 @@ void handleFortuneFlow(unsigned long currentTime) {
         LOG_INFO(FLOW_TAG, "Snap delay elapsed, triggering fortune flow action");
         snapDelayMs = 0;
         // TODO: implement snap action
+    }
+}
+
+void printHelp() {
+    Serial.println("\n=== DEATH FORTUNE TELLER CLI ===");
+    Serial.println("Commands:");
+    Serial.println("  help           - Show this help");
+    Serial.println("  cal            - Recalibrate finger sensor");
+    Serial.println("  config         - Show configuration settings");
+    Serial.println("  sd             - Show SD card content info");
+    Serial.println("  servo_init     - Run servo initialization sweep");
+    Serial.println();
+}
+
+void printSDCardInfo() {
+    Serial.println("\n=== SD CARD CONTENT ===");
+    Serial.print("Skits loaded:     "); Serial.println(sdCardContent.skits.size());
+    Serial.print("Audio files:      "); Serial.println(sdCardContent.audioFiles.size());
+    Serial.print("Primary init:     "); Serial.println(sdCardContent.primaryInitAudio.length() > 0 ? sdCardContent.primaryInitAudio : "[NOT SET]");
+    Serial.print("Secondary init:   "); Serial.println(sdCardContent.secondaryInitAudio.length() > 0 ? sdCardContent.secondaryInitAudio : "[NOT SET]");
+    Serial.print("Primary MAC:      "); Serial.println(sdCardContent.primaryMacAddress.length() > 0 ? sdCardContent.primaryMacAddress : "[NOT SET]");
+    Serial.print("Secondary MAC:    "); Serial.println(sdCardContent.secondaryMacAddress.length() > 0 ? sdCardContent.secondaryMacAddress : "[NOT SET]");
+    
+    if (sdCardContent.skits.size() > 0) {
+        Serial.println("\nSkits:");
+        for (size_t i = 0; i < sdCardContent.skits.size() && i < 10; i++) {
+            Serial.print("  "); Serial.print(i + 1); Serial.print(". "); Serial.println(sdCardContent.skits[i].audioFile);
+        }
+        if (sdCardContent.skits.size() > 10) {
+            Serial.print("  ... and "); Serial.print(sdCardContent.skits.size() - 10); Serial.println(" more");
+        }
+    }
+    Serial.println();
+}
+
+void processCLI(String cmd) {
+    cmd.trim();
+    cmd.toLowerCase();
+    
+    if (cmd == "help" || cmd == "?") {
+        printHelp();
+    }
+    else if (cmd == "cal" || cmd == "calibrate") {
+        Serial.println("\n>>> Calibrating finger sensor...");
+        Serial.println(">>> REMOVE YOUR FINGER NOW!");
+        if (fingerSensor) {
+            fingerSensor->calibrate();
+            Serial.println(">>> Calibration complete!\n");
+        } else {
+            Serial.println(">>> ERROR: Finger sensor not initialized\n");
+        }
+    }
+    else if (cmd == "config" || cmd == "settings") {
+        Serial.println("\n=== CONFIGURATION SETTINGS ===");
+        ConfigManager &config = ConfigManager::getInstance();
+        config.printConfig();
+        Serial.println();
+    }
+    else if (cmd == "sd" || cmd == "sdcard") {
+        printSDCardInfo();
+    }
+    else if (cmd == "servo_init") {
+        Serial.println("\n>>> Running servo initialization sweep...");
+        if (servoController.getPosition() >= 0) { // Check if servo is initialized
+            servoController.reattachWithConfigLimits();
+            Serial.println(">>> Servo sweep complete!\n");
+        } else {
+            Serial.println(">>> ERROR: Servo not initialized\n");
+        }
+    }
+    else if (cmd.length() > 0) {
+        Serial.print(">>> Unknown command: "); Serial.print(cmd); Serial.println(". Type 'help' for commands.\n");
     }
 }

@@ -13,10 +13,10 @@ speaker_volume=100
 #ota_hostname=death-fortune-teller
 #ota_password=your_secure_ota_password
 
-
-# Jaw servo (microseconds) - pins hardcoded in firmware
-servo_us_min=500
-servo_us_max=2500
+# Jaw servo range (microseconds)
+# Override if your servo has different limits (e.g., 900-2200 for tested servo)
+servo_us_min=900
+servo_us_max=2200
 
 # Cap sense - threshold configurable per skull
 cap_threshold=0.002
@@ -27,7 +27,7 @@ snap_delay_min_ms=1000
 snap_delay_max_ms=3000
 cooldown_ms=12000
 
-# Printer - pins hardcoded in firmware
+# Printer
 printer_baud=9600
 printer_logo=/printer/logo_384w.bmp
 fortunes_json=/printer/fortunes_littlekid.json

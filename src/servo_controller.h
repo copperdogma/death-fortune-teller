@@ -2,7 +2,7 @@
 #define SERVO_CONTROLLER_H
 
 #include <Arduino.h>
-#include <ESP32Servo.h>
+#include <Servo.h>
 
 class ServoController {
 private:
@@ -11,6 +11,8 @@ private:
     int currentPosition;
     int minDegrees;
     int maxDegrees;
+    int minMicroseconds;  // Hard limits - NEVER exceed these
+    int maxMicroseconds;  // Hard limits - NEVER exceed these
     double smoothedPosition;
     int lastPosition;
     double maxObservedRMS;
@@ -19,6 +21,7 @@ private:
 public:
     ServoController();
     void initialize(int pin, int minDeg, int maxDeg);
+    void initialize(int pin, int minDeg, int maxDeg, int minUs, int maxUs);
     void setPosition(int degrees);
     int getPosition() const;
     void setMinMaxDegrees(int minDeg, int maxDeg);
@@ -26,6 +29,9 @@ public:
     void updatePosition(int targetPosition, double alpha, int minMovementThreshold);
     void smoothMove(int targetPosition, int duration);
     void interruptMovement();
+    
+    // Re-attach servo with config limits (call after config loads)
+    void reattachWithConfigLimits();
 };
 
 #endif // SERVO_CONTROLLER_H

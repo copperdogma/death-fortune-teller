@@ -62,8 +62,11 @@ bool ConfigManager::loadConfig()
 
     // Note: Validation happens in getter methods - they return default values if invalid
     // We just validate here to log warnings
-    int servoMin = getValue("servo_us_min", "500").toInt();
-    int servoMax = getValue("servo_us_max", "2500").toInt();
+    // Default servo limits: conservative ±100 µs around neutral (1500 µs)
+    // This provides a small, safe mouth opening that won't damage most servos
+    // SD card config can override these if needed
+    int servoMin = getValue("servo_us_min", "1400").toInt();
+    int servoMax = getValue("servo_us_max", "1600").toInt();
     if (servoMin >= servoMax)
     {
         LOG_WARN(TAG, "Invalid servo timing (min >= max). Getters will return defaults.");
@@ -192,20 +195,22 @@ bool ConfigManager::isBluetoothEnabled() const
 
 int ConfigManager::getServoUSMin() const
 {
-    int value = getValue("servo_us_min", "500").toInt();
+    // Default: 1400 µs (narrow safe range until SD config expands it)
+    int value = getValue("servo_us_min", "1400").toInt();
     int max = getServoUSMax();
     if (value >= max || value < 0) {
-        return 500; // Default
+        return 1400; // Fallback to safe default
     }
     return value;
 }
 
 int ConfigManager::getServoUSMax() const
 {
-    int value = getValue("servo_us_max", "2500").toInt();
-    int min = getValue("servo_us_min", "500").toInt(); // Get raw value
+    // Default: 1600 µs (narrow safe range until SD config expands it)
+    int value = getValue("servo_us_max", "1600").toInt();
+    int min = getValue("servo_us_min", "1400").toInt(); // Get raw value
     if (value <= min || value > 5000) {
-        return 2500; // Default
+        return 1600; // Fallback to safe default
     }
     return value;
 }

@@ -7,8 +7,8 @@
 #define PWM_FREQUENCY 5000  // PWM frequency in Hz
 #define PWM_RESOLUTION 8    // PWM resolution in bits
 #define PWM_MAX 255         // Maximum PWM value (2^8 - 1)
-#define PWM_CHANNEL_LEFT 0  // PWM channel for left eye
-#define PWM_CHANNEL_RIGHT 1 // PWM channel for right eye
+#define PWM_CHANNEL_EYE 0   // PWM channel for eye LED
+#define PWM_CHANNEL_MOUTH 1 // PWM channel for mouth LED
 
 class LightController
 {
@@ -20,26 +20,34 @@ public:
     static const uint8_t BRIGHTNESS_DIM = 100;     // Dimmed brightness level
     static const uint8_t BRIGHTNESS_OFF = 0;       // Lights off
 
-    // Constructor: Initializes the pins for left and right eyes
-    LightController(int leftEyePin, int rightEyePin);
+    // Constructor: Initializes the pins for eye and mouth LEDs
+    LightController(int eyePin, int mouthPin);
 
-    // Initializes the LightController: Sets up PWM channels and attaches them to the eye pins
+    // Initializes the LightController: Sets up PWM channels and attaches them to the eye and mouth pins
     void begin();
 
-    // Sets the brightness of both eyes
+    // Sets the brightness of the eye LED
     // @param brightness: uint8_t value between 0 (off) and 255 (max brightness)
     void setEyeBrightness(uint8_t brightness);
 
-    // Blinks the eyes a specified number of times
+    // Blinks the eye LED a specified number of times
     // @param numBlinks: Number of times to blink
-    // @param onBrightness: Brightness level when eyes are on (default: BRIGHTNESS_MAX)
-    // @param offBrightness: Brightness level when eyes are off (default: BRIGHTNESS_OFF)
+    // @param onBrightness: Brightness level when eye is on (default: BRIGHTNESS_MAX)
+    // @param offBrightness: Brightness level when eye is off (default: BRIGHTNESS_OFF)
     void blinkEyes(int numBlinks, int onBrightness = BRIGHTNESS_MAX, int offBrightness = BRIGHTNESS_OFF);
 
+    // Blinks the mouth LED a specified number of times
+    // @param numBlinks: Number of times to blink
+    void blinkMouth(int numBlinks);
+
+    // Blinks eye and mouth LEDs sequentially
+    // @param numBlinks: Number of times to blink each (eye first, then mouth after 1000ms delay)
+    void blinkLights(int numBlinks);
+
 private:
-    int _leftEyePin;        // Pin number for the left eye LED
-    int _rightEyePin;       // Pin number for the right eye LED
-    int _currentBrightness; // Current brightness level of both eyes
+    int _eyePin;            // Pin number for the eye LED (GPIO 32)
+    int _mouthPin;          // Pin number for the mouth LED (GPIO 33)
+    int _currentBrightness; // Current brightness level of the eye LED
 };
 
 #endif // LIGHT_CONTROLLER_H
