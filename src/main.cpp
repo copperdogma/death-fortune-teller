@@ -428,6 +428,13 @@ void loop() {
         bluetoothController->update();
     }
     
+    // Check if it's time to move the jaw for breathing
+    unsigned long currentTime = millis();
+    if (audioPlayer && currentTime - lastJawMovementTime >= BREATHING_INTERVAL && !audioPlayer->isAudioPlaying()) {
+        breathingJawMovement();
+        lastJawMovementTime = currentTime;
+    }
+    
     // Handle serial commands
     while (Serial.available()) {
         char c = Serial.read();

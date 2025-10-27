@@ -1,5 +1,19 @@
 # Changelog
 
+## [2025-01-27] - Restore Breathing Animation Idle Cycle
+
+### Fixed
+- **Breathing Animation Not Running**: Restored missing breathing cycle check in main loop
+  - Breathing animation code existed but was never being called
+  - Added breathing timing check back to `loop()` function that triggers every 7 seconds when idle
+  - Jaw now opens to 30° over 2 seconds, pauses briefly, then closes over 2 seconds when no audio is playing
+  - Animation properly respects audio playback state and interrupts when audio starts
+
+### Technical Details
+- Breathing check was present in original implementation (commit e5723b6) but was removed during loop refactoring (commit afa0868)
+- Restored check ensures `lastJawMovementTime` is properly tracked and breathing only occurs when `!audioPlayer->isAudioPlaying()`
+- Matches TwoSkulls reference implementation behavior
+
 ## [2025-01-27] - Servo Initialization Refinement and LED System Updates
 
 ### Added

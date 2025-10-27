@@ -15,7 +15,7 @@ NOTE: This file is for the user to write notes to the AI for it to investigate/r
 [x] LED working
 [x] SD card working
 [x] Servo working
-[ ] Servo breathing animation working
+[x] Servo breathing animation working
 [x] Hooking up to Bluetooth speaker and playing audio
 [ ] Servo syncing to audio properly within min/max range
 [ ] SuperMini Matter controller up and running
