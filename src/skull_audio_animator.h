@@ -22,6 +22,7 @@ class SkullAudioAnimator
 {
 public:
     // Constructor: initializes the animator with necessary controllers and parameters
+    // isPrimary: true for primary/coordinator animatronic, false for secondary/tertiary/etc.
     SkullAudioAnimator(bool isPrimary, ServoController &servoController, LightController &lightController,
                        std::vector<ParsedSkit> &skits, SDCardManager &sdCardManager, int servoMinDegrees, int servoMaxDegrees);
 

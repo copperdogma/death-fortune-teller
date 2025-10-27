@@ -4,8 +4,6 @@ NOTE: This file is for the user to write notes to the AI for it to investigate/r
 
 ## NOTES
 
-- remove the primary/secondary support seeing as this project is only one skull
-
 - We need to remove the TwoSkulls folder once we have everything we need from there. It was just our working baseline, but we're free to rewrite 100% of it. Same with the "proof-of-concept-modules" folder.
 
 - do we NEED to be arduino compatible? why?
@@ -17,7 +15,7 @@ NOTE: This file is for the user to write notes to the AI for it to investigate/r
 [x] Servo working
 [x] Servo breathing animation working
 [x] Hooking up to Bluetooth speaker and playing audio
-[ ] Servo syncing to audio properly within min/max range
+[ ] Servo syncing to audio properly within min/max range - I THINK IT IS? Need to see when it's assembled.
 [ ] SuperMini Matter controller up and running
 [ ] UART comms working
 [ ] Thermal printer working

@@ -60,7 +60,6 @@ static constexpr const char *BT_TAG = "Bluetooth";
 static constexpr const char *FLOW_TAG = "FortuneFlow";
 
 SDCardContent sdCardContent;
-bool isPrimary = true;
 String initializationAudioPath;
 bool initializationQueued = false;
 bool initializationPlayed = false;
@@ -204,36 +203,8 @@ void setup() {
         servoController.initialize(SERVO_PIN, 0, 80, SAFE_MIN_US, SAFE_MAX_US);
     }
 
-    String role = config.getRole();
-    if (role.length() == 0 || role.equalsIgnoreCase("primary")) {
-        isPrimary = true;
-        LOG_INFO(STATE_TAG, "Role configured as PRIMARY");
-    } else if (role.equalsIgnoreCase("secondary")) {
-        isPrimary = false;
-        LOG_INFO(STATE_TAG, "Role configured as SECONDARY");
-    } else {
-        LOG_WARN(STATE_TAG, "⚠️ Unknown role '%s'. Defaulting to PRIMARY.", role.c_str());
-        isPrimary = true;
-    }
-
-    // KILL THIS:
-    // initializationAudioPath = isPrimary ? sdCardContent.primaryInitAudio : sdCardContent.secondaryInitAudio;
-    // if (initializationAudioPath.length() == 0 && sdCardContent.primaryInitAudio.length() > 0) {
-    //     initializationAudioPath = sdCardContent.primaryInitAudio;
-    // }
-    // if (initializationAudioPath.length() == 0) {
-    //     initializationAudioPath = "/audio/Initialized - Primary.wav";
-    //     LOG_INFO(AUDIO_TAG, "🎵 Initialization audio fallback: /audio/Initialized - Primary.wav");
-    // } else {
-    //     LOG_INFO(AUDIO_TAG, "🎵 Initialization audio discovered: %s", initializationAudioPath.c_str());
-    // }
-
     initializationAudioPath = "/audio/initialized.wav";
-    if (initializationAudioPath.length() == 0) {
-        LOG_INFO(AUDIO_TAG, "🎵 Initialization audio missing: /audio/initialized.wav");
-    } else {
-        LOG_INFO(AUDIO_TAG, "🎵 Initialization audio discovered: %s", initializationAudioPath.c_str());
-    }
+    LOG_INFO(AUDIO_TAG, "🎵 Initialization audio: %s", initializationAudioPath.c_str());
 
     audioPlayer = new AudioPlayer(*sdCardManager);
     audioPlayer->setPlaybackStartCallback([](const String &filePath) {
@@ -282,6 +253,8 @@ void setup() {
 
     const int servoMinDegrees = 0;
     const int servoMaxDegrees = 80;
+    // This skull is always the primary/coordinator animatronic
+    const bool isPrimary = true;
     skullAudioAnimator = new SkullAudioAnimator(isPrimary, servoController, lightController, sdCardContent.skits, *sdCardManager,
                                                 servoMinDegrees, servoMaxDegrees);
     skullAudioAnimator->setSpeakingStateCallback([](bool isSpeaking) {
@@ -583,10 +556,6 @@ void printSDCardInfo() {
     Serial.println("\n=== SD CARD CONTENT ===");
     Serial.print("Skits loaded:     "); Serial.println(sdCardContent.skits.size());
     Serial.print("Audio files:      "); Serial.println(sdCardContent.audioFiles.size());
-    Serial.print("Primary init:     "); Serial.println(sdCardContent.primaryInitAudio.length() > 0 ? sdCardContent.primaryInitAudio : "[NOT SET]");
-    Serial.print("Secondary init:   "); Serial.println(sdCardContent.secondaryInitAudio.length() > 0 ? sdCardContent.secondaryInitAudio : "[NOT SET]");
-    Serial.print("Primary MAC:      "); Serial.println(sdCardContent.primaryMacAddress.length() > 0 ? sdCardContent.primaryMacAddress : "[NOT SET]");
-    Serial.print("Secondary MAC:    "); Serial.println(sdCardContent.secondaryMacAddress.length() > 0 ? sdCardContent.secondaryMacAddress : "[NOT SET]");
     
     if (sdCardContent.skits.size() > 0) {
         Serial.println("\nSkits:");

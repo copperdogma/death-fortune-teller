@@ -1,6 +1,6 @@
 # Validate Work Against Requirements
 
-Thoroughly analyze what was done and how it compares to the original instructions using git diff and file analysis.
+Thoroughly analyze what was done and how it compares to the original instructions using git diff and file analysis. Report the final results back to the user in chat (not a file).
 
 ## Analysis Process
 

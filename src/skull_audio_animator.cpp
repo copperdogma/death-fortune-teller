@@ -113,7 +113,7 @@ void SkullAudioAnimator::updateSkit()
 
         LOG_INFO(TAG, "Playing new skit at %lu ms: %s", m_currentPlaybackTime, m_currentSkit.audioFile.c_str());
 
-        // Filter skit lines for the current skull (primary or secondary)
+        // Filter skit lines for the current animatronic (A=primary, B=secondary, etc.)
         std::vector<ParsedSkitLine> lines;
         for (const auto &line : m_currentSkit.lines)
         {
@@ -122,8 +122,8 @@ void SkullAudioAnimator::updateSkit()
                 lines.push_back(line);
             }
         }
-        LOG_INFO(TAG, "Parsed skit '%s' with %d lines (%d applicable)",
-                 m_currentSkit.audioFile.c_str(), m_currentSkit.lines.size(), lines.size());
+        LOG_INFO(TAG, "Parsed skit '%s' with %d lines (%d applicable for %s)",
+                 m_currentSkit.audioFile.c_str(), m_currentSkit.lines.size(), lines.size(), m_isPrimary ? "primary" : "secondary");
         m_currentSkit.lines = lines;
     }
 

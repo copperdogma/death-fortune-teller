@@ -2,7 +2,6 @@
 # Copy this file to your SD card as /config/config.txt
 
 # Basic settings
-role=primary
 speaker_name=JBL Flip 5
 speaker_volume=100
 

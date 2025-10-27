@@ -9,10 +9,6 @@
 struct SDCardContent {
     std::vector<ParsedSkit> skits;
     std::vector<String> audioFiles;
-    String primaryInitAudio;
-    String secondaryInitAudio;
-    String primaryMacAddress;
-    String secondaryMacAddress;
 };
 
 class SDCardManager {

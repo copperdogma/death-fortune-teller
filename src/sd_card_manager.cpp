@@ -17,19 +17,6 @@ bool SDCardManager::begin() {
 SDCardContent SDCardManager::loadContent() {
     SDCardContent content;
 
-    // Check for initialization files
-    if (fileExists("/audio/Initialized - Primary.wav")) {
-        content.primaryInitAudio = "/audio/Initialized - Primary.wav";
-    }
-    if (fileExists("/audio/Initialized - Secondary.wav")) {
-        content.secondaryInitAudio = "/audio/Initialized - Secondary.wav";
-    }
-
-    LOG_INFO(TAG, "Required file '/audio/Initialized - Primary.wav' %s",
-             fileExists("/audio/Initialized - Primary.wav") ? "found" : "missing");
-    LOG_INFO(TAG, "Required file '/audio/Initialized - Secondary.wav' %s",
-             fileExists("/audio/Initialized - Secondary.wav") ? "found" : "missing");
-
     processSkitFiles(content);
 
     return content;

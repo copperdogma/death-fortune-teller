@@ -12,8 +12,6 @@ public:
     bool loadConfig();
     String getBluetoothSpeakerName() const;
     String getRole() const;
-    String getPrimaryMacAddress() const;
-    String getSecondaryMacAddress() const;
     String getValue(const String& key, const String& defaultValue = "") const;
     int getSpeakerVolume() const { return speakerVolume; }
     void printConfig() const;

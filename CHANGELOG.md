@@ -1,5 +1,34 @@
 # Changelog
 
+## [2025-01-23] - Refactor Primary/Secondary Skull Support
+
+### Changed
+- **Removed Config-Based Role Selection**: Eliminated primary/secondary role configuration from config.txt
+  - Removed `role=primary` from configuration file
+  - Removed role checking logic from main.cpp (37 lines removed)
+  - This skull is now hard-coded as the primary/coordinator animatronic
+
+### Removed
+- **Primary/Secondary SD Card Fields**: Removed unused initialization audio and MAC address fields
+  - Removed `primaryInitAudio`, `secondaryInitAudio` from SDCardContent struct
+  - Removed `primaryMacAddress`, `secondaryMacAddress` from SDCardContent struct
+  - Removed SD card checking logic for Primary/Secondary initialization files
+  - Removed `getPrimaryMacAddress()` and `getSecondaryMacAddress()` from ConfigManager
+
+### Technical Details
+- SkullAudioAnimator maintains primary/secondary support for future extensibility
+  - Animator class still accepts `isPrimary` parameter for multi-animatronic support
+  - Speaker filtering (A=primary, B=secondary) preserved for future secondary devices
+  - Main application hard-codes `isPrimary = true` since this ESP32 is always the coordinator
+- Simplified initialization audio path logic
+- Cleaned up debug output in `printSDCardInfo()`
+- Net reduction: -61 lines of code, improved maintainability
+
+### Future Extensibility
+- Architecture ready for secondary animatronics (e.g., crow companion)
+- SkullAudioAnimator can be reused on secondary devices with `isPrimary = false`
+- Primary ESP32 coordinates, secondary devices receive commands via UART/Matter
+
 ## [2025-01-27] - Restore Breathing Animation Idle Cycle
 
 ### Fixed
