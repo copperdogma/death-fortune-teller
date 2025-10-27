@@ -1,5 +1,18 @@
 # Changelog
 
+## [2025-10-27] - Matter UART Diagnostics & Pin Alignment
+
+### Added
+- Expanded `UARTCommand` enum and opcode mapping to cover all canonical Matter trigger and state-forcing commands with readable logging helpers.
+- Detailed UART frame diagnostics (CRC, length, hex sampling) to surface malformed transmissions during hardware bring-up.
+
+### Changed
+- Initialized and polled the Matter UART controller in the main loop so decoded commands reach the existing trigger handlers.
+- Updated hardware documentation to reflect the actual ESP32-WROVER pin availability (TX on GPIO21, RX reassigned to GPIO22) and refreshed the story build log with the current checklists.
+
+### Verified
+- Confirmed all Matter triggers sent from the Home app reach the WROVER and are logged, while servo control remains stable with the new UART routing (printer pending hookup).
+
 ## [2025-01-23] - Refactor Primary/Secondary Skull Support
 
 ### Changed

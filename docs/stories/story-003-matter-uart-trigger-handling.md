@@ -29,17 +29,18 @@ The Matter controller (https://github.com/copperdogma/death-matter-controller) d
 - All 12 command codes map correctly to Death state machine states
 - Busy policy enforces dropping commands while any skit or snap/print phase is active, with 2 s debounce for duplicates
 - Both trigger commands (FAR/NEAR) and direct state forcing commands are supported
+- Every UART command received from the Matter controller is printed to the serial console for diagnostics
 - Commands translate into state machine transitions exactly as defined in story-003a
 - [ ] User must sign off on functionality before story can be marked complete
 
 ## Tasks
-- [ ] **Update UART Command Enum**: Expand `UARTCommand` enum in `src/uart_controller.h` to include all 12 states (currently only has FAR_MOTION_DETECTED, NEAR_MOTION_DETECTED, SET_MODE, PING)
-- [ ] **Update Command Code Mapping**: Update `commandFromByte()` in `src/uart_controller.cpp` to map all 12 command codes (currently only maps 0x05, 0x06, 0x02, 0x04)
-- [ ] **Add State Forcing Support**: Support direct state forcing (commands 0x03-0x0C) in addition to trigger commands (0x01-0x02)
-- [ ] **Wire UART Processing**: Ensure `handleUARTCommand()` is called from main loop (currently `uartController->update()` is called but commands aren't processed)
-- [ ] **Implement Frame Parsing**: Verify frame-based protocol parsing (0xA5 start byte, CRC-8 validation) handles all command types
-- [ ] **Add Command Validation**: Validate that received command codes match Matter controller's canonical values
-- [ ] **Add Serial Diagnostics**: Serial console logging for received commands and rejected triggers
+ - [x] **Update UART Command Enum**: Expand `UARTCommand` enum in `src/uart_controller.h` to include all 12 states (currently only has FAR_MOTION_DETECTED, NEAR_MOTION_DETECTED, SET_MODE, PING)
+ - [x] **Update Command Code Mapping**: Update `commandFromByte()` in `src/uart_controller.cpp` to map all 12 command codes (currently only maps 0x05, 0x06, 0x02, 0x04)
+ - [ ] **Add State Forcing Support**: Support direct state forcing (commands 0x03-0x0C) in addition to trigger commands (0x01-0x02)
+ - [x] **Wire UART Processing**: Ensure `handleUARTCommand()` is called from main loop (currently `uartController->update()` is called but commands aren't processed)
+ - [ ] **Implement Frame Parsing**: Verify frame-based protocol parsing (0xA5 start byte, CRC-8 validation) handles all command types
+ - [x] **Add Command Validation**: Validate that received command codes match Matter controller's canonical values
+ - [x] **Add Serial Diagnostics**: Serial console logging for received commands and rejected triggers
 
 ## Existing Code to Update
 
@@ -59,3 +60,39 @@ The Matter controller (https://github.com/copperdogma/death-matter-controller) d
 - Coordinate UART pin assignments with thermal printer to avoid conflicts (currently TX=21, RX=20)
 - Ensure logging verbosity is safe for production once validation completes
 - Busy policy must handle both trigger commands and state forcing commands appropriately
+
+---
+
+## Build Log
+
+### 2025-10-27 — Initial assessment
+- `UARTController` exists but only exposes four commands (`SET_MODE`, `FAR_MOTION_DETECTED`, `NEAR_MOTION_DETECTED`, `PING`) and hard-codes non-canonical byte values (`src/uart_controller.h`), so the Matter controller’s 0x01–0x0C command map is not represented.
+- `commandFromByte()` handles only the same four codes (0x02/0x04/0x05/0x06) and defaults everything else to `NONE`, so state forcing commands and other triggers are silently discarded (`src/uart_controller.cpp`).
+- The main loop never calls `uartController->update()` or routes decoded commands into `handleUARTCommand`, so incoming UART frames are currently ignored (`src/main.cpp`).
+- `handleUARTCommand` still assumes the two-trigger model and the `DeathState` enum only defines four high-level states, so the Matter-aligned 12-state workflow from story-003a is not implemented (`src/main.cpp`).
+- Busy/debounce logic only guards the trigger path (`IDLE` + 2 s cooldown) and does not cover the broader busy policy required once state forcing is supported.
+
+### 2025-10-27 — UART command scaffolding
+- Canonical Matter opcodes (0x01–0x0C) are now represented in `UARTCommand`, with helpers for human-readable names and legacy slots preserved for diagnostics (`src/uart_controller.h`).
+- `commandFromByte()` maps the new opcode set, logs each received frame to the serial console, and flags unknown values; UART bytes are now read with explicit `Serial1.available()` bounds (`src/uart_controller.cpp`).
+- The setup sequence initializes the UART peripheral, and the main loop polls `uartController->update()`, routing decoded commands through `handleUARTCommand` (`src/main.cpp`).
+- `handleUARTCommand` now logs the command name, keeps the legacy FAR/NEAR trigger handling, and rejects other commands with warnings pending the full 12-state implementation (`src/main.cpp`).
+
+### 2025-10-27 — UART debugging instrumentation
+- Added verbose diagnostics to log raw UART reads, CRC failures, incomplete frames, and missing start bytes so we can correlate Matter controller transmissions with what the skull receives (`src/uart_controller.cpp`).
+- Hex sampling of the first few bytes now prints whenever a buffer fails to parse, helping confirm wire activity and frame format during bench tests (`src/uart_controller.cpp`).
+
+### 2025-10-27 — Pin alignment fix
+- Updated the firmware and hardware docs to use ESP32-WROVER `GPIO21` (TX) and `GPIO22` (RX) for the Matter UART because this dev board does not expose `GPIO20`; the C3 keeps its canonical `GPIO20/21` pair (`src/uart_controller.h`, `docs/hardware.md`).
+
+### 2025-10-27 — Matter trigger smoke test
+- Verified that all Matter controller triggers issued from the Home app propagate through the C3 and are logged on the WROVER’s serial console, confirming the UART link and diagnostics are working end-to-end.
+- Confirmed the servo subsystem still operates normally with the new UART routing; thermal printer remains untested until it is connected.
+
+#### Work Checklist
+- [x] Extend `UARTCommand` (and related constants) to cover all 12 canonical Matter commands with correct opcode values.
+- [x] Expand `commandFromByte()` and frame parsing so every canonical command produces the correct enum, including validation/error logging for unknown values.
+- [x] Integrate `UARTController::update()` into the main loop and dispatch decoded commands through `handleUARTCommand`.
+- [ ] Update `handleUARTCommand` and the state machine to mirror the 12-state flow defined in story-003a, including trigger vs. direct-state handling.
+- [ ] Implement the required busy/duplicate policy (2 s debounce, drop while active skits/print) once the full state machine is in place.
+- [ ] Add serial diagnostics around received/rejected commands to aid Matter link debugging.

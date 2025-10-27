@@ -246,7 +246,11 @@ void setup() {
         LOG_WARN(BT_TAG, "Bluetooth disabled via config (bluetooth_enabled=false)");
     }
 #endif
+
     uartController = new UARTController();
+    if (uartController) {
+        uartController->begin();
+    }
     thermalPrinter = new ThermalPrinter(PRINTER_TX_PIN, PRINTER_RX_PIN);
     fingerSensor = new FingerSensor(CAP_SENSE_PIN);
     fortuneGenerator = new FortuneGenerator();
@@ -400,6 +404,15 @@ void loop() {
     if (bluetoothController) {
         bluetoothController->update();
     }
+
+    if (uartController) {
+        uartController->update();
+        UARTCommand lastCommand = uartController->getLastCommand();
+        if (lastCommand != UARTCommand::NONE) {
+            handleUARTCommand(lastCommand);
+            uartController->clearLastCommand();
+        }
+    }
     
     // Check if it's time to move the jaw for breathing
     unsigned long currentTime = millis();
@@ -423,6 +436,7 @@ void loop() {
 }
 
 void handleUARTCommand(UARTCommand cmd) {
+    LOG_INFO(STATE_TAG, "Handling UART command: %s", UARTController::commandToString(cmd));
     unsigned long currentTime = millis();
     if (currentState != DeathState::IDLE) {
         LOG_WARN(STATE_TAG, "Ignoring command - system busy");
@@ -431,17 +445,23 @@ void handleUARTCommand(UARTCommand cmd) {
     if (currentTime - lastTriggerTime < TRIGGER_DEBOUNCE_MS) {
         return;
     }
+    bool handled = false;
     switch (cmd) {
-        case UARTCommand::FAR_MOTION_DETECTED:
+        case UARTCommand::FAR_MOTION_TRIGGER:
             startWelcomeSequence();
+            handled = true;
             break;
-        case UARTCommand::NEAR_MOTION_DETECTED:
+        case UARTCommand::NEAR_MOTION_TRIGGER:
             startFortuneFlow();
+            handled = true;
             break;
         default:
+            LOG_WARN(STATE_TAG, "Command handling not implemented for: %s", UARTController::commandToString(cmd));
             break;
     }
-    lastTriggerTime = currentTime;
+    if (handled) {
+        lastTriggerTime = currentTime;
+    }
 }
 
 void startWelcomeSequence() {

@@ -82,8 +82,8 @@ This document catalogs the bill of materials and pin assignments for the Death F
 - **GPIO 19**: ESP32 RX ← Printer TXD ⚠️ **POTENTIAL CONFLICT**
 
 ### ESP32-C3 SuperMini (Matter Node)
-- **GPIO 20**: UART RX (from ESP32-WROVER TX)
-- **GPIO 21**: UART TX (to ESP32-WROVER RX)
+- **GPIO 20**: UART RX → connect to ESP32-WROVER TX (IO21)
+- **GPIO 21**: UART TX → connect to ESP32-WROVER RX (IO20)
 - **GPIO 8**: Built-in LED (inverted logic)
 - **GPIO 9**: BOOT button (factory reset)
 
@@ -175,7 +175,7 @@ The following pins have multiple conflicting assignments that need resolution:
 **Important GPIO Notes**:
 - GPIO 34-39 are input-only pins
 - GPIO 0, 2, 12, 15 are strapping pins (affect boot mode)
-- ESP32 does NOT have GPIO 20, 21, 24, 28-31 (these numbers are skipped)
+- The FREENOVE ESP32-WROVER does **not** break out GPIO20. Only GPIO21 from UART1 is exposed, so the Matter UART uses GPIO21 for TX and reassigns the RX line to another free pin (GPIO22).
 
 ## ESP32-C3 SuperMini Pinout Reference
 
@@ -211,7 +211,7 @@ The following pins have multiple conflicting assignments that need resolution:
 1. **LEDs**: Connect eye LED to GPIO 32 and mouth LED to GPIO 33 with 100Ω current limiting resistors
 2. **Servo**: Connect control wire to GPIO 15, power to 5V rail, ground to common ground
 3. **SD Card**: Connect SPI pins as specified, power to 5V
-4. **UART**: Connect RX/TX pins between ESP32-WROVER and ESP32-C3 SuperMini
+4. **UART**: Cross-connect ESP32-WROVER TX1 (GPIO21 — silkscreened "21") → ESP32-C3 RX (GPIO20), and ESP32-WROVER RX line on GPIO22 (board silkscreen "22") ← ESP32-C3 TX (GPIO21); keep grounds common. Do **not** use the WROVER pins labelled `TX`/`RX` (GPIO1/GPIO3) because they belong to the USB serial console.
 5. **Thermal Printer**: Connect UART pins to ESP32-WROVER
 6. **Touch Sensor**: Connect electrode to GPIO 2 or GPIO 4 (choose one)
 
@@ -232,8 +232,8 @@ The ESP32-WROVER has **3 hardware UART interfaces** (UART0, UART1, UART2), allow
 ```cpp
 // UART2: ESP32-C3 SuperMini (Matter Controller)
 #define MATTER_UART_NUM     UART_NUM_2
-#define MATTER_TX_PIN       17  // GPIO17 -> C3 GPIO20
-#define MATTER_RX_PIN       16  // GPIO16 <- C3 GPIO21
+#define MATTER_TX_PIN       21  // GPIO21 (board silkscreen “21”) -> C3 GPIO20 (RX)
+#define MATTER_RX_PIN       22  // GPIO22 (board silkscreen “22”) <- C3 GPIO21 (TX)
 #define MATTER_BAUD_RATE    115200
 
 // UART1: Thermal Printer  
@@ -270,8 +270,8 @@ ESP32-WROVER (FREENOVE) Connections:
 ┌─────────────────────────┐
 │ ESP32-WROVER            │
 │                         │
-│ GPIO17 (Pin 21) ────────┼───→ ESP32-C3 GPIO20 (RX)
-│ GPIO16 (Pin 20) ←───────┼─── ESP32-C3 GPIO21 (TX)
+│ GPIO21 (Pin 25, silkscreen "21") ──┼──→ ESP32-C3 GPIO20 (RX)
+│ GPIO22 (Pin 26, silkscreen "22") ←──┼── ESP32-C3 GPIO21 (TX)
 │                         │
 │ GPIO4 (Pin 19) ─────────┼───→ Thermal Printer RXD
 │ GPIO5 (Pin 22) ←────────┼─── Thermal Printer TXD
