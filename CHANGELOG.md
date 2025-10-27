@@ -7,6 +7,10 @@
 - **Overloaded Servo Initialization**: New `initialize()` method accepts microsecond parameters directly for config-driven initialization
 - **Sequential LED Blinking**: New `blinkLights()` method for sequential eye→mouth LED blinking pattern
 - **Mouth LED Blinking**: New `blinkMouth()` method for mouth LED-specific blinking
+- **Servo Tester Utility**: Added `ServoTester` class for finding servo safe limits with microsecond precision
+  - Provides serial commands to test servo ranges and find mechanical limits
+  - Useful for calibrating servo min/max values before configuring system
+  - Includes comprehensive documentation in header file
 
 ### Fixed
 - **Double Servo Initialization**: Eliminated annoying double initialization sweep on startup
