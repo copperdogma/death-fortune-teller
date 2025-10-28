@@ -7,8 +7,8 @@
 #define PWM_FREQUENCY 5000  // PWM frequency in Hz
 #define PWM_RESOLUTION 8    // PWM resolution in bits
 #define PWM_MAX 255         // Maximum PWM value (2^8 - 1)
-#define PWM_CHANNEL_EYE 0   // PWM channel for eye LED
-#define PWM_CHANNEL_MOUTH 1 // PWM channel for mouth LED
+#define PWM_CHANNEL_EYE 6   // PWM channel for eye LED (moved high to avoid servo collisions)
+#define PWM_CHANNEL_MOUTH 7 // PWM channel for mouth LED (moved high to avoid servo collisions)
 
 class LightController
 {

@@ -18,7 +18,7 @@ NOTE: This file is for the user to write notes to the AI for it to investigate/r
 [x] Servo breathing animation working
 [x] Hooking up to Bluetooth speaker and playing audio
 [ ] Servo syncing to audio properly within min/max range - I THINK IT IS? Need to see when it's assembled.
-[ ] USE THE ONBOARD BLOODY SD CARD READER instead of the one I painstakingly hooked up externally;)
+[x] USE THE ONBOARD BLOODY SD CARD READER instead of the one I painstakingly hooked up externally;)
 [x] SuperMini Matter controller up and running
 [x] UART comms working
 [ ] Thermal printer working
