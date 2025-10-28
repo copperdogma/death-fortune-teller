@@ -1,5 +1,6 @@
 #include "config_manager.h"
 #include "logging_manager.h"
+#include "SD_MMC.h"
 
 static constexpr const char* TAG = "ConfigManager";
 
@@ -11,7 +12,7 @@ ConfigManager &ConfigManager::getInstance()
 
 bool ConfigManager::loadConfig()
 {
-    File configFile = SD.open("/config.txt", FILE_READ);
+    File configFile = SD_MMC.open("/config.txt", FILE_READ);
     if (!configFile)
     {
         LOG_ERROR(TAG, "Failed to open config file");

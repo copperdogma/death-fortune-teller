@@ -29,7 +29,7 @@ This document catalogs the bill of materials and pin assignments for the Death F
 
 ### Audio System
 - **Bluetooth Speaker**: Hidden speaker for A2DP audio output
-- **SD Card Module**: FZ0829-micro-sd-card-module for audio storage
+- **MicroSD Storage**: Built-in ESP32-WROVER slot (SDMMC interface, underside of board)
 - **SD Card**: MicroSD card with audio files and configuration
 
 ### Visual System
@@ -60,8 +60,8 @@ This document catalogs the bill of materials and pin assignments for the Death F
 At boot the firmware scans `/audio`, prints the directory tree, and warns if any required folder is empty. Hidden files such as macOS `._foo.wav` entries are ignored automatically.
 
 ### Power System
-- **5V Regulator**: For servo motor, thermal printer, and SD card module
-- **3.3V Regulator**: For ESP32 and sensors
+- **5V Regulator**: For servo motor and thermal printer
+- **3.3V Regulator**: For ESP32, SD card (built-in slot), and sensors
 - **Bulk Capacitor**: 1000-2200 µF near thermal printer
 - **Power Connectors**: Appropriate connectors for power distribution
 
@@ -72,13 +72,14 @@ At boot the firmware scans `/audio`, prints the directory tree, and warns if any
 - **GPIO 33**: Mouth LED (PWM Channel 1)
 
 ### Servo Control
-- **GPIO 15**: Servo control pin (PWM for jaw movement)
+- **GPIO 23**: Servo control pin (PWM for jaw movement, relocated to avoid SD CMD line)
 
-### SD Card Interface (SPI)
-- **GPIO 5**: SD Card CS (Chip Select)
-- **GPIO 18**: SD Card SCK (Serial Clock) ⚠️ **POTENTIAL CONFLICT**
-- **GPIO 23**: SD Card MOSI (Master Out Slave In)
-- **GPIO 19**: SD Card MISO (Master In Slave Out) ⚠️ **POTENTIAL CONFLICT**
+### SD Card Interface (SDMMC)
+- **Built-in slot**: Uses ESP32 SDMMC peripheral routed directly on the FREENOVE board (no external wiring)
+- **Mount point**: `/sdcard` via `SD_MMC.begin("/sdcard", true, false, SDMMC_FREQ_20M)` (forced 1-bit mode @ 20 MHz for stability)
+- **Note**: External SPI module is no longer used; cabling for GPIO 5/18/19/23 has been removed.
+- **Pin Mapping**: CLK=GPIO14, CMD=GPIO15, D0=GPIO2, D1=GPIO4, D2=GPIO12, D3=GPIO13 (internal pull-ups enabled in firmware)
+- **Conflict Warning**: GPIO15 (CMD) must remain unused by other peripherals; reassign any previous loads (e.g., servo control) to avoid SD timeouts.
 
 ### UART Communication (Initial Assignment)
 - **GPIO 16**: UART RX (from ESP32-C3) ⚠️ **POTENTIAL CONFLICT**
@@ -90,8 +91,8 @@ At boot the firmware scans `/audio`, prints the directory tree, and warns if any
 - **GPIO 2**: Touch sensor pin ⚠️ **POTENTIAL CONFLICT**
 
 ### Thermal Printer (Initial Assignment)
-- **GPIO 18**: ESP32 TX → Printer RXD ⚠️ **POTENTIAL CONFLICT**
-- **GPIO 19**: ESP32 RX ← Printer TXD ⚠️ **POTENTIAL CONFLICT**
+- **GPIO 18**: ESP32 TX → Printer RXD (now available after SD migration)
+- **GPIO 19**: ESP32 RX ← Printer TXD (now available after SD migration)
 
 ### ESP32-C3 SuperMini (Matter Node)
 - **GPIO 20**: UART RX → connect to ESP32-WROVER TX (IO21)
@@ -104,9 +105,8 @@ At boot the firmware scans `/audio`, prints the directory tree, and warns if any
 The following pins have multiple conflicting assignments that need resolution:
 
 1. **GPIO 2**: Mouth LED vs Touch Sensor (also connected to on-board LED on some ESP32 boards)
-2. **GPIO 18**: SD Card SCK vs Thermal Printer TX
-3. **GPIO 19**: SD Card MISO vs Thermal Printer RX
-4. **GPIO 16/17**: Currently assigned to Matter UART, but could conflict if multiple UART devices share pins
+2. **GPIO 16/17**: Currently assigned to Matter UART, but could conflict if multiple UART devices share pins
+3. **New availability**: GPIO 5, 18, 19, and 23 freed by SDMMC migration and ready for reassignment (thermal printer, LED clusters, etc.)
 
 **Resolution Strategy**: Use ESP32's multiple hardware UART controllers to eliminate conflicts (see Recommended Solution section).
 
@@ -221,8 +221,8 @@ The following pins have multiple conflicting assignments that need resolution:
 
 ### Signal Connections
 1. **LEDs**: Connect eye LED to GPIO 32 and mouth LED to GPIO 33 with 100Ω current limiting resistors
-2. **Servo**: Connect control wire to GPIO 15, power to 5V rail, ground to common ground
-3. **SD Card**: Connect SPI pins as specified, power to 5V
+2. **Servo**: Connect control wire to GPIO 23, power to 5V rail, ground to common ground
+3. **MicroSD**: Insert card into the ESP32-WROVER underside slot; no external wiring required. Ensure card is seated before power-on so SD_MMC mounts `/sdcard`.
 4. **UART**: Cross-connect ESP32-WROVER TX1 (GPIO21 — silkscreened "21") → ESP32-C3 RX (GPIO20), and ESP32-WROVER RX line on GPIO22 (board silkscreen "22") ← ESP32-C3 TX (GPIO21); keep grounds common. Do **not** use the WROVER pins labelled `TX`/`RX` (GPIO1/GPIO3) because they belong to the USB serial console.
 5. **Thermal Printer**: Connect UART pins to ESP32-WROVER
 6. **Touch Sensor**: Connect electrode to GPIO 2 or GPIO 4 (choose one)
@@ -248,64 +248,27 @@ The ESP32-WROVER has **3 hardware UART interfaces** (UART0, UART1, UART2), allow
 #define MATTER_RX_PIN       22  // GPIO22 (board silkscreen “22”) <- C3 GPIO21 (TX)
 #define MATTER_BAUD_RATE    115200
 
-// UART1: Thermal Printer  
-#define PRINTER_UART_NUM    UART_NUM_1
-#define PRINTER_TX_PIN      4   // GPIO4 -> Printer RXD
-#define PRINTER_RX_PIN      5   // GPIO5 <- Printer TXD  
-#define PRINTER_BAUD_RATE   9600
+```cpp
+// Pins highlighted in firmware (see src/main.cpp)
+constexpr int EYE_LED_PIN    = 32;
+constexpr int MOUTH_LED_PIN  = 33;
+constexpr int SERVO_PIN      = 23; // relocated off SD CMD
+constexpr int CAP_SENSE_PIN  = 4;
+constexpr int PRINTER_TX_PIN = 21;
+constexpr int PRINTER_RX_PIN = 20;
 
-// SPI: SD Card (Hardware VSPI)
-#define SD_CS_PIN           5   // GPIO5 - Chip Select
-#define SD_SCK_PIN          18  // GPIO18 - Serial Clock (VSPI default)
-#define SD_MOSI_PIN         23  // GPIO23 - Master Out Slave In (VSPI default)
-#define SD_MISO_PIN         19  // GPIO19 - Master In Slave Out (VSPI default)
-
-// LEDs
-#define EYE_LED_PIN         32  // GPIO32 - PWM Channel 0
-#define MOUTH_LED_PIN       33  // GPIO33 - PWM Channel 1
-
-// Servo
-#define SERVO_PIN           15  // GPIO15 - PWM for jaw movement
-
-// Sensors
-#define TOUCH_SENSOR_PIN    4   // GPIO4 - Capacitive touch (Touch0)
-#define FINGER_SENSOR_PIN   27  // GPIO27 - External capacitive sensor (Touch7)
-
-// Matter Trigger
-#define MATTER_TRIGGER_PIN  1   // GPIO1 - Interrupt-driven
+// SD_MMC slot wiring is internal to the ESP32-WROVER board:
+// CLK = GPIO14, CMD = GPIO15, D0 = GPIO2. Firmware enables 1-bit mode and pull-ups.
 ```
 
-#### Hardware Wiring Diagram
+#### Hardware Wiring Overview
 
-```
-ESP32-WROVER (FREENOVE) Connections:
-┌─────────────────────────┐
-│ ESP32-WROVER            │
-│                         │
-│ GPIO21 (Pin 25, silkscreen "21") ──┼──→ ESP32-C3 GPIO20 (RX)
-│ GPIO22 (Pin 26, silkscreen "22") ←──┼── ESP32-C3 GPIO21 (TX)
-│                         │
-│ GPIO4 (Pin 19) ─────────┼───→ Thermal Printer RXD
-│ GPIO5 (Pin 22) ←────────┼─── Thermal Printer TXD
-│                         │
-│ GPIO18 (Pin 23) ────────┼───→ SD Card SCK
-│ GPIO19 (Pin 24) ←───────┼─── SD Card MISO
-│ GPIO23 (Pin 27) ────────┼───→ SD Card MOSI
-│ GPIO5 (Pin 22) ─────────┼───→ SD Card CS
-│                         │
-│ GPIO32 (Pin 8) ─────────┼───→ Eye LED (via 100Ω)
-│ GPIO33 (Pin 9) ─────────┼───→ Mouth LED (via 100Ω)
-│                         │
-│ GPIO15 (Pin 16) ────────┼───→ Servo Control Signal
-│                         │
-│ GPIO4 (Pin 19) ─────────┼───→ Touch Electrode
-│ GPIO27 (Pin 12) ────────┼───→ External Cap Sensor
-│                         │
-│ 3.3V ───────────────────┼───→ ESP32 + Sensors
-│ 5V ─────────────────────┼───→ Servo + Printer + SD Card Power
-│ GND ────────────────────┼───→ Common Ground
-└─────────────────────────┘
-```
+- **ESP32-WROVER ↔ ESP32-C3**: GPIO21 ↔ GPIO20 (RX/TX crossover), GPIO22 ↔ GPIO21, common ground.
+- **Thermal Printer (future story)**: WROVER GPIO18/19 are now free for UART2 or other peripherals.
+- **Servo**: Control lead on GPIO23, 5V power from regulated rail, shared ground.
+- **MicroSD**: Insert card into the underside slot; no external wiring required. Ensure card is seated before boot so SD_MMC mounts `/sdcard`.
+- **LEDs / Sensors**: Eye LED GPIO32, mouth LED GPIO33 (each with 100 Ω resistor); capacitive plate on GPIO4; external sensor on GPIO27.
+- **Power**: 3.3 V rail for ESP32/sensors/SD slot, 5 V rail for servo & future printer, with bulk capacitance near high-current loads.
 
 #### Software Implementation Example
 
@@ -439,19 +402,19 @@ USB-C GND ───────────────────────�
 | Servo Motor (HS-125MG) | 1200mA stall | 5V |
 | Thermal Printer | 2000mA peak | 5V |
 | LEDs (2x) | 40mA total | 3.3V |
-| SD Card Module | 200mA peak | 5V |
-| **Total 5V Rail** | **≥3.1A required** | 5V |
-| **Total 3.3V Rail** | **≥500mA required** | 3.3V |
+| Built-in MicroSD (SDMMC) | 50mA peak | 3.3V |
+| **Total 5V Rail** | **≥3.3A required** | 5V |
+| **Total 3.3V Rail** | **≥550mA required** | 3.3V |
 
 ## Troubleshooting
 
 ### Common Issues and Solutions
 
 1. **SD Card Not Detected**
-   - Verify 5V power supply
-   - Check SPI connections (especially CS pin)
-   - Ensure SD card is formatted as FAT32
-   - Try lower SPI clock speed initially
+   - Confirm MicroSD card is fully seated in the built-in slot (underside of board)
+   - Ensure card is formatted as FAT32/exFAT and not write-protected
+   - Check boot logs for `SD_MMC` mount errors (4-bit vs 1-bit fallback)
+   - Power-cycle after swapping cards; the slot is not hot-swappable during playback
 
 2. **Servo Jittering (HS-125MG)**
    - Add bulk capacitor near servo power pins

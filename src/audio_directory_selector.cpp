@@ -3,7 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <numeric>
-#include <SD.h>
+#include "SD_MMC.h"
 
 static constexpr const char *TAG = "AudioDirSel";
 
@@ -121,7 +121,7 @@ AudioDirectorySelector::CategoryState *AudioDirectorySelector::findCategory(cons
 }
 
 void AudioDirectorySelector::refreshCategoryClips(CategoryState &state, const char *description) {
-    File dir = SD.open(state.directory.c_str());
+    File dir = SD_MMC.open(state.directory.c_str());
     if (!dir || !dir.isDirectory()) {
         LOG_WARN(TAG, "Directory missing or invalid: %s%s%s",
                  state.directory.c_str(),

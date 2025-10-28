@@ -2,6 +2,18 @@
 
 # Changelog
 
+## [2025-10-28] - Built-in SD Slot Migration
+
+### Changed
+- Swapped all firmware SD access from the external SPI module to the ESP32-WROVER’s built-in SD_MMC slot, enabling 1-bit mode with explicit pin binding and pull-ups for reliable mounting.
+- Relocated jaw servo control from GPIO15 (SD CMD) to GPIO23 to prevent SD bus contention and keep future peripherals on freed pins 5/18/19.
+
+### Fixed
+- Resolved recurring `sdmmc_host_wait_for_event` timeouts observed during initialization audio playback by eliminating shared usage of SD CMD.
+
+### Documentation
+- Updated hardware and construction guides to describe the onboard slot, new servo wiring, and current pin budget; marked Story 003b regression testing and GPIO verification as complete.
+
 ## [2025-10-28] - Fortune Flow Integration Polish
 
 ### Added

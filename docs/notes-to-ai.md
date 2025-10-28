@@ -4,6 +4,8 @@ NOTE: This file is for the user to write notes to the AI for it to investigate/r
 
 ## NOTES
 
+** TEST: add command to drive servo to max and another to min so we can be 100% sure it's not stalling at the limits.
+
 - We need to remove the TwoSkulls folder once we have everything we need from there. It was just our working baseline, but we're free to rewrite 100% of it. Same with the "proof-of-concept-modules" folder.
 
 - do we NEED to be arduino compatible? why? AI says no, but it might be a bit of a migration.

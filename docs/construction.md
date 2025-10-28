@@ -13,7 +13,7 @@
 
 ### Audio System
 - **Bluetooth Speaker**: Hidden speaker for A2DP audio output
-- **SD Card Module**: FZ0829-micro-sd-card-module for audio storage
+- **MicroSD Storage**: Built-in ESP32-WROVER slot (underside, SDMMC)
 - **SD Card**: MicroSD card with audio files and configuration
 
 ### Visual System
@@ -39,7 +39,7 @@
 
 ### Connectors
 - Male headers - for ESP32-WROVER and ESP32-C3 SuperMini
-- Female headers - for LEDs, capacitive sensor, SD card module, and thermal printer
+- Female headers - for LEDs, capacitive sensor, and thermal printer
 
 ### Skull + Enclosure
 - plastic skull with light-up eyes that you can take apart
@@ -74,7 +74,6 @@ Use two separate power supplies with **shared ground** to power the ESP32 and pe
 ```
 Freenove Breakout Board:
   ├─ ESP32-WROVER (powered via USB-C)
-  │  ├─ GPIO pins ────> SD Card SPI signals (MOSI, MISO, SCK, CS)
   │  └─ GND ────────────┐
   │                     │
   └─ GND terminal ──────┼───> COMMON GROUND
@@ -84,9 +83,6 @@ ESP32-C3 Expansion Board: │
   ├─ Pin 1 (5V) ←────── USB Power Bank 5V
   ├─ Pin 2 (GND) ───────┘ ────┐
   │                            │
-  ├─ Pin 1 (5V) ───────────────┼───> SD Card VCC
-  └─ Pin 2 (GND) ──────────────┼───> SD Card GND
-                               │
                                └───> Common Ground (tied to Freenove GND)
 ```
 
@@ -102,14 +98,14 @@ ESP32-C3 Expansion Board: │
    - Connect USB power bank to Pin 1 (5V) and Pin 2 (GND)
    - This board now functions as a 5V power distribution hub
 
-3. **SD Card Module:**
-   - VCC → ESP32-C3 expansion board Pin 1 (5V)
-   - GND → ESP32-C3 expansion board Pin 2 (GND)
-   - SPI signals → Freenove breakout board GPIO pins
+3. **MicroSD Card:**
+   - Insert card into the built-in slot on the underside of the Freenove board (label toward PCB)
+   - No external SPI wiring required — SDMMC traces are internal to the board
+   - Keep the card inserted before powering on; the firmware mounts `/sdcard` during boot
 
 4. **Common Ground Connection:**
    - Connect ESP32-C3 expansion board Pin 2 (GND) to Freenove breakout board GND terminal
-   - This is **critical** - both power sources must share the same ground reference for SPI communication to work
+   - This is **critical** - both power sources must share the same ground reference for digital peripherals (SDMMC, UART, etc.)
 
 #### Why This Works
 
@@ -122,7 +118,7 @@ ESP32-C3 Expansion Board: │
 
 - ✅ No USB-C back-feed issues
 - ✅ ESP32 programmable via USB-C
-- ✅ Peripherals get adequate 5V power (SD card needs 200mA+)
+- ✅ Peripherals get adequate 5V power (servo/printer draw remain isolated)
 - ✅ Uses existing hardware (no diodes or modifications needed)
 - ✅ Full functionality: programming, debugging, and operation all work
 

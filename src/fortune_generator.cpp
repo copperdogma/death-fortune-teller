@@ -1,6 +1,6 @@
 #include "fortune_generator.h"
 #include "logging_manager.h"
-#include <SD.h>
+#include "SD_MMC.h"
 #include <ArduinoJson.h>
 
 static constexpr const char* TAG = "FortuneGenerator";
@@ -9,7 +9,7 @@ FortuneGenerator::FortuneGenerator() : loaded(false) {
 }
 
 bool FortuneGenerator::loadFortunes(const String& filePath) {
-    File file = SD.open(filePath, FILE_READ);
+    File file = SD_MMC.open(filePath, FILE_READ);
     if (!file) {
         LOG_ERROR(TAG, "Failed to open fortune file: %s", filePath.c_str());
         return false;

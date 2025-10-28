@@ -22,7 +22,7 @@
 #include "skit_selector.h"
 #include "audio_directory_selector.h"
 #include <WiFi.h>
-#include <SD.h>
+#include "SD_MMC.h"
 #include "BluetoothA2DPSource.h"
 #include "esp_a2dp_api.h"
 #include "esp_attr.h"
@@ -32,7 +32,7 @@
 // Pin definitions
 const int EYE_LED_PIN = 32;    // GPIO pin for eye LED
 const int MOUTH_LED_PIN = 33;  // GPIO pin for mouth LED
-const int SERVO_PIN = 15;      // Servo control pin
+const int SERVO_PIN = 23;      // Servo control pin (moved off SD CMD line)
 const int CAP_SENSE_PIN = 4;   // Capacitive finger sensor pin
 const int PRINTER_TX_PIN = 21; // Thermal printer TX pin
 const int PRINTER_RX_PIN = 20; // Thermal printer RX pin
@@ -155,7 +155,7 @@ static constexpr const char *AUDIO_FORTUNE_TOLD_DIR = "/audio/fortune_told";
 static constexpr int SERVO_POSITION_MARGIN_DEGREES = 3;
 
 int countWavFilesInDirectory(const char *directory) {
-    File dir = SD.open(directory);
+    File dir = SD_MMC.open(directory);
     if (!dir) {
         return -1;
     }
@@ -253,7 +253,7 @@ void logAudioDirectoryTree(const char *path, int depth) {
         return; // prevent runaway recursion
     }
 
-    File dir = SD.open(path);
+    File dir = SD_MMC.open(path);
     if (!dir) {
         LOG_WARN(AUDIO_TAG, "%*s[missing] %s", depth * 2, "", path);
         return;
@@ -877,7 +877,7 @@ bool ensureFortuneGeneratorLoaded() {
             candidate = candidate.substring(0, candidate.length() - 1);
         }
 
-        File entry = SD.open(candidate.c_str());
+        File entry = SD_MMC.open(candidate.c_str());
         if (entry) {
             if (entry.isDirectory()) {
                 std::vector<String> files;

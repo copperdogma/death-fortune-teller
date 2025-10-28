@@ -1,16 +1,60 @@
 #include "sd_card_manager.h"
 #include "logging_manager.h"
+#include "SD_MMC.h"
+#include "sdmmc_cmd.h"
+#include <Arduino.h>
+#include <cstdint>
 
 static constexpr const char* TAG = "SDCard";
+static constexpr const char* SD_MOUNT_POINT = "/sdcard";
+static constexpr int SD_PIN_CLK = 14;
+static constexpr int SD_PIN_CMD = 15;
+static constexpr int SD_PIN_D0 = 2;
+static constexpr uint32_t SD_MOUNT_FREQUENCY = 20000000UL;
 
 SDCardManager::SDCardManager() {}
 
 bool SDCardManager::begin() {
-    if (!SD.begin()) {
-        LOG_ERROR(TAG, "Mount failed");
+    // Ensure internal pull-ups on the SDMMC data lines; some dev boards omit external resistors.
+    pinMode(SD_PIN_CMD, INPUT_PULLUP);
+    pinMode(SD_PIN_D0, INPUT_PULLUP);
+
+    // Explicitly bind the built-in SDMMC pins for the ESP32-WROVER slot.
+    SD_MMC.setPins(SD_PIN_CLK, SD_PIN_CMD, SD_PIN_D0);
+
+    // Use 1-bit mode (second arg = true) with a reduced clock to maximize compatibility.
+    if (!SD_MMC.begin(SD_MOUNT_POINT, true, false, SD_MOUNT_FREQUENCY)) {
+        LOG_ERROR(TAG, "SD_MMC mount failed (1-bit mode, %lu Hz). Check card seating and slot.",
+                  static_cast<unsigned long>(SD_MOUNT_FREQUENCY));
         return false;
     }
-    LOG_INFO(TAG, "Mounted successfully");
+
+    uint8_t cardType = SD_MMC.cardType();
+    if (cardType == CARD_NONE) {
+        LOG_ERROR(TAG, "No SD card detected after mount.");
+        return false;
+    }
+
+    const char* cardTypeStr = "UNKNOWN";
+    switch (cardType) {
+        case CARD_MMC:
+            cardTypeStr = "MMC";
+            break;
+        case CARD_SD:
+            cardTypeStr = "SDSC";
+            break;
+        case CARD_SDHC:
+            cardTypeStr = "SDHC/SDXC";
+            break;
+        default:
+            break;
+    }
+
+    uint64_t cardSizeMb = SD_MMC.cardSize() / (1024ULL * 1024ULL);
+    LOG_INFO(TAG, "Mounted successfully (%s, %llu MB card size, %lu Hz bus)",
+             cardTypeStr,
+             static_cast<unsigned long long>(cardSizeMb),
+             static_cast<unsigned long>(SD_MOUNT_FREQUENCY));
     return true;
 }
 
@@ -23,7 +67,7 @@ SDCardContent SDCardManager::loadContent() {
 }
 
 bool SDCardManager::processSkitFiles(SDCardContent& content) {
-    File root = SD.open("/audio");
+    File root = SD_MMC.open("/audio");
     if (!root || !root.isDirectory()) {
         LOG_ERROR(TAG, "Failed to open /audio directory");
         return false;
@@ -110,7 +154,7 @@ ParsedSkit SDCardManager::findSkitByName(const std::vector<ParsedSkit>& skits, c
 }
 
 bool SDCardManager::fileExists(const char* path) {
-    File file = SD.open(path);
+    File file = SD_MMC.open(path);
     if (!file || file.isDirectory()) {
         return false;
     }
@@ -119,7 +163,7 @@ bool SDCardManager::fileExists(const char* path) {
 }
 
 File SDCardManager::openFile(const char* path) {
-    return SD.open(path);
+    return SD_MMC.open(path);
 }
 
 String SDCardManager::readLine(File& file) {
