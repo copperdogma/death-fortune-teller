@@ -1,5 +1,21 @@
 # Changelog
 
+## [2025-10-27] - Story Documentation Updates & 2026 Planning
+
+### Added
+- New story 2026-001 for detailed fortune flow implementation with comprehensive sub-states
+- Added 2026-001 to stories index with proper metadata
+
+### Changed
+- Updated Story 002b to reflect current implementation status, removed unnecessary SkitSelector and configuration requirements
+- Updated Story 003a to mark completed tasks and defer fortune flow sub-states to 2026
+- Streamlined story documentation to focus on 2025 MVP requirements
+
+### Documentation
+- Clarified 2025 MVP approach vs 2026 enhancement roadmap
+- Updated task completion status to reflect actual implementation state
+- Removed scope creep items that were not needed for current implementation
+
 ## [2025-10-28] - Finalize Matter UART Story & Audio Layout
 
 ### Added

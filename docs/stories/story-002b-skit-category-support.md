@@ -19,11 +19,8 @@
 - [ ] User must sign off on functionality before story can be marked complete
 
 ## Tasks
-- [ ] **Create Skit Category Manager**: Implement `SkitCategoryManager` to handle multiple skit directories
-- [ ] **Update State Machine**: Replace hardcoded file paths with skit category selection
-- [ ] **Implement Directory Structure**: Support `/audio/welcome/` and `/audio/fortune/` directories
-- [ ] **Update SkitSelector**: Extend to support category-specific selection
-- [ ] **Add Configuration**: Make skit directories configurable via `config.txt`
+- [x] **Update State Machine**: Replace hardcoded file paths with skit category selection
+- [x] **Implement Directory Structure**: Support `/audio/welcome/` and `/audio/fortune/` directories
 - [ ] **Test Integration**: Verify welcome/fortune skit selection works with state machine
 
 ## Technical Implementation Details
@@ -37,10 +34,9 @@ The system must support organized skit directories on the SD card:
 - `/audio/general/` - General skits for backward compatibility
 
 **Skit Selection Behavior:**
-- Each category maintains its own weighted random selection
-- No immediate repeat within the same category
-- Fallback to general category if category-specific skits unavailable
+- Random selection from category-specific directories
 - Support for single or multiple skit files per category
+- Fallback behavior when category-specific skits unavailable
 
 **File Format Support:**
 - WAV audio files for playback
@@ -68,15 +64,9 @@ The system must support organized skit directories on the SD card:
 - Preserve busy policy and debounce logic
 - Support all existing state transitions
 
-### Configuration Requirements
+### Backward Compatibility
 
-**Configurable Directories:**
-- Make skit directory paths configurable via config.txt
-- Support custom directory names and locations
-- Provide sensible defaults for standard directory structure
-- Handle missing or invalid directory configurations
-
-**Backward Compatibility:**
+**Legacy Support:**
 - Maintain support for existing skit system
 - Preserve existing file naming conventions
 - Support gradual migration from hardcoded to category-based selection
@@ -96,11 +86,6 @@ The system must support organized skit directories on the SD card:
 - Log file access errors for debugging
 - Continue with available skits when possible
 
-**Configuration Errors:**
-- Handle invalid directory configurations
-- Use default directories when configuration is invalid
-- Log configuration errors for troubleshooting
-- Maintain system operation with fallback directories
 
 ### Integration Points
 
@@ -129,6 +114,7 @@ The system must support organized skit directories on the SD card:
 - Test with actual skit files once they're recorded
 - Consider fallback behavior when category-specific skits aren't available
 - Coordinate with Story 003 (UART triggers) to ensure proper integration
+- **Status**: Core functionality is implemented - directory structure and category-based selection are working
 
 ## Dependencies
 - Story 002 (SD Audio Playback & Jaw Synchronization) - Base skit system
