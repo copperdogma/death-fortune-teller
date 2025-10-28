@@ -1,5 +1,20 @@
 # Changelog
 
+# Changelog
+
+## [2025-10-28] - Fortune Flow Integration Polish
+
+### Added
+- Fortune loader now scans configured paths plus `/fortunes/` fallbacks, logging the selected JSON file and supporting future multiple fortune sets.
+- Serial fortune output helper prints the full generated text in readable chunks for easier debugging.
+
+### Changed
+- Thermal printer integration now logs a single timeout warning and runs on `Serial2`, keeping the Matter UART bus isolated.
+- `config.txt` default fortune path updated to `/fortunes/little_kid_fortunes.json` for fresh installs.
+
+### Documentation
+- Marked Story 003a as complete, deferred remaining printer polish to Story 005, and recorded current progress for that story in the index.
+
 ## [2025-10-28] - Weighted Skit Category Selector
 
 ### Added

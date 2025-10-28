@@ -48,7 +48,7 @@ bool FortuneGenerator::loadFortunes(const String& filePath) {
     
     // Validate all templates
     for (const auto& template_obj : templates) {
-        if (!validateTemplate(template_obj.template_text)) {
+        if (!validateTemplate(template_obj)) {
             LOG_ERROR(TAG, "Invalid template: %s", template_obj.template_text.c_str());
             return false;
         }
@@ -61,46 +61,65 @@ bool FortuneGenerator::loadFortunes(const String& filePath) {
 
 String FortuneGenerator::generateFortune() {
     if (!loaded || templates.empty()) {
+        LOG_WARN(TAG, "generateFortune called before templates loaded");
         return "The spirits are silent...";
     }
     
     // Select random template
     int templateIndex = random(0, templates.size());
-    String template_text = templates[templateIndex].template_text;
-    
-    // Find all tokens in the template
-    String result = template_text;
-    int startPos = 0;
-    
-    while (true) {
-        int tokenStart = result.indexOf("{{", startPos);
-        if (tokenStart == -1) break;
-        
-        int tokenEnd = result.indexOf("}}", tokenStart);
-        if (tokenEnd == -1) break;
-        
-        String token = result.substring(tokenStart + 2, tokenEnd);
-        String replacement = getRandomWord(token);
-        
-        result.replace("{{" + token + "}}", replacement);
-        startPos = tokenStart + replacement.length();
+    const FortuneTemplate &fortuneTemplate = templates[templateIndex];
+
+    if (fortuneTemplate.tokens.empty()) {
+        LOG_WARN(TAG, "Template has no tokens; returning literal text");
+        return fortuneTemplate.template_text;
     }
-    
-    return result;
+
+    std::map<String, String> replacements;
+    for (const auto &token : fortuneTemplate.tokens) {
+        String replacement = getRandomWord(token);
+        replacements[token] = replacement;
+    }
+
+    return replaceTokens(fortuneTemplate, replacements);
 }
 
 bool FortuneGenerator::isLoaded() {
     return loaded;
 }
 
-String FortuneGenerator::replaceTokens(const String& template_text, const std::map<String, String>& replacements) {
-    String result = template_text;
-    
-    for (const auto& pair : replacements) {
-        String token = "{{" + pair.first + "}}";
-        result.replace(token, pair.second);
+String FortuneGenerator::replaceTokens(const FortuneTemplate& fortuneTemplate, const std::map<String, String>& replacements) {
+    String result;
+    const String &templateText = fortuneTemplate.template_text;
+
+    int length = templateText.length();
+    int index = 0;
+    while (index < length) {
+        int tokenStart = templateText.indexOf("{{", index);
+        if (tokenStart == -1) {
+            result += templateText.substring(index);
+            break;
+        }
+
+        result += templateText.substring(index, tokenStart);
+        int tokenEnd = templateText.indexOf("}}", tokenStart + 2);
+        if (tokenEnd == -1) {
+            LOG_WARN(TAG, "Unterminated token in template: %s", templateText.c_str());
+            result += templateText.substring(tokenStart);
+            break;
+        }
+
+        String token = templateText.substring(tokenStart + 2, tokenEnd);
+        token.trim();
+        auto it = replacements.find(token);
+        if (it != replacements.end()) {
+            result += it->second;
+        } else {
+            LOG_WARN(TAG, "Missing replacement for token '%s'; leaving placeholder", token.c_str());
+            result += "{{" + token + "}}";
+        }
+        index = tokenEnd + 2;
     }
-    
+
     return result;
 }
 
@@ -109,29 +128,20 @@ String FortuneGenerator::getRandomWord(const String& category) {
         int index = random(0, wordlists[category].size());
         return wordlists[category][index];
     }
-    
+    LOG_WARN(TAG, "Wordlist missing or empty for token '%s'", category.c_str());
     return "mystery"; // Fallback word
 }
 
-bool FortuneGenerator::validateTemplate(const String& template_text) {
-    // Check that all tokens have corresponding wordlists
-    int startPos = 0;
-    
-    while (true) {
-        int tokenStart = template_text.indexOf("{{", startPos);
-        if (tokenStart == -1) break;
-        
-        int tokenEnd = template_text.indexOf("}}", tokenStart);
-        if (tokenEnd == -1) return false;
-        
-        String token = template_text.substring(tokenStart + 2, tokenEnd);
-        
+bool FortuneGenerator::validateTemplate(const FortuneTemplate& fortuneTemplate) {
+    if (fortuneTemplate.tokens.empty()) {
+        LOG_WARN(TAG, "Template has no tokens: %s", fortuneTemplate.template_text.c_str());
+    }
+
+    for (const auto &token : fortuneTemplate.tokens) {
         if (wordlists.find(token) == wordlists.end() || wordlists[token].empty()) {
             LOG_WARN(TAG, "Token '%s' has no wordlist or empty wordlist", token.c_str());
             return false;
         }
-        
-        startPos = tokenEnd + 2;
     }
     
     return true;
@@ -160,6 +170,34 @@ void FortuneGenerator::parseTemplates(JsonArray templatesArray) {
     for (JsonVariant template_var : templatesArray) {
         FortuneTemplate template_obj;
         template_obj.template_text = template_var.as<String>();
+        template_obj.tokens = extractTokens(template_obj.template_text);
         templates.push_back(template_obj);
     }
+}
+
+std::vector<String> FortuneGenerator::extractTokens(const String& templateText) {
+    std::vector<String> tokens;
+    int startPos = 0;
+    while (true) {
+        int tokenStart = templateText.indexOf("{{", startPos);
+        if (tokenStart == -1) break;
+        int tokenEnd = templateText.indexOf("}}", tokenStart + 2);
+        if (tokenEnd == -1) break;
+        String token = templateText.substring(tokenStart + 2, tokenEnd);
+        token.trim();
+        if (token.length() > 0) {
+            bool exists = false;
+            for (const auto &existing : tokens) {
+                if (existing == token) {
+                    exists = true;
+                    break;
+                }
+            }
+            if (!exists) {
+                tokens.push_back(token);
+            }
+        }
+        startPos = tokenEnd + 2;
+    }
+    return tokens;
 }

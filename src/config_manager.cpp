@@ -269,5 +269,5 @@ String ConfigManager::getPrinterLogo() const
 
 String ConfigManager::getFortunesJson() const
 {
-    return getValue("fortunes_json", "/printer/fortunes_littlekid.json");
+    return getValue("fortunes_json", "/fortunes/little_kid_fortunes.json");
 }

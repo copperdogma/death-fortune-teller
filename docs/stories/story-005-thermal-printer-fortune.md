@@ -1,6 +1,6 @@
 # Story: Thermal Printer Fortune Output
 
-**Status**: To Do
+**Status**: In Progress
 
 ---
 
@@ -17,10 +17,10 @@
 - [ ] User must sign off on functionality before story can be marked complete.
 
 ## Tasks
-- [ ] **Integrate Components**: Connect FortuneGenerator and ThermalPrinter to main.cpp
-- [ ] **Implement Snap Action**: Add fortune generation and printing to handleFortuneFlow()
+- [x] **Integrate Components**: Connect FortuneGenerator and ThermalPrinter to main.cpp
+- [x] **Implement Snap Action**: Add fortune generation and printing to handleFortuneFlow()
 - [ ] **Implement Bitmap Logo**: Add bitmap logo printing from PoC implementation
-- [ ] **Add Configuration**: Load fortune file path from config.txt
+- [x] **Add Configuration**: Load fortune file path from config.txt
 - [ ] **Test Integration**: Verify complete fortune flow with snap action
 - [ ] **Document Requirements**: SD card fortune file requirements and maintenance workflow
 
@@ -177,3 +177,8 @@
 - **Audio Timing**: Ensure skit is long enough to cover printing time (test during integration)
 - Monitor printer power draw; record any mitigation (caps, wiring) required for reliable output
 - Plan for future mode-specific fortune sets once JSON format stabilizes
+## Current Progress
+
+- Fortune generation now loads mad-libs templates from `/fortunes/little_kid_fortunes.json`, validates required wordlists, and outputs fully populated fortunes (see story-003a build log dated 2025-10-28).
+- Thermal printer is integrated with the state machine; fortunes print during `FORTUNE_FLOW` and the serial console echoes the complete text.
+- Remaining scope for this story focuses on richer printer handling (bitmap logo, diagnostics, broader testing) and documentation of the SD fortune workflow.

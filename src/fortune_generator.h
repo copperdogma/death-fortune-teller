@@ -8,7 +8,7 @@
 
 struct FortuneTemplate {
     String template_text;
-    std::vector<String> wordlists;
+    std::vector<String> tokens;
 };
 
 class FortuneGenerator {
@@ -23,11 +23,12 @@ private:
     std::map<String, std::vector<String>> wordlists;
     bool loaded;
     
-    String replaceTokens(const String& template_text, const std::map<String, String>& replacements);
+    String replaceTokens(const FortuneTemplate& fortuneTemplate, const std::map<String, String>& replacements);
     String getRandomWord(const String& category);
-    bool validateTemplate(const String& template_text);
+    bool validateTemplate(const FortuneTemplate& fortuneTemplate);
     void parseWordlists(JsonObject wordlistsObj);
     void parseTemplates(JsonArray templatesArray);
+    std::vector<String> extractTokens(const String& templateText);
 };
 
 #endif // FORTUNE_GENERATOR_H

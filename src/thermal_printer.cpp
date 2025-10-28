@@ -3,12 +3,14 @@
 
 static constexpr const char* TAG = "ThermalPrinter";
 
-ThermalPrinter::ThermalPrinter(int txPin, int rxPin) 
-    : txPin(txPin), rxPin(rxPin), initialized(false), hasErrorState(false), lastCommandTime(0) {
+ThermalPrinter::ThermalPrinter(HardwareSerial &serialPort, int txPin, int rxPin, int baud) 
+    : serial(serialPort), txPin(txPin), rxPin(rxPin),
+      printerBaud((baud < 1200 || baud > 115200) ? 9600 : baud),
+      initialized(false), hasErrorState(false), lastCommandTime(0) {
 }
 
 void ThermalPrinter::begin() {
-    Serial1.begin(PRINTER_BAUD, SERIAL_8N1, rxPin, txPin);
+    serial.begin(printerBaud, SERIAL_8N1, rxPin, txPin);
     initialized = true;
     LOG_INFO(TAG, "Thermal printer initialized");
 }
@@ -18,7 +20,10 @@ void ThermalPrinter::update() {
     
     // Check for timeout on commands
     if (lastCommandTime > 0 && millis() - lastCommandTime > COMMAND_TIMEOUT_MS) {
-        handleError();
+        if (!hasErrorState) {
+            handleError();
+        }
+        lastCommandTime = 0;
     }
 }
 
@@ -33,10 +38,10 @@ bool ThermalPrinter::printFortune(const String& fortune) {
     }
     
     // Print fortune text
-    Serial1.println(fortune);
-    Serial1.println();
-    Serial1.println("--- Death's Fortune ---");
-    Serial1.println();
+    serial.println(fortune);
+    serial.println();
+    serial.println("--- Death's Fortune ---");
+    serial.println();
     
     // Feed paper
     sendCommand(0x0A); // Line feed
@@ -52,13 +57,13 @@ bool ThermalPrinter::printLogo() {
     
     // TODO: Implement logo printing from BMP file
     // For now, just print a text logo
-    Serial1.println("    DEATH'S FORTUNE    ");
-    Serial1.println("   ╔═══════════════╗   ");
-    Serial1.println("   ║               ║   ");
-    Serial1.println("   ║   ☠️  DEATH  ☠️   ║   ");
-    Serial1.println("   ║               ║   ");
-    Serial1.println("   ╚═══════════════╝   ");
-    Serial1.println();
+    serial.println("    DEATH'S FORTUNE    ");
+    serial.println("   ╔═══════════════╗   ");
+    serial.println("   ║               ║   ");
+    serial.println("   ║   ☠️  DEATH  ☠️   ║   ");
+    serial.println("   ║               ║   ");
+    serial.println("   ╚═══════════════╝   ");
+    serial.println();
     
     return true;
 }
@@ -73,25 +78,25 @@ bool ThermalPrinter::hasError() {
 
 void ThermalPrinter::sendCommand(uint8_t cmd) {
     if (!initialized) return;
-    Serial1.write(cmd);
+    serial.write(cmd);
 }
 
 void ThermalPrinter::sendCommand(uint8_t cmd, uint8_t param) {
     if (!initialized) return;
-    Serial1.write(cmd);
-    Serial1.write(param);
+    serial.write(cmd);
+    serial.write(param);
 }
 
 void ThermalPrinter::sendCommand(uint8_t cmd, uint8_t* data, size_t length) {
     if (!initialized) return;
-    Serial1.write(cmd);
-    Serial1.write(data, length);
+    serial.write(cmd);
+    serial.write(data, length);
 }
 
 bool ThermalPrinter::waitForResponse(unsigned long timeoutMs) {
     unsigned long startTime = millis();
     while (millis() - startTime < timeoutMs) {
-        if (Serial1.available()) {
+        if (serial.available()) {
             return true;
         }
         delay(10);
@@ -100,6 +105,9 @@ bool ThermalPrinter::waitForResponse(unsigned long timeoutMs) {
 }
 
 void ThermalPrinter::handleError() {
+    if (hasErrorState) {
+        return;
+    }
     hasErrorState = true;
     LOG_ERROR(TAG, "Thermal printer error - check paper and connection");
 }

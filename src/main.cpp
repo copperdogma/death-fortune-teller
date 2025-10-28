@@ -63,6 +63,17 @@ static constexpr const char *AUDIO_TAG = "Audio";
 static constexpr const char *BT_TAG = "Bluetooth";
 static constexpr const char *FLOW_TAG = "FortuneFlow";
 
+bool g_sdCardMounted = false;
+
+String fortunesJsonPath = "/printer/fortunes_littlekid.json";
+bool fortuneGeneratorLoadAttempted = false;
+bool fortuneGeneratorLoaded = false;
+String activeFortune;
+String fortuneSourceFile;
+bool fortuneGenerationAttempted = false;
+bool fortunePrintAttempted = false;
+bool fortunePrintSuccess = false;
+
 SDCardContent sdCardContent;
 String initializationAudioPath;
 bool initializationQueued = false;
@@ -106,6 +117,10 @@ void breathingJawMovement();
 void processCLI(String cmd);
 void printHelp();
 void printSDCardInfo();
+void resetFortuneFlowWork();
+bool ensureFortuneGeneratorLoaded();
+void generateAndPrintFortune();
+void printFortuneToSerial(const String &fortune);
 
 DeathState currentState = DeathState::IDLE;
 unsigned long stateStartTime = 0;
@@ -430,8 +445,8 @@ void setup() {
     // Try to mount SD card and load config before initializing servo
     sdCardManager = new SDCardManager();
     audioDirectorySelector = new AudioDirectorySelector();
-    bool sdCardMounted = false;
     bool configLoaded = false;
+    g_sdCardMounted = false;
     ConfigManager &config = ConfigManager::getInstance();
     
     // Try to mount SD card (with retries)
@@ -445,7 +460,7 @@ void setup() {
     }
     
     if (sdRetryCount < MAX_SD_RETRIES) {
-        sdCardMounted = true;
+        g_sdCardMounted = true;
         LOG_INFO(TAG, "SD card mounted successfully");
         sdCardContent = sdCardManager->loadContent();
         
@@ -493,6 +508,12 @@ void setup() {
         LOG_INFO(TAG, "Initializing servo with safe defaults: %d-%d µs", SAFE_MIN_US, SAFE_MAX_US);
         servoController.initialize(SERVO_PIN, 0, 80, SAFE_MIN_US, SAFE_MAX_US);
     }
+
+    fortunesJsonPath = config.getFortunesJson();
+    if (fortunesJsonPath.length() == 0) {
+        fortunesJsonPath = "/printer/fortunes_littlekid.json";
+    }
+    LOG_INFO(FLOW_TAG, "Fortune JSON path: %s", fortunesJsonPath.c_str());
 
     initializationAudioPath = "/audio/initialized.wav";
     LOG_INFO(AUDIO_TAG, "🎵 Initialization audio: %s", initializationAudioPath.c_str());
@@ -543,9 +564,25 @@ void setup() {
     if (uartController) {
         uartController->begin();
     }
-    thermalPrinter = new ThermalPrinter(PRINTER_TX_PIN, PRINTER_RX_PIN);
+    thermalPrinter = new ThermalPrinter(Serial2, PRINTER_TX_PIN, PRINTER_RX_PIN, config.getPrinterBaud());
     fingerSensor = new FingerSensor(CAP_SENSE_PIN);
     fortuneGenerator = new FortuneGenerator();
+
+    if (thermalPrinter) {
+        thermalPrinter->begin();
+    } else {
+        LOG_WARN(FLOW_TAG, "Thermal printer allocation failed");
+    }
+
+    if (fingerSensor) {
+        fingerSensor->begin();
+    } else {
+        LOG_WARN(FLOW_TAG, "Finger sensor allocation failed");
+    }
+
+    if (fortuneGenerator) {
+        ensureFortuneGeneratorLoaded();
+    }
 
     const int servoMinDegrees = 0;
     const int servoMaxDegrees = 80;
@@ -701,6 +738,14 @@ void loop() {
         bluetoothController->update();
     }
 
+    if (fingerSensor) {
+        fingerSensor->update();
+    }
+
+    if (thermalPrinter) {
+        thermalPrinter->update();
+    }
+
     if (uartController) {
         uartController->update();
         UARTCommand lastCommand = uartController->getLastCommand();
@@ -778,6 +823,197 @@ void handleUARTCommand(UARTCommand cmd) {
     LOG_WARN(STATE_TAG, "Unhandled UART command: %s", UARTController::commandToString(cmd));
 }
 
+void resetFortuneFlowWork() {
+    activeFortune = "";
+    fortuneGenerationAttempted = false;
+    fortunePrintAttempted = false;
+    fortunePrintSuccess = false;
+}
+
+bool ensureFortuneGeneratorLoaded() {
+    if (!fortuneGenerator) {
+        return false;
+    }
+
+    if (fortuneGeneratorLoaded) {
+        return true;
+    }
+
+    if (!g_sdCardMounted) {
+        if (!fortuneGeneratorLoadAttempted) {
+            LOG_WARN(FLOW_TAG, "Cannot load fortunes: SD card not mounted");
+        }
+        fortuneGeneratorLoadAttempted = true;
+        return false;
+    }
+
+    if (!sdCardManager) {
+        if (!fortuneGeneratorLoadAttempted) {
+            LOG_WARN(FLOW_TAG, "SD card manager unavailable; cannot load fortunes");
+        }
+        fortuneGeneratorLoadAttempted = true;
+        return false;
+    }
+
+    std::vector<String> candidates;
+    if (fortunesJsonPath.length() > 0) {
+        candidates.push_back(fortunesJsonPath);
+    }
+    candidates.push_back("/fortunes");
+    candidates.push_back("/fortunes/little_kid_fortunes.json");
+    candidates.push_back("/printer/fortunes_littlekid.json");
+
+    String selectedPath;
+
+    for (const auto &candidateRaw : candidates) {
+        String candidate = candidateRaw;
+        candidate.trim();
+        if (candidate.length() == 0) {
+            continue;
+        }
+
+        // Normalize path (remove trailing slash except root)
+        if (candidate.endsWith("/") && candidate.length() > 1) {
+            candidate = candidate.substring(0, candidate.length() - 1);
+        }
+
+        File entry = SD.open(candidate.c_str());
+        if (entry) {
+            if (entry.isDirectory()) {
+                std::vector<String> files;
+                File child = entry.openNextFile();
+                while (child) {
+                    if (!child.isDirectory()) {
+                        String name = child.name();
+                        if (!name.startsWith(".")) {
+                            String fullPath = name;
+                            if (!fullPath.startsWith("/")) {
+                                fullPath = candidate + "/" + fullPath;
+                            }
+                            if (fullPath.endsWith(".json") || fullPath.endsWith(".JSON")) {
+                                files.push_back(fullPath);
+                            }
+                        }
+                    }
+                    child.close();
+                    child = entry.openNextFile();
+                }
+                entry.close();
+
+                if (!files.empty()) {
+                    size_t index = files.size() == 1 ? 0 : static_cast<size_t>(random(files.size()));
+                    selectedPath = files[index];
+                    LOG_INFO(FLOW_TAG, "Fortune directory %s selected %s", candidate.c_str(), selectedPath.c_str());
+                    break;
+                } else {
+                    LOG_WARN(FLOW_TAG, "No fortune JSON files found in %s", candidate.c_str());
+                }
+            } else {
+                entry.close();
+                if (!candidate.endsWith(".json") && !candidate.endsWith(".JSON")) {
+                    LOG_WARN(FLOW_TAG, "Configured fortune file is not JSON: %s", candidate.c_str());
+                }
+                selectedPath = candidate;
+                break;
+            }
+        } else {
+            // Attempt alternate location if config path is stale
+            if (candidate.endsWith(".json") || candidate.endsWith(".JSON")) {
+                int slashIndex = candidate.lastIndexOf('/');
+                String basename = (slashIndex >= 0) ? candidate.substring(slashIndex + 1) : candidate;
+                String altPath = "/fortunes/" + basename;
+                if (sdCardManager->fileExists(altPath.c_str())) {
+                    LOG_INFO(FLOW_TAG, "Fortune file %s missing; using %s instead", candidate.c_str(), altPath.c_str());
+                    selectedPath = altPath;
+                    break;
+                }
+            }
+        }
+    }
+
+    if (selectedPath.length() == 0) {
+        if (!fortuneGeneratorLoadAttempted) {
+            LOG_WARN(FLOW_TAG, "No fortune JSON file found; falling back to default fortune");
+        }
+        fortuneGeneratorLoadAttempted = true;
+        return false;
+    }
+
+    fortuneGeneratorLoadAttempted = true;
+    fortuneGeneratorLoaded = fortuneGenerator->loadFortunes(selectedPath);
+    if (fortuneGeneratorLoaded) {
+        fortuneSourceFile = selectedPath;
+        LOG_INFO(FLOW_TAG, "Fortune templates loaded from %s", selectedPath.c_str());
+    } else {
+        LOG_ERROR(FLOW_TAG, "Failed to load fortune templates from %s", selectedPath.c_str());
+    }
+    return fortuneGeneratorLoaded;
+}
+
+void printFortuneToSerial(const String &fortune) {
+    Serial.println();
+    Serial.println(F("=== FORTUNE ==="));
+
+    if (fortune.length() == 0) {
+        Serial.println(F("(empty fortune)"));
+    } else {
+        const size_t chunkSize = 96;
+        size_t len = fortune.length();
+        size_t offset = 0;
+        while (offset < len) {
+            size_t end = std::min(offset + chunkSize, len);
+            Serial.println(fortune.substring(offset, end));
+            offset = end;
+        }
+    }
+
+    Serial.println(F("================"));
+    Serial.println();
+}
+
+void generateAndPrintFortune() {
+    if (fortuneGenerationAttempted) {
+        return;
+    }
+
+    fortuneGenerationAttempted = true;
+
+    if (!fortuneGenerator) {
+        activeFortune = "The spirits are silent...";
+        LOG_WARN(FLOW_TAG, "Fortune generator unavailable; using fallback fortune");
+    } else {
+        ensureFortuneGeneratorLoaded();
+        activeFortune = fortuneGenerator->generateFortune();
+        if (activeFortune.length() == 0) {
+            activeFortune = "The spirits are silent...";
+        }
+    }
+
+    LOG_INFO(FLOW_TAG, "Generated fortune: %s", activeFortune.c_str());
+    printFortuneToSerial(activeFortune);
+
+    fortunePrintAttempted = true;
+
+    if (!thermalPrinter) {
+        fortunePrintSuccess = false;
+        LOG_WARN(FLOW_TAG, "Thermal printer unavailable; fortune will not be printed");
+        return;
+    }
+
+    if (!thermalPrinter->isReady()) {
+        fortunePrintSuccess = false;
+        LOG_WARN(FLOW_TAG, "Thermal printer not ready; skipping fortune print");
+        return;
+    }
+
+    fortunePrintSuccess = thermalPrinter->printFortune(activeFortune);
+    if (fortunePrintSuccess) {
+        LOG_INFO(FLOW_TAG, "Thermal printer started printing fortune");
+    } else {
+        LOG_ERROR(FLOW_TAG, "Thermal printer failed to print fortune");
+    }
+}
+
 void enterState(DeathState newState, const char *reason, bool forced) {
     DeathState previous = currentState;
     const char *reasonText = (reason && reason[0]) ? reason : "no reason provided";
@@ -809,6 +1045,7 @@ void enterState(DeathState newState, const char *reason, bool forced) {
 
     switch (newState) {
         case DeathState::IDLE:
+            resetFortuneFlowWork();
             mouthOpen = false;
             servoController.setPosition(servoClosed);
             lightController.setEyeBrightness(LightController::BRIGHTNESS_DIM);
@@ -817,6 +1054,7 @@ void enterState(DeathState newState, const char *reason, bool forced) {
             break;
 
         case DeathState::PLAY_WELCOME:
+            resetFortuneFlowWork();
             mouthOpen = false;
             if (!queueRandomClipFromDir(AUDIO_WELCOME_DIR, "welcome skit")) {
                 enterState(DeathState::WAIT_FOR_NEAR, "Welcome audio missing; advancing", forced);
@@ -879,6 +1117,7 @@ void enterState(DeathState newState, const char *reason, bool forced) {
             servoController.setPosition(servoOpen);
             mouthOpen = true;
             lightController.setEyeBrightness(LightController::BRIGHTNESS_MAX);
+            generateAndPrintFortune();
             if (!queueRandomClipFromDir(AUDIO_FORTUNE_PREAMBLE_DIR, "fortune preamble")) {
                 enterState(DeathState::FORTUNE_DONE, "Fortune audio missing; advancing", forced);
                 return;
@@ -899,6 +1138,11 @@ void enterState(DeathState newState, const char *reason, bool forced) {
             servoController.setPosition(servoClosed);
             lightController.setEyeBrightness(LightController::BRIGHTNESS_DIM);
             cooldownStart = stateStartTime;
+            if (fortunePrintAttempted) {
+                LOG_INFO(FLOW_TAG, "Fortune cycle summary — printed=%s text=\"%s\"",
+                         fortunePrintSuccess ? "true" : "false",
+                         activeFortune.c_str());
+            }
             break;
     }
 }

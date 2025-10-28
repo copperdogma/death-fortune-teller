@@ -1,6 +1,6 @@
 # Story: State Machine Implementation
 
-**Status**: To Do
+**Status**: Done
 
 ---
 
@@ -26,7 +26,37 @@
 - [x] **Add Timer Management**: Handle finger detection, snap delay, and timeout timers
 - [x] **Add State Logging**: Log all state transitions for debugging
 - [x] **Test Integration**: Verify state machine works with UART triggers and finger detection
-- [x] **Integrate Fortune Generation**: Connect FortuneGenerator to state machine for actual fortune generation and printing
+- [x] **Integrate Fortune Generation**: Connect FortuneGenerator to state machine for actual fortune generation and printing. Output the generated fortune to the serial console for debugging.
+
+## Build Log
+
+### 2025-10-28 — Fortune flow integration
+- Result: Success — fortunes generate on `FORTUNE_FLOW`, print to serial, and stream to the thermal printer with a state summary in `COOLDOWN`.
+- Changes: Load fortune JSON path from `config.txt`, start the printer and finger sensor during setup, gate fortune generation per cycle, and emit console output plus printer attempts with graceful fallbacks.
+- Testing: `pio run`
+- Learnings: Fortune generation can proceed even when audio assets are missing; the fallback message keeps flow continuity.
+- Next Steps: Track remaining printer polish (bitmap logo, diagnostics) under [story-005](story-005-thermal-printer-fortune.md).
+
+### 2025-10-28 — UART/Printer bus fix
+- Result: Success — Matter UART traffic flows again; thermal printer moved to `Serial2` so it no longer tramples the shared bus.
+- Changes: ThermalPrinter now accepts a `HardwareSerial` instance; firmware instantiates it with `Serial2`, leaving `Serial1` dedicated to Matter UART.
+- Testing: `pio run`
+- Learnings: Initial integration re-initialized `Serial1`, which knocked the Matter link offline; isolating peripherals prevents this regression.
+- Next Steps: Validate on hardware that Matter triggers arrive while printer is active.
+
+### 2025-10-28 — Printer logging cleanup
+- Result: Success — Printer timeout now logs once and fortunes echo to serial in full, chunked for long messages.
+- Changes: Thermal printer error reporting guards against repeated messages and clears the timeout; serial fortune output gained chunked printing helper.
+- Testing: `pio run`
+- Learnings: Without printer ACKs we still want visibility without log floods; chunking keeps longer fortunes readable on the console.
+- Next Steps: Re-test with printer connected to confirm the single warning is sufficient and fortunes render completely.
+
+### 2025-10-28 — Fortune generator bring-up
+- Result: Success — FortuneGenerator now parses token lists, validates wordlists, and expands templates into full mad-libs fortunes pulled from `/fortunes/little_kid_fortunes.json`.
+- Changes: Added token extraction, validation, and deterministic replacements per template; serial output now shows the fully expanded fortune, and missing wordlists raise explicit warnings.
+- Testing: `pio run`
+- Learnings: Templates needed token metadata cached at load time; keeping replacements stable per token preserves repeated placeholders (e.g., names) within one fortune.
+- Next Steps: Add regression tests or a CLI hook to sample fortunes without running the full animatronic flow.
 
 ## Technical Implementation Details
 

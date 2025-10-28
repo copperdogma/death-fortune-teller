@@ -2,10 +2,11 @@
 #define THERMAL_PRINTER_H
 
 #include <Arduino.h>
+#include <HardwareSerial.h>
 
 class ThermalPrinter {
 public:
-    ThermalPrinter(int txPin, int rxPin);
+    ThermalPrinter(HardwareSerial &serialPort, int txPin, int rxPin, int baud = 9600);
     void begin();
     void update();
     bool printFortune(const String& fortune);
@@ -14,9 +15,10 @@ public:
     bool hasError();
 
 private:
+    HardwareSerial &serial;
     int txPin;
     int rxPin;
-    static constexpr int PRINTER_BAUD = 9600;
+    int printerBaud;
     
     bool initialized;
     bool hasErrorState;
