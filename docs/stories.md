@@ -23,6 +23,7 @@ Death, the Fortune Telling Skeleton
 | 005a     | Serial Console & Diagnostics            | Medium   | To Do  | /docs/stories/story-005a-serial-console-diagnostics.md |
 | 006      | Bluetooth A2DP Reliability & Testing    | Medium   | To Do  | /docs/stories/story-006-bluetooth-a2dp-reliability.md   |
 | 007      | ESP-IDF Framework Migration              | Maybe    | To Do  | /docs/stories/story-007-esp-idf-migration.md           |
+| 2026-001 | Detailed Fortune Flow Implementation     | Medium   | Future | /docs/stories/story-2026-001-detailed-fortune-flow.md |
 
 ## Notes
 - Story IDs map to future files in `/docs/stories/`; create each file as work begins.

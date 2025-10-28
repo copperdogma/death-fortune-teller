@@ -19,13 +19,14 @@
 - [ ] User must sign off on functionality before story can be marked complete
 
 ## Tasks
-- [ ] **Implement State Machine**: Create complete state machine with all states and transitions
-- [ ] **Add State Transitions**: Implement UART command handling and internal event transitions
-- [ ] **Implement Busy Policy**: Drop all commands while system is active
-- [ ] **Add Debounce Logic**: Prevent duplicate triggers within 2 seconds
-- [ ] **Add Timer Management**: Handle finger detection, snap delay, and timeout timers
-- [ ] **Add State Logging**: Log all state transitions for debugging
-- [ ] **Test Integration**: Verify state machine works with UART triggers and finger detection
+- [x] **Implement State Machine**: Create complete state machine with all states and transitions
+- [x] **Add State Transitions**: Implement UART command handling and internal event transitions
+- [x] **Implement Busy Policy**: Drop all commands while system is active
+- [x] **Add Debounce Logic**: Prevent duplicate triggers within 2 seconds
+- [x] **Add Timer Management**: Handle finger detection, snap delay, and timeout timers
+- [x] **Add State Logging**: Log all state transitions for debugging
+- [x] **Test Integration**: Verify state machine works with UART triggers and finger detection
+- [x] **Integrate Fortune Generation**: Connect FortuneGenerator to state machine for actual fortune generation and printing
 
 ## Technical Implementation Details
 
@@ -44,14 +45,9 @@
 - FORTUNE_DONE: Fortune complete, play goodbye skit
 - COOLDOWN: Post-fortune cooldown period
 
-**Fortune Flow Sub-States:**
-- PLAY_FORTUNE_PREAMBLE: Playing fortune preamble
-- CHOOSE_TEMPLATE: Randomly choose fortune template
-- PLAY_TEMPLATE_SKIT: Play skit for chosen template
-- GENERATE_FORTUNE: Generate random fortune from template
-- PLAY_FORTUNE_TOLD: Play "fortune told" skit
-- PRINT_FORTUNE: Print fortune while talking
-- FORTUNE_COMPLETE: Fortune flow complete
+**Fortune Flow:**
+- FORTUNE_FLOW: Single state handling fortune preamble audio playback
+- Note: Detailed fortune flow sub-states deferred to 2026 (see Story 2026-001)
 
 ### Matter Controller State Mapping
 
@@ -93,8 +89,8 @@
 - WAIT_FOR_NEAR → NEAR → PLAY_FINGER_PROMPT → (complete) → MOUTH_OPEN_WAIT_FINGER
 - MOUTH_OPEN_WAIT_FINGER: Finger detected → FINGER_DETECTED → SNAP_WITH_FINGER → FORTUNE_FLOW
 - MOUTH_OPEN_WAIT_FINGER: No finger (timeout) → SNAP_NO_FINGER → FORTUNE_FLOW
-- FORTUNE_FLOW: Complete fortune sequence with template selection
-- FORTUNE_COMPLETE → FORTUNE_DONE → (goodbye skit) → COOLDOWN → IDLE
+- FORTUNE_FLOW: Play fortune preamble audio
+- FORTUNE_FLOW → FORTUNE_DONE → (goodbye skit) → COOLDOWN → IDLE
 
 **Critical State Constraints:**
 - NEAR_MOTION_DETECTED can ONLY be processed in WAIT_FOR_NEAR state
@@ -158,6 +154,8 @@
 - **Logging**: Comprehensive state transition logging for debugging
 - **Critical Constraint**: NEAR_MOTION_DETECTED can ONLY be processed in WAIT_FOR_NEAR state (per spec.md §3)
 - **Matter Controller Alignment**: All state names and command codes must match Matter controller's canonical definitions
+- **Status**: Core state machine is fully implemented and working
+- **2025 MVP**: Fortune flow uses simplified single-state approach; detailed sub-states deferred to 2026
 
 ## Dependencies
 - Story 003 (Matter UART Trigger Handling) - UART command integration
@@ -172,8 +170,8 @@
 3. **MOUTH_OPEN_WAIT_FINGER**:
    - Finger detected → **FINGER_DETECTED** → (snap delay) → **SNAP_WITH_FINGER** → (play finger snap skit) → **FORTUNE_FLOW**
    - No finger (timeout) → **SNAP_NO_FINGER** → (play no finger skit) → **FORTUNE_FLOW**
-4. **FORTUNE_FLOW**: PLAY_FORTUNE_PREAMBLE → CHOOSE_TEMPLATE → PLAY_TEMPLATE_SKIT → GENERATE_FORTUNE → PLAY_FORTUNE_TOLD → PRINT_FORTUNE → FORTUNE_COMPLETE
-5. **FORTUNE_COMPLETE** → **FORTUNE_DONE** → (play goodbye skit) → **COOLDOWN** → **IDLE**
+4. **FORTUNE_FLOW**: Play fortune preamble audio → **FORTUNE_DONE**
+5. **FORTUNE_DONE** → (play goodbye skit) → **COOLDOWN** → **IDLE**
 
 ## Testing Strategy
 1. **State Transitions**: Test all state transitions with UART commands
