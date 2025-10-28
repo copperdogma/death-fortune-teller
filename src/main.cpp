@@ -25,6 +25,8 @@
 #include "BluetoothA2DPSource.h"
 #include "esp_a2dp_api.h"
 #include "esp_attr.h"
+#include <vector>
+#include <algorithm>
 
 // Pin definitions
 const int EYE_LED_PIN = 32;    // GPIO pin for eye LED
@@ -92,7 +94,9 @@ void handleUARTCommand(UARTCommand cmd);
 void enterState(DeathState newState, const char *reason, bool forced = false);
 void updateStateMachine(unsigned long currentTime);
 void handleAudioPlaybackFinished(const String &filePath);
-bool queueAudioClip(const char *path, const char *description);
+bool queueRandomClipFromDir(const char *directory, const char *description);
+void validateAudioDirectories();
+void logAudioDirectoryTree(const char *path, int depth = 0);
 void playRandomSkit();
 void testSkitSelection();
 void breathingJawMovement();
@@ -121,12 +125,259 @@ unsigned long cooldownStart = 0;
 int snapDelayMs = 0;
 bool snapDelayScheduled = false;
 
-static constexpr const char *AUDIO_WELCOME = "/audio/welcome/welcome_01.wav";
-static constexpr const char *AUDIO_FINGER_PROMPT = "/audio/fortune/finger_prompt.wav";
-static constexpr const char *AUDIO_SNAP_WITH_FINGER = "/audio/fortune/snap_with_finger.wav";
-static constexpr const char *AUDIO_SNAP_NO_FINGER = "/audio/fortune/snap_no_finger.wav";
-static constexpr const char *AUDIO_FORTUNE_FLOW = "/audio/fortune/fortune_01.wav";
-static constexpr const char *AUDIO_FORTUNE_DONE = "/audio/fortune/fortune_done.wav";
+static constexpr const char *AUDIO_WELCOME_DIR = "/audio/welcome";
+static constexpr const char *AUDIO_FINGER_PROMPT_DIR = "/audio/finger_prompt";
+static constexpr const char *AUDIO_FINGER_SNAP_DIR = "/audio/finger_snap";
+static constexpr const char *AUDIO_NO_FINGER_DIR = "/audio/no_finger";
+static constexpr const char *AUDIO_FORTUNE_PREAMBLE_DIR = "/audio/fortune_preamble";
+static constexpr const char *AUDIO_GOODBYE_DIR = "/audio/goodbye";
+static constexpr const char *AUDIO_FORTUNE_TEMPLATES_DIR = "/audio/fortune_templates";
+static constexpr const char *AUDIO_FORTUNE_TOLD_DIR = "/audio/fortune_told";
+
+static constexpr int SERVO_POSITION_MARGIN_DEGREES = 3;
+
+String pickRandomAudioFromDirectory(const char *directory) {
+    File dir = SD.open(directory);
+    if (!dir) {
+        return "";
+    }
+    if (!dir.isDirectory()) {
+        dir.close();
+        return "";
+    }
+
+    std::vector<String> candidates;
+    File entry = dir.openNextFile();
+    while (entry) {
+        if (!entry.isDirectory()) {
+            String name = entry.name();
+            name.trim();
+            if (!name.startsWith(".")) {
+                size_t fileSize = entry.size();
+                if (fileSize > 0 && (name.endsWith(".wav") || name.endsWith(".WAV"))) {
+                    String fullPath = String(directory);
+                    if (!fullPath.endsWith("/")) {
+                        fullPath += '/';
+                    }
+                    fullPath += name;
+                    candidates.push_back(fullPath);
+                }
+            }
+        }
+        entry.close();
+        entry = dir.openNextFile();
+    }
+    dir.close();
+
+    if (candidates.empty()) {
+        return "";
+    }
+
+    long choice = random(static_cast<long>(candidates.size()));
+    if (choice < 0 || choice >= static_cast<long>(candidates.size())) {
+        choice = 0;
+    }
+    return candidates[static_cast<size_t>(choice)];
+}
+
+int countWavFilesInDirectory(const char *directory) {
+    File dir = SD.open(directory);
+    if (!dir) {
+        return -1;
+    }
+    if (!dir.isDirectory()) {
+        dir.close();
+        return -1;
+    }
+
+    int count = 0;
+    File entry = dir.openNextFile();
+    while (entry) {
+        if (!entry.isDirectory()) {
+            String name = entry.name();
+            name.trim();
+            if (!name.startsWith(".")) {
+                size_t fileSize = entry.size();
+                if (fileSize > 0 && (name.endsWith(".wav") || name.endsWith(".WAV"))) {
+                    count++;
+                }
+            }
+        }
+        entry.close();
+        entry = dir.openNextFile();
+    }
+    dir.close();
+    return count;
+}
+
+bool queueRandomClipFromDir(const char *directory, const char *description) {
+    if (!audioPlayer) {
+        LOG_WARN(AUDIO_TAG, "AudioPlayer not initialized; cannot queue %s", description ? description : "clip");
+        return false;
+    }
+
+    int available = countWavFilesInDirectory(directory);
+    if (available <= 0) {
+        if (available < 0) {
+            LOG_WARN(AUDIO_TAG, "Audio directory '%s' not found or not a directory (%s)",
+                     directory ? directory : "(null)",
+                     description ? description : "clip");
+        } else {
+            LOG_WARN(AUDIO_TAG, "Audio directory '%s' contains no playable clips (%s)",
+                     directory ? directory : "(null)",
+                     description ? description : "clip");
+        }
+        return false;
+    }
+
+    String selected = pickRandomAudioFromDirectory(directory);
+    if (selected.isEmpty()) {
+        LOG_WARN(AUDIO_TAG, "Audio directory '%s' unexpectedly yielded no clip for %s despite count=%d",
+                 directory ? directory : "(null)",
+                 description ? description : "clip",
+                 available);
+        return false;
+    }
+
+    audioPlayer->playNext(selected);
+    LOG_INFO(AUDIO_TAG, "Queued audio for %s: %s", description ? description : "clip", selected.c_str());
+    return true;
+}
+
+void validateAudioDirectories() {
+    if (!sdCardManager) {
+        return;
+    }
+
+    struct DirCheck {
+        const char *path;
+        const char *description;
+        bool optional;
+    };
+
+    static const DirCheck checks[] = {
+        {AUDIO_WELCOME_DIR, "welcome skits", false},
+        {AUDIO_FINGER_PROMPT_DIR, "finger prompt skits", false},
+        {AUDIO_FINGER_SNAP_DIR, "finger snap skits", false},
+        {AUDIO_NO_FINGER_DIR, "no-finger skits", false},
+        {AUDIO_FORTUNE_PREAMBLE_DIR, "fortune preamble skits", false},
+        {AUDIO_GOODBYE_DIR, "goodbye skits", false},
+        {AUDIO_FORTUNE_TEMPLATES_DIR, "fortune template pools", true},
+        {AUDIO_FORTUNE_TOLD_DIR, "fortune told stingers", true},
+    };
+
+    LOG_INFO(AUDIO_TAG, "Audio directory validation starting...\n");
+    logAudioDirectoryTree("/audio", 0);
+
+    for (const auto &check : checks) {
+        int count = countWavFilesInDirectory(check.path);
+        if (count <= 0) {
+            if (check.optional) {
+                LOG_WARN(AUDIO_TAG,
+                         "Audio directory '%s' is empty or missing (%s) — OK, this feature is future work.",
+                         check.path,
+                         check.description);
+            } else {
+                LOG_WARN(AUDIO_TAG,
+                         "Audio directory '%s' is empty or missing (%s). Add at least one .wav clip for production.",
+                         check.path,
+                         check.description);
+            }
+        }
+    }
+}
+
+void logAudioDirectoryTree(const char *path, int depth) {
+    if (!path || depth > 6) {
+        return; // prevent runaway recursion
+    }
+
+    File dir = SD.open(path);
+    if (!dir) {
+        LOG_WARN(AUDIO_TAG, "%*s[missing] %s", depth * 2, "", path);
+        return;
+    }
+    if (!dir.isDirectory()) {
+        LOG_WARN(AUDIO_TAG, "%*s[not a directory] %s", depth * 2, "", path);
+        dir.close();
+        return;
+    }
+
+    LOG_INFO(AUDIO_TAG, "%*s📁 %s", depth * 2, "", path);
+
+    File entry = dir.openNextFile();
+    while (entry) {
+        String name = entry.name();
+        name.trim();
+
+        if (!name.startsWith(".")) {
+            String fullPath = String(path);
+            if (!fullPath.endsWith("/")) {
+                fullPath += '/';
+            }
+            fullPath += name;
+
+            if (entry.isDirectory()) {
+                logAudioDirectoryTree(fullPath.c_str(), depth + 1);
+            } else {
+                size_t sizeBytes = entry.size();
+                if (sizeBytes == 0) {
+                    LOG_WARN(AUDIO_TAG, "%*s⚠️  %s (0 bytes)", depth * 2 + 2, "", fullPath.c_str());
+                } else {
+                    LOG_INFO(AUDIO_TAG, "%*s🎵 %s (%u bytes)", depth * 2 + 2, "", fullPath.c_str(), static_cast<unsigned>(sizeBytes));
+                }
+            }
+        }
+        entry.close();
+        entry = dir.openNextFile();
+    }
+
+    dir.close();
+}
+
+int computeServoMarginDegrees() {
+    int minDeg = servoController.getMinDegrees();
+    int maxDeg = servoController.getMaxDegrees();
+    int span = maxDeg - minDeg;
+    if (span <= 2) {
+        return 0;
+    }
+
+    int margin = SERVO_POSITION_MARGIN_DEGREES;
+    if (margin * 2 >= span) {
+        margin = span / 4;
+    }
+    if (margin < 1) {
+        margin = 1;
+    }
+    if (margin * 2 >= span) {
+        margin = std::max(1, span / 3);
+    }
+    if (margin * 2 >= span) {
+        margin = std::max(1, span / 4);
+    }
+    return std::min(margin, span / 2);
+}
+
+int getServoClosedPosition() {
+    int minDeg = servoController.getMinDegrees();
+    int margin = computeServoMarginDegrees();
+    int maxDeg = servoController.getMaxDegrees();
+    if (margin <= 0 || minDeg + margin >= maxDeg) {
+        return minDeg;
+    }
+    return minDeg + margin;
+}
+
+int getServoOpenPosition() {
+    int maxDeg = servoController.getMaxDegrees();
+    int minDeg = servoController.getMinDegrees();
+    int margin = computeServoMarginDegrees();
+    if (margin <= 0 || maxDeg - margin <= minDeg) {
+        return maxDeg;
+    }
+    return maxDeg - margin;
+}
 
 bool isTriggerCommand(UARTCommand cmd) {
     return cmd == UARTCommand::FAR_MOTION_TRIGGER || cmd == UARTCommand::NEAR_MOTION_TRIGGER;
@@ -364,6 +615,7 @@ void setup() {
     
     // Test skit selection to verify repeat prevention works
     testSkitSelection();
+    validateAudioDirectories();
     
     LOG_INFO(TAG, "✅ All components initialized successfully");
 
@@ -577,24 +829,6 @@ void handleUARTCommand(UARTCommand cmd) {
     LOG_WARN(STATE_TAG, "Unhandled UART command: %s", UARTController::commandToString(cmd));
 }
 
-bool queueAudioClip(const char *path, const char *description) {
-    if (!audioPlayer) {
-        LOG_WARN(AUDIO_TAG, "AudioPlayer not initialized; cannot queue %s", description ? description : "clip");
-        return false;
-    }
-    if (!path || path[0] == '\0') {
-        LOG_WARN(AUDIO_TAG, "No audio path provided for %s", description ? description : "clip");
-        return false;
-    }
-    if (!sdCardManager || !sdCardManager->fileExists(path)) {
-        LOG_WARN(AUDIO_TAG, "Audio clip missing for %s: %s", description ? description : "clip", path);
-        return false;
-    }
-    audioPlayer->playNext(String(path));
-    LOG_INFO(AUDIO_TAG, "Queued audio for %s: %s", description ? description : "clip", path);
-    return true;
-}
-
 void enterState(DeathState newState, const char *reason, bool forced) {
     DeathState previous = currentState;
     const char *reasonText = (reason && reason[0]) ? reason : "no reason provided";
@@ -621,10 +855,13 @@ void enterState(DeathState newState, const char *reason, bool forced) {
     snapDelayMs = 0;
     snapDelayStart = 0;
 
+    const int servoClosed = getServoClosedPosition();
+    const int servoOpen = getServoOpenPosition();
+
     switch (newState) {
         case DeathState::IDLE:
             mouthOpen = false;
-            servoController.setPosition(0);
+            servoController.setPosition(servoClosed);
             lightController.setEyeBrightness(LightController::BRIGHTNESS_DIM);
             fingerWaitStart = 0;
             cooldownStart = 0;
@@ -632,7 +869,7 @@ void enterState(DeathState newState, const char *reason, bool forced) {
 
         case DeathState::PLAY_WELCOME:
             mouthOpen = false;
-            if (!queueAudioClip(AUDIO_WELCOME, "welcome skit")) {
+            if (!queueRandomClipFromDir(AUDIO_WELCOME_DIR, "welcome skit")) {
                 enterState(DeathState::WAIT_FOR_NEAR, "Welcome audio missing; advancing", forced);
                 return;
             }
@@ -645,7 +882,7 @@ void enterState(DeathState newState, const char *reason, bool forced) {
             break;
 
         case DeathState::PLAY_FINGER_PROMPT:
-            if (!queueAudioClip(AUDIO_FINGER_PROMPT, "finger prompt")) {
+            if (!queueRandomClipFromDir(AUDIO_FINGER_PROMPT_DIR, "finger prompt")) {
                 enterState(DeathState::MOUTH_OPEN_WAIT_FINGER, "Finger prompt audio missing; advancing", forced);
                 return;
             }
@@ -653,7 +890,7 @@ void enterState(DeathState newState, const char *reason, bool forced) {
             break;
 
         case DeathState::MOUTH_OPEN_WAIT_FINGER:
-            servoController.setPosition(80);
+            servoController.setPosition(servoOpen);
             mouthOpen = true;
             fingerWaitStart = millis();
             fingerDetected = false;
@@ -663,6 +900,7 @@ void enterState(DeathState newState, const char *reason, bool forced) {
 
         case DeathState::FINGER_DETECTED:
             fingerDetected = true;
+            mouthOpen = true;
             snapDelayMs = snapDelayMinMs == snapDelayMaxMs ? snapDelayMinMs
                                                            : static_cast<int>(random(snapDelayMinMs, snapDelayMaxMs + 1));
             snapDelayStart = millis();
@@ -671,28 +909,28 @@ void enterState(DeathState newState, const char *reason, bool forced) {
             break;
 
         case DeathState::SNAP_WITH_FINGER:
-            servoController.setPosition(0);
+            servoController.setPosition(servoClosed);
             mouthOpen = false;
-            if (!queueAudioClip(AUDIO_SNAP_WITH_FINGER, "snap with finger")) {
+            if (!queueRandomClipFromDir(AUDIO_FINGER_SNAP_DIR, "snap with finger")) {
                 enterState(DeathState::FORTUNE_FLOW, "Snap-with-finger audio missing; skipping", forced);
                 return;
             }
             break;
 
         case DeathState::SNAP_NO_FINGER:
-            servoController.setPosition(0);
+            servoController.setPosition(servoClosed);
             mouthOpen = false;
-            if (!queueAudioClip(AUDIO_SNAP_NO_FINGER, "snap no finger")) {
+            if (!queueRandomClipFromDir(AUDIO_NO_FINGER_DIR, "no-finger response")) {
                 enterState(DeathState::FORTUNE_FLOW, "Snap-no-finger audio missing; skipping", forced);
                 return;
             }
             break;
 
         case DeathState::FORTUNE_FLOW:
-            servoController.setPosition(80);
+            servoController.setPosition(servoOpen);
             mouthOpen = true;
             lightController.setEyeBrightness(LightController::BRIGHTNESS_MAX);
-            if (!queueAudioClip(AUDIO_FORTUNE_FLOW, "fortune flow")) {
+            if (!queueRandomClipFromDir(AUDIO_FORTUNE_PREAMBLE_DIR, "fortune preamble")) {
                 enterState(DeathState::FORTUNE_DONE, "Fortune audio missing; advancing", forced);
                 return;
             }
@@ -700,8 +938,8 @@ void enterState(DeathState newState, const char *reason, bool forced) {
 
         case DeathState::FORTUNE_DONE:
             mouthOpen = false;
-            servoController.setPosition(0);
-            if (!queueAudioClip(AUDIO_FORTUNE_DONE, "fortune done")) {
+            servoController.setPosition(servoClosed);
+            if (!queueRandomClipFromDir(AUDIO_GOODBYE_DIR, "goodbye skit")) {
                 enterState(DeathState::COOLDOWN, "Fortune done audio missing; advancing", forced);
                 return;
             }
@@ -709,7 +947,7 @@ void enterState(DeathState newState, const char *reason, bool forced) {
 
         case DeathState::COOLDOWN:
             mouthOpen = false;
-            servoController.setPosition(0);
+            servoController.setPosition(servoClosed);
             lightController.setEyeBrightness(LightController::BRIGHTNESS_DIM);
             cooldownStart = stateStartTime;
             break;
@@ -759,7 +997,12 @@ void updateStateMachine(unsigned long currentTime) {
             }
 
             if (fingerSensor && !fingerSensor->isFingerDetected()) {
-                LOG_WARN(FLOW_TAG, "Finger removed after detection; continuing countdown");
+                static unsigned long lastFingerRemovedWarning = 0;
+                const unsigned long FINGER_REMOVED_WARNING_INTERVAL = 1000; // Only warn once per second
+                if (currentTime - lastFingerRemovedWarning >= FINGER_REMOVED_WARNING_INTERVAL) {
+                    LOG_WARN(FLOW_TAG, "Finger removed after detection; continuing countdown");
+                    lastFingerRemovedWarning = currentTime;
+                }
             }
             break;
         }
@@ -852,9 +1095,13 @@ void testSkitSelection() {
 
 void breathingJawMovement() {
     if (!audioPlayer->isAudioPlaying()) {
-        servoController.smoothMove(BREATHING_JAW_ANGLE, BREATHING_MOVEMENT_DURATION);
+        int closedPosition = getServoClosedPosition();
+        int openTarget = closedPosition + BREATHING_JAW_ANGLE;
+        openTarget = std::min(openTarget, getServoOpenPosition());
+
+        servoController.smoothMove(openTarget, BREATHING_MOVEMENT_DURATION);
         delay(100); // Short pause at open position
-        servoController.smoothMove(0, BREATHING_MOVEMENT_DURATION);
+        servoController.smoothMove(closedPosition, BREATHING_MOVEMENT_DURATION);
     }
 }
 

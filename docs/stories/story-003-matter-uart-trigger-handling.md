@@ -1,6 +1,6 @@
 # Story: Matter UART Trigger Handling
 
-**Status**: To Do
+**Status**: Done
 
 ---
 
@@ -31,7 +31,7 @@ The Matter controller (https://github.com/copperdogma/death-matter-controller) d
 - Both trigger commands (FAR/NEAR) and direct state forcing commands are supported
 - Every UART command received from the Matter controller is printed to the serial console for diagnostics
 - Commands translate into state machine transitions exactly as defined in story-003a
-- [ ] User must sign off on functionality before story can be marked complete
+- [x] User must sign off on functionality before story can be marked complete
 
 ## Tasks
  - [x] **Update UART Command Enum**: Expand `UARTCommand` enum in `src/uart_controller.h` to include all 12 states (currently only has FAR_MOTION_DETECTED, NEAR_MOTION_DETECTED, SET_MODE, PING)
@@ -93,6 +93,9 @@ The Matter controller (https://github.com/copperdogma/death-matter-controller) d
 - Expanded `DeathState` to the full 12-step flow, wired trigger handling with strict busy/debounce policy, and added support for Matter state-forcing commands that can override the busy guard when necessary (`src/main.cpp`).
 - Implemented timer-driven finger wait, snap delay, and cooldown management sourced from config values, plus servo/LED updates for each state transition; logging now records every transition and drop reason.
 - Kept UART parsing on the single-frame assumption from the controller while adding guard rails so missing audio assets skip forward rather than stalling the flow.
+- Updated audio lookups to align with the existing SD layout (`welcome`, `finger_prompt`, `finger_snap`, `no_finger`, `fortune_preamble`, `goodbye`) and pull a random `.wav` from each directory (`src/main.cpp`).
+- Servo movements now clamp a few degrees inside the configured min/max range so the jaw never slams into its mechanical stops, including the idle breathing animation (`src/main.cpp`, `src/servo_controller.h`).
+- Startup now dumps an annotated `/audio` directory tree and warns if any required folder is empty; the future-feature folders (`fortune_templates`, `fortune_told`) log "OK" warnings so we remember to populate them later (`src/main.cpp`).
 
 #### Work Checklist
 - [x] Extend `UARTCommand` (and related constants) to cover all 12 canonical Matter commands with correct opcode values.

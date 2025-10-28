@@ -47,6 +47,18 @@ This document catalogs the bill of materials and pin assignments for the Death F
 - **Thermal Printer**: CSN-A1X or compatible 58mm thermal printer
 - **Printer Power**: 5V ≥2A supply (or 9V with regulator)
 
+### SD Card Audio Layout
+- `/audio/welcome/` – welcome skits played after a FAR trigger
+- `/audio/finger_prompt/` – "put your finger in my mouth" prompts after NEAR
+- `/audio/finger_snap/` – snap sequence when a finger is detected
+- `/audio/no_finger/` – snap sequence when the finger timeout expires
+- `/audio/fortune_preamble/` – fortune storytelling / preamble clips
+- `/audio/goodbye/` – farewell clips after the fortune completes
+- `/audio/fortune_templates/` – future: alternate fortune flows (can be empty)
+- `/audio/fortune_told/` – future: post-fortune stingers (can be empty)
+
+At boot the firmware scans `/audio`, prints the directory tree, and warns if any required folder is empty. Hidden files such as macOS `._foo.wav` entries are ignored automatically.
+
 ### Power System
 - **5V Regulator**: For servo motor, thermal printer, and SD card module
 - **3.3V Regulator**: For ESP32 and sensors

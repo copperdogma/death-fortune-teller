@@ -32,6 +32,9 @@ public:
     
     // Re-attach servo with config limits (call after config loads)
     void reattachWithConfigLimits();
+
+    int getMinDegrees() const { return minDegrees; }
+    int getMaxDegrees() const { return maxDegrees; }
 };
 
 #endif // SERVO_CONTROLLER_H

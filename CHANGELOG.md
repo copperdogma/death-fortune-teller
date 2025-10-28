@@ -1,5 +1,17 @@
 # Changelog
 
+## [2025-10-28] - Finalize Matter UART Story & Audio Layout
+
+### Added
+- Boot-time `/audio` directory tree dump with warnings for empty or missing folders.
+- Documentation of the SD card audio folder structure in `docs/hardware.md`.
+
+### Changed
+- Aligned audio selection with the existing SD layout, skipping hidden/zero-byte files and pulling a random clip per folder.
+- Clamped servo jaw motion (including idle breathing) inside configured limits via new helpers.
+- Marked Story 003 as complete in the story index and build log.
+
+
 ## [2025-10-27] - Matter UART Diagnostics & Pin Alignment
 
 ### Added
