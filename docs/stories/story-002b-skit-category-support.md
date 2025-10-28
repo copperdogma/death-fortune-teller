@@ -1,6 +1,6 @@
 # Story: Skit Category Support & Directory Structure
 
-**Status**: To Do
+**Status**: Done
 
 ---
 
@@ -21,8 +21,8 @@
 ## Tasks
 - [x] **Update State Machine**: Replace hardcoded file paths with skit category selection
 - [x] **Implement Directory Structure**: Support `/audio/welcome/` and `/audio/fortune/` directories
-- [ ] **Weighted Random Selection**: Add weighted random selection per category with no immediate repeat
-- [ ] **Test Integration**: Verify welcome/fortune skit selection works with state machine
+- [x] **Weighted Random Selection**: Add weighted random selection per category with no immediate repeat
+- [x] **Test Integration**: Verify welcome/fortune skit selection works with state machine
 
 ## Technical Implementation Details
 
@@ -127,3 +127,7 @@ The system must support organized skit directories on the SD card:
 2. **Integration Testing**: Verify state machine triggers correct skit categories
 3. **End-to-End Testing**: Test with actual recorded skit files
 4. **Fallback Testing**: Test behavior when skit directories are empty or missing
+
+## Implementation Log
+- 2025-10-28 — Added `AudioDirectorySelector` for weighted, no-repeat selection per audio category, integrated welcome and fortune flows with the new selector, and added boot-time self-tests to detect immediate repeats; PlatformIO build (`pio run -e esp32dev`) succeeded. ✅
+- 2025-10-28 — IRL verification on hardware confirmed welcome and fortune skit selection without immediate repeats; functionality signed off. ✅

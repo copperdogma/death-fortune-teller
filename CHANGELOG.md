@@ -1,5 +1,18 @@
 # Changelog
 
+## [2025-10-28] - Weighted Skit Category Selector
+
+### Added
+- `AudioDirectorySelector` module to provide weighted, no-repeat audio clip selection per SD card directory.
+- Boot-time category validation that exercises welcome and fortune folders to detect immediate repeat regressions.
+
+### Changed
+- Replaced legacy random directory picker with the selector for welcome and fortune flows, ensuring consistent state-machine integration.
+- Marked Story 002b as complete in the documentation with IRL verification notes.
+
+### Verified
+- PlatformIO build for `esp32dev` and in-hardware testing of welcome and fortune skits confirmed expected behavior.
+
 ## [2025-10-28] - Finalize Matter UART Story & Audio Layout
 
 ### Added

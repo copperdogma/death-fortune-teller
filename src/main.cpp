@@ -20,6 +20,7 @@
 #include "remote_debug_manager.h"
 #include "logging_manager.h"
 #include "skit_selector.h"
+#include "audio_directory_selector.h"
 #include <WiFi.h>
 #include <SD.h>
 #include "BluetoothA2DPSource.h"
@@ -51,6 +52,7 @@ WiFiManager *wifiManager = nullptr;
 OTAManager *otaManager = nullptr;
 RemoteDebugManager *remoteDebugManager = nullptr;
 SkitSelector *skitSelector = nullptr;
+AudioDirectorySelector *audioDirectorySelector = nullptr;
 
 static constexpr const char *TAG = "Main";
 static constexpr const char *WIFI_TAG = "WiFi";
@@ -99,6 +101,7 @@ void validateAudioDirectories();
 void logAudioDirectoryTree(const char *path, int depth = 0);
 void playRandomSkit();
 void testSkitSelection();
+void testCategorySelection(const char *directory, const char *label);
 void breathingJawMovement();
 void processCLI(String cmd);
 void printHelp();
@@ -136,50 +139,6 @@ static constexpr const char *AUDIO_FORTUNE_TOLD_DIR = "/audio/fortune_told";
 
 static constexpr int SERVO_POSITION_MARGIN_DEGREES = 3;
 
-String pickRandomAudioFromDirectory(const char *directory) {
-    File dir = SD.open(directory);
-    if (!dir) {
-        return "";
-    }
-    if (!dir.isDirectory()) {
-        dir.close();
-        return "";
-    }
-
-    std::vector<String> candidates;
-    File entry = dir.openNextFile();
-    while (entry) {
-        if (!entry.isDirectory()) {
-            String name = entry.name();
-            name.trim();
-            if (!name.startsWith(".")) {
-                size_t fileSize = entry.size();
-                if (fileSize > 0 && (name.endsWith(".wav") || name.endsWith(".WAV"))) {
-                    String fullPath = String(directory);
-                    if (!fullPath.endsWith("/")) {
-                        fullPath += '/';
-                    }
-                    fullPath += name;
-                    candidates.push_back(fullPath);
-                }
-            }
-        }
-        entry.close();
-        entry = dir.openNextFile();
-    }
-    dir.close();
-
-    if (candidates.empty()) {
-        return "";
-    }
-
-    long choice = random(static_cast<long>(candidates.size()));
-    if (choice < 0 || choice >= static_cast<long>(candidates.size())) {
-        choice = 0;
-    }
-    return candidates[static_cast<size_t>(choice)];
-}
-
 int countWavFilesInDirectory(const char *directory) {
     File dir = SD.open(directory);
     if (!dir) {
@@ -216,26 +175,13 @@ bool queueRandomClipFromDir(const char *directory, const char *description) {
         return false;
     }
 
-    int available = countWavFilesInDirectory(directory);
-    if (available <= 0) {
-        if (available < 0) {
-            LOG_WARN(AUDIO_TAG, "Audio directory '%s' not found or not a directory (%s)",
-                     directory ? directory : "(null)",
-                     description ? description : "clip");
-        } else {
-            LOG_WARN(AUDIO_TAG, "Audio directory '%s' contains no playable clips (%s)",
-                     directory ? directory : "(null)",
-                     description ? description : "clip");
-        }
+    if (!audioDirectorySelector) {
+        LOG_WARN(AUDIO_TAG, "Audio selector not initialized; cannot queue %s", description ? description : "clip");
         return false;
     }
 
-    String selected = pickRandomAudioFromDirectory(directory);
+    String selected = audioDirectorySelector->selectClip(directory, description);
     if (selected.isEmpty()) {
-        LOG_WARN(AUDIO_TAG, "Audio directory '%s' unexpectedly yielded no clip for %s despite count=%d",
-                 directory ? directory : "(null)",
-                 description ? description : "clip",
-                 available);
         return false;
     }
 
@@ -483,6 +429,7 @@ void setup() {
 
     // Try to mount SD card and load config before initializing servo
     sdCardManager = new SDCardManager();
+    audioDirectorySelector = new AudioDirectorySelector();
     bool sdCardMounted = false;
     bool configLoaded = false;
     ConfigManager &config = ConfigManager::getInstance();
@@ -615,6 +562,8 @@ void setup() {
     
     // Test skit selection to verify repeat prevention works
     testSkitSelection();
+    testCategorySelection(AUDIO_WELCOME_DIR, "welcome skit");
+    testCategorySelection(AUDIO_FORTUNE_PREAMBLE_DIR, "fortune preamble");
     validateAudioDirectories();
     
     LOG_INFO(TAG, "✅ All components initialized successfully");
@@ -1091,6 +1040,46 @@ void testSkitSelection() {
     }
     
     LOG_INFO(FLOW_TAG, "Skit selection test completed");
+}
+
+void testCategorySelection(const char *directory, const char *label) {
+    if (!audioDirectorySelector) {
+        LOG_WARN(AUDIO_TAG, "Audio selector unavailable; skipping %s category test", label ? label : "(unknown)");
+        return;
+    }
+
+    const int available = countWavFilesInDirectory(directory);
+    if (available <= 0) {
+        LOG_WARN(AUDIO_TAG, "Skipping %s selection test — available clips: %d", label ? label : "(unknown)", available);
+        audioDirectorySelector->resetStats(directory);
+        return;
+    }
+
+    const int iterations = available > 1 ? 4 : 1;
+    String last;
+    bool repeatDetected = false;
+
+    for (int i = 0; i < iterations; ++i) {
+        String clip = audioDirectorySelector->selectClip(directory, label);
+        if (clip.isEmpty()) {
+            LOG_WARN(AUDIO_TAG, "Selection returned empty for %s on iteration %d", label ? label : "(unknown)", i + 1);
+            repeatDetected = true;
+            break;
+        }
+        if (!last.isEmpty() && clip == last && available > 1) {
+            LOG_WARN(AUDIO_TAG, "Immediate repeat detected for %s: %s", label ? label : "(unknown)", clip.c_str());
+            repeatDetected = true;
+            break;
+        }
+        last = clip;
+        delay(25);
+    }
+
+    if (!repeatDetected) {
+        LOG_INFO(AUDIO_TAG, "Category selector validation passed for %s (clips=%d)", label ? label : "(unknown)", available);
+    }
+
+    audioDirectorySelector->resetStats(directory);
 }
 
 void breathingJawMovement() {

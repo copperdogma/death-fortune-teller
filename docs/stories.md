@@ -13,7 +13,7 @@ Death, the Fortune Telling Skeleton
 | 001a     | Configuration Management System         | High     | Done  | /docs/stories/story-001a-configuration-management.md   |
 | 001b     | Breathing Cycle Implementation          | High     | Done   | /docs/stories/story-001b-breathing-cycle.md            |
 | 002      | SD Audio Playback & Jaw Synchronization | High     | Done   | /docs/stories/story-002-sd-audio-playback-jaw-sync.md   |
-| 002b     | Skit Category Support & Directory Structure | High     | To Do  | /docs/stories/story-002b-skit-category-support.md       |
+| 002b     | Skit Category Support & Directory Structure | High     | Done   | /docs/stories/story-002b-skit-category-support.md       |
 | 003      | Matter UART Trigger Handling            | High     | Done  | /docs/stories/story-003-matter-uart-trigger-handling.md |
 | 003a     | State Machine Implementation            | High     | To Do  | /docs/stories/story-003a-state-machine-implementation.md |
 | 003b     | Built-in SD Card Migration              | High     | To Do  | /docs/stories/story-003b-built-in-sd-card-migration.md |
