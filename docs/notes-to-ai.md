@@ -16,8 +16,6 @@ NOTE: This file is for the user to write notes to the AI for it to investigate/r
   - `CMD_BOOT_HELLO` (0x0D) is emitted immediately after boot and every second until the WROVER replies with `RSP_BOOT_ACK` (0x90).
   - `CMD_FABRIC_HELLO` (0x0E) is emitted every second after Matter commissioning completes until `RSP_FABRIC_ACK` (0x91) arrives.
 
-- have matter controller send "hello" when it boots up, and another "ready" when it knows it's connected to Apple Home? Can it know that?
-
 - refactor main.cpp... it's huge and bloated, plus there is duplicate code in it
 
 - Capacitance calibration
@@ -41,7 +39,10 @@ NOTE: This file is for the user to write notes to the AI for it to investigate/r
 QUESTIONS
 - if the UART comms fails completely what should we do? currrently we just require a manual reboot. If we can detect failure cases, what should we do in general? How to alert the operator?
 
-BUGS
+## To Do Later
+- newline support in fortunes.. See printer story; it was started
+
+## Bugs
 - death-matter-controller: never sends the RSP_FABRIC_ACK message when it's connected to Apple Home. I KNOW it is because I can open Apple Home and send commands and it works, and the WROVER receives them.
 - MAYBE: SD shutdown over time? it boots, reads SD, plays audio, responds to commmands.. if it sits for a while I got:
   I/Audio: Queued audio for welcome skit: /audio/welcome/welcome.wav

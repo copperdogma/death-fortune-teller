@@ -24,6 +24,9 @@
 - [ ] **Test Integration**: Verify complete fortune flow with snap action
 - [x] **Document Requirements**: SD card fortune file requirements and maintenance workflow
 
+## Benchmarking
+- With 384w logo it takes 19.5 seconds to print, most of that being logo printing time
+
 ## Technical Implementation Details
 
 ### Component Integration Requirements
@@ -217,10 +220,10 @@
   - **Lessons learned**: Hiding critical GPIO assignments inside helper classes makes it easy to miss collisions; document the dedicated UART split whenever we touch printer firmware.  
   - **Next steps**: Verify the wiring harness still matches the new docs before field testing.
 - **2025-10-29 — Printer self-test command**  
-  - **What worked**: Added `ptest` CLI command that routes through a new `ThermalPrinter::printTestPage()` helper; with stable power restored it now triggers the printer’s built-in self-test (DC2 `T`) so the full diagnostic card prints on demand. Help text documents the command, and `pio run` builds still pass for USB/OTA.  
-  - **What failed**: Hardware verification still pending; test page not yet exercised on the skull.  
-  - **Lessons learned**: Keeping quick diagnostic hooks in firmware makes bench testing faster; the self-test draw is perfect for confirming power delivery before running fortunes.  
-  - **Next steps**: Run `ptest` on hardware to confirm output quality and capture logs/errors if the printer flags faults.
+  - **What worked**: Added `ptest` CLI command that routes through a new `ThermalPrinter::printTestPage()` helper; with stable power restored it now triggers the printer’s built-in self-test (DC2 `T`) so the full diagnostic card prints on demand.  
+  - **What failed**: Attempting to center the “Your Fortune” header and support inline `\n\n` in templates caused the printer to spew garbage after partial logos; reverted those changes for now. Hardware fortune prints work again but templates must remain single-paragraph until we add a robust renderer.  
+  - **Lessons learned**: ESC/POS state can be fragile—mixing custom justification resets with raster output needs careful sequencing/debug time. Document issues before landing formatting tweaks.  
+  - **Next steps**: Future fix should (a) reintroduce centered header safely, (b) honor explicit newlines by converting `\n` to manual wraps without confusing the printer, and (c) add regression test fortunes before changing print formatting.
 - **2025-10-29 — Bench power rewire**  
   - **What worked**: Rebuilt the 5 V distribution: bench PSU now at 5 V/5 A, negative lead into a 5-slot Wago for all grounds, positive lead split into two 3-slot Wagos (one for the WROVER + SuperMini, one for the printer + servo). After the change, `ptest` prints without brownouts. Documented the wiring in `docs/construction.md`.  
   - **What failed**: n/a  

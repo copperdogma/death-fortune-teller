@@ -534,3 +534,10 @@ Successfully deployed and tested complete ESP32-WROVER hardware system with:
 ### Fixed
 - OTA crashes when Bluetooth is active during back-to-back updates
 - Telnet capture newline bug in `flash_and_monitor.py`
+## [2025-10-29] - Printer diagnostics documentation
+
+### Added
+- Bench power wiring notes and printer test log updates in story-005 to capture the brownout fix impact
+
+### Fixed
+- Restored single-paragraph fortune template after ESC/POS formatting regression was observed
