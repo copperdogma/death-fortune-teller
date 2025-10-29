@@ -34,8 +34,10 @@ const int EYE_LED_PIN = 32;    // GPIO pin for eye LED
 const int MOUTH_LED_PIN = 33;  // GPIO pin for mouth LED
 const int SERVO_PIN = 23;      // Servo control pin (moved off SD CMD line)
 const int CAP_SENSE_PIN = 4;   // Capacitive finger sensor pin
-const int PRINTER_TX_PIN = 21; // Thermal printer TX pin
-const int PRINTER_RX_PIN = 20; // Thermal printer RX pin
+const int PRINTER_TX_PIN = 18; // Thermal printer TX pin (ESP32 -> printer RXD)
+const int PRINTER_RX_PIN = 19; // Thermal printer RX pin (printer TXD -> ESP32)
+const int MATTER_TX_PIN = 21;  // Matter UART TX pin (ESP32 (green)-> ESP32-C3 RX GPIO06)
+const int MATTER_RX_PIN = 22;  // Matter UART RX pin (ESP32 (yellow) <- ESP32-C3 TX GPIO05)
 
 // Global objects
 LightController lightController(EYE_LED_PIN, MOUTH_LED_PIN);
@@ -662,6 +664,12 @@ void setup() {
     }
     LOG_INFO(FLOW_TAG, "Fortune JSON path: %s", fortunesJsonPath.c_str());
 
+    String printerLogoPath = config.getPrinterLogo();
+    if (printerLogoPath.length() == 0) {
+        printerLogoPath = "/printer/logo_384w.bmp";
+    }
+    LOG_INFO(FLOW_TAG, "Printer logo path: %s", printerLogoPath.c_str());
+
     initializationAudioPath = "/audio/initialized.wav";
     LOG_INFO(AUDIO_TAG, "🎵 Initialization audio: %s", initializationAudioPath.c_str());
 
@@ -707,7 +715,7 @@ void setup() {
     }
 #endif
 
-    uartController = new UARTController();
+    uartController = new UARTController(MATTER_RX_PIN, MATTER_TX_PIN);
     if (uartController) {
         uartController->begin();
     }
@@ -716,6 +724,7 @@ void setup() {
     fortuneGenerator = new FortuneGenerator();
 
     if (thermalPrinter) {
+        thermalPrinter->setLogoPath(printerLogoPath);
         thermalPrinter->begin();
     } else {
         LOG_WARN(FLOW_TAG, "Thermal printer allocation failed");
@@ -882,6 +891,8 @@ void setup() {
 }
 
 void loop() {
+    unsigned long currentTime = millis();
+    
     // Update audio player (fills buffer, handles playback events)
     if (audioPlayer) {
         audioPlayer->update();
@@ -912,10 +923,20 @@ void loop() {
             handleUARTCommand(lastCommand);
             uartController->clearLastCommand();
         }
+        
+        // Report handshake status periodically
+        static unsigned long lastHandshakeReport = 0;
+        if (currentTime - lastHandshakeReport > 30000) { // Every 30 seconds
+            bool bootComplete = uartController->isBootHandshakeComplete();
+            bool fabricComplete = uartController->isFabricHandshakeComplete();
+            LOG_INFO(STATE_TAG, "UART Handshake Status - Boot: %s, Fabric: %s", 
+                     bootComplete ? "OK" : "PENDING", 
+                     fabricComplete ? "OK" : "PENDING");
+            lastHandshakeReport = currentTime;
+        }
     }
     
     // Check if it's time to move the jaw for breathing
-    unsigned long currentTime = millis();
     updateManualCalibration(currentTime);
     updateStateMachine(currentTime);
     bool fingerStreaming = fingerSensor && fingerSensor->isStreamEnabled();
@@ -978,6 +999,12 @@ void handleUARTCommand(UARTCommand cmd) {
 
     if (cmd == UARTCommand::LEGACY_PING || cmd == UARTCommand::LEGACY_SET_MODE) {
         LOG_WARN(STATE_TAG, "Legacy UART command ignored: %s", UARTController::commandToString(cmd));
+        return;
+    }
+
+    // Handle handshake commands (already processed in UART controller)
+    if (cmd == UARTCommand::BOOT_HELLO || cmd == UARTCommand::FABRIC_HELLO) {
+        LOG_INFO(STATE_TAG, "Handshake command processed: %s", UARTController::commandToString(cmd));
         return;
     }
 
@@ -1526,6 +1553,9 @@ void printHelp() {
     Serial.println("  config          - Show configuration settings");
     Serial.println("  sd              - Show SD card content info");
     Serial.println("  servo_init      - Run servo initialization sweep\n");
+    Serial.println("Printer diagnostics:");
+    Serial.println("  ptest          - Trigger printer self-test page");
+    Serial.println();
 
     Serial.println("Finger sensor tuning:");
     Serial.println("  cal / fcal      - Recalibrate finger sensor baseline");
@@ -1764,6 +1794,17 @@ void processCLI(String cmd) {
     }
     else if (cmd == "sd" || cmd == "sdcard") {
         printSDCardInfo();
+    }
+    else if (cmd == "ptest") {
+        if (!thermalPrinter) {
+            Serial.println(">>> ERROR: Thermal printer not initialized\n");
+        } else if (!thermalPrinter->isReady()) {
+            Serial.println(">>> ERROR: Thermal printer not ready (check power/paper)\n");
+        } else if (thermalPrinter->printTestPage()) {
+            Serial.println(">>> Printer self-test initiated. Check the diagnostic printout.\n");
+        } else {
+            Serial.println(">>> ERROR: Failed to start printer self-test\n");
+        }
     }
     else if (cmd == "servo_init") {
         Serial.println("\n>>> Running servo initialization sweep...");

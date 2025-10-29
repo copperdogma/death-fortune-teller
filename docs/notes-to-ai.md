@@ -8,7 +8,17 @@ NOTE: This file is for the user to write notes to the AI for it to investigate/r
 
 - We need to remove the TwoSkulls folder once we have everything we need from there. It was just our working baseline, but we're free to rewrite 100% of it. Same with the "proof-of-concept-modules" folder.
 
+- I think the touch-to-recalibrate is too quick.. need to be touching for a full 3 seconds I think
+
 - do we NEED to be arduino compatible? why? AI says no, but it might be a bit of a migration.
+
+- SuperMini now sends Hello and ConnectedToAppleHome.. need to serial log when we get these and ACK each of them.
+  - `CMD_BOOT_HELLO` (0x0D) is emitted immediately after boot and every second until the WROVER replies with `RSP_BOOT_ACK` (0x90).
+  - `CMD_FABRIC_HELLO` (0x0E) is emitted every second after Matter commissioning completes until `RSP_FABRIC_ACK` (0x91) arrives.
+
+- have matter controller send "hello" when it boots up, and another "ready" when it knows it's connected to Apple Home? Can it know that?
+
+- refactor main.cpp... it's huge and bloated, plus there is duplicate code in it
 
 - Capacitance calibration
   - Initial calibration: What I keep seeing is that it calibrates and then almost immediately starts saying "finger detected!" IDEALLY the threshold should be set where getting CLOSE to the mouth doesn't trigger it, but going inside the mouth at all triggers it. If our threshold is wrong, it "calibrates" and then immediately starts seeing values far enough outside of baseline that it decides it's detected a finger, even though nothing is near. Maybe this is simple to solve.. Maybe we do the calibration, see the existing range recorded during the calibration, and set the threshold for 10% higher. That's it. 
@@ -30,3 +40,10 @@ NOTE: This file is for the user to write notes to the AI for it to investigate/r
 
 QUESTIONS
 - if the UART comms fails completely what should we do? currrently we just require a manual reboot. If we can detect failure cases, what should we do in general? How to alert the operator?
+
+BUGS
+- death-matter-controller: never sends the RSP_FABRIC_ACK message when it's connected to Apple Home. I KNOW it is because I can open Apple Home and send commands and it works, and the WROVER receives them.
+- MAYBE: SD shutdown over time? it boots, reads SD, plays audio, responds to commmands.. if it sits for a while I got:
+  I/Audio: Queued audio for welcome skit: /audio/welcome/welcome.wav
+  E (288570) diskio_sdmmc: sdmmc_read_blocks failed (257)
+  E/AudioPlayer: Failed to open audio file: /audio/welcome/welcome.wav

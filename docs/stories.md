@@ -18,12 +18,13 @@ Death, the Fortune Telling Skeleton
 | 003a     | State Machine Implementation            | High     | Done   | /docs/stories/story-003a-state-machine-implementation.md |
 | 003b     | Built-in SD Card Migration              | High     | Done  | /docs/stories/story-003b-built-in-sd-card-migration.md |
 | 004      | Capacitive Finger Detection & Snap Flow | High     | Done  | /docs/stories/story-004-cap-sense-snap-flow.md          |
-| 004a     | LED Control System & Fault Indicators   | High     | To Do  | /docs/stories/story-004a-led-control-system.md         |
+| 004a     | LED Control System & Fault Indicators   | High     | Done  | /docs/stories/story-004a-led-control-system.md         |
 | 004b     | Non-Blocking Runtime Refactor           | High     | To Do  | /docs/stories/story-004b-non-blocking-runtime.md       |
 | 005      | Thermal Printer Fortune Output          | Medium   | In Progress | /docs/stories/story-005-thermal-printer-fortune.md      |
 | 005a     | Serial Console & Diagnostics            | Medium   | To Do  | /docs/stories/story-005a-serial-console-diagnostics.md |
-| 006      | Bluetooth A2DP Reliability & Testing    | Medium   | To Do  | /docs/stories/story-006-bluetooth-a2dp-reliability.md   |
-| 007      | ESP-IDF Framework Migration              | Maybe    | To Do  | /docs/stories/story-007-esp-idf-migration.md           |
+| 006      | UART Protocol with Matter Controller     | High     | Done   | /docs/stories/story-006-uart-protocol-matter-controller.md |
+| 007      | Bluetooth A2DP Reliability & Testing    | Medium   | To Do  | /docs/stories/story-007-bluetooth-a2dp-reliability.md   |
+| 008      | ESP-IDF Framework Migration              | Maybe    | To Do  | /docs/stories/story-008-esp-idf-migration.md           |
 | 2026-001 | Detailed Fortune Flow Implementation     | Medium   | Future | /docs/stories/story-2026-001-detailed-fortune-flow.md |
 
 ## Notes

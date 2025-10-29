@@ -254,8 +254,10 @@ constexpr int EYE_LED_PIN    = 32;
 constexpr int MOUTH_LED_PIN  = 33;
 constexpr int SERVO_PIN      = 23; // relocated off SD CMD
 constexpr int CAP_SENSE_PIN  = 4;
-constexpr int PRINTER_TX_PIN = 21;
-constexpr int PRINTER_RX_PIN = 20;
+constexpr int PRINTER_TX_PIN = 18;
+constexpr int PRINTER_RX_PIN = 19;
+constexpr int MATTER_TX_PIN  = 21;
+constexpr int MATTER_RX_PIN  = 22;
 
 // SD_MMC slot wiring is internal to the ESP32-WROVER board:
 // CLK = GPIO14, CMD = GPIO15, D0 = GPIO2. Firmware enables 1-bit mode and pull-ups.
@@ -264,7 +266,7 @@ constexpr int PRINTER_RX_PIN = 20;
 #### Hardware Wiring Overview
 
 - **ESP32-WROVER ↔ ESP32-C3**: GPIO21 ↔ GPIO20 (RX/TX crossover), GPIO22 ↔ GPIO21, common ground.
-- **Thermal Printer (future story)**: WROVER GPIO18/19 are now free for UART2 or other peripherals.
+- **Thermal Printer**: UART1 routed to GPIO18 (TX→printer RXD) and GPIO19 (RX←printer TXD); shares ground only.
 - **Servo**: Control lead on GPIO23, 5V power from regulated rail, shared ground.
 - **MicroSD**: Insert card into the underside slot; no external wiring required. Ensure card is seated before boot so SD_MMC mounts `/sdcard`.
 - **LEDs / Sensors**: Eye LED GPIO32, mouth LED GPIO33 (each with 100 Ω resistor); capacitive plate on GPIO4; external sensor on GPIO27.
@@ -317,10 +319,10 @@ public:
     bool isPrinterReady();
     
 private:
-    static constexpr int MATTER_TX_PIN = 17;
-    static constexpr int MATTER_RX_PIN = 16;
-    static constexpr int PRINTER_TX_PIN = 4;
-    static constexpr int PRINTER_RX_PIN = 5;
+    static constexpr int MATTER_TX_PIN = 21;
+    static constexpr int MATTER_RX_PIN = 22;
+    static constexpr int PRINTER_TX_PIN = 18;
+    static constexpr int PRINTER_RX_PIN = 19;
 };
 ```
 

@@ -128,6 +128,30 @@ ESP32-C3 Expansion Board: │
 - This is standard practice for multi-supply systems (USB peripherals, Arduino shields, etc.)
 - For production perfboard, add a Schottky diode (1N5817/1N5819) between external power and 5V rail to allow simultaneous USB-C and barrel jack power
 
+### Bench Supply Wiring (2025-10-29)
+
+Recent printer brownouts during `ptest` were resolved by rewiring the bench supply to deliver clean, high-current power:
+
+1. **Bench PSU settings**  
+   - Output: 5 V @ 5 A limit (amps increased from the previous 2.1 A cap).  
+   - Both rails enabled before connecting loads.
+
+2. **Ground distribution**  
+   - Negative bench lead terminates in a single short, thick wire.  
+   - That wire feeds a 5-slot Wago lever connector.  
+   - Every system ground (ESP32-WROVER board, ESP32-C3 SuperMini, thermal printer, servo, sensors) ties into this ground bus.
+
+3. **Positive distribution**  
+   - Positive bench lead splits into two short, thick wires, each landing in its own 3-slot Wago.  
+   - **Wago A**: Feeds the ESP32-WROVER VIN/5 V pin (the SuperMini continues to get 5 V from the WROVER).  
+   - **Wago B**: Feeds the thermal printer and the jaw servo directly.
+
+4. **Result**  
+   - Eliminated ESP32 brownouts when the printer begins a line.  
+   - Printer test lines now complete without USB disconnects or resets.
+
+> Use heavy-gauge leads (18–22 AWG) for the bench supply jumpers and keep them short. The Wagos make it trivial to fan-out clean, low-resistance connections while keeping the ground reference common across all components.
+
 ## TEMP ROUGH OUTLINE
 - get plastic skull, ideally one that can be opened up with eyes that already light up)
   - otherwise you need to cut it open and deal with the mess, figuring out how to close it, and the lack of mounting points inside will be a pain in the butt

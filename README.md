@@ -26,13 +26,14 @@ This project is based on the TwoSkulls codebase but adapted for a single skull w
 
 ### Pin Assignments
 ```cpp
-const int LEFT_EYE_PIN = 32;   // GPIO pin for left eye LED
-const int RIGHT_EYE_PIN = 33;  // GPIO pin for right eye LED
-const int SERVO_PIN = 15;       // Servo control pin
-const int MOUTH_LED_PIN = 2;    // Mouth LED pin
-const int CAP_SENSE_PIN = 4;    // Capacitive finger sensor pin
-const int PRINTER_TX_PIN = 21;  // Thermal printer TX pin
-const int PRINTER_RX_PIN = 20;  // Thermal printer RX pin
+const int EYE_LED_PIN = 32;    // Eye LED pin
+const int MOUTH_LED_PIN = 33;  // Mouth LED pin
+const int SERVO_PIN = 23;      // Servo control pin
+const int CAP_SENSE_PIN = 4;   // Capacitive finger sensor pin
+const int PRINTER_TX_PIN = 18; // Thermal printer TX pin (ESP32 -> printer RXD)
+const int PRINTER_RX_PIN = 19; // Thermal printer RX pin (printer TXD -> ESP32)
+const int MATTER_TX_PIN = 21;  // Matter UART TX pin (ESP32 -> ESP32-C3 RX)
+const int MATTER_RX_PIN = 22;  // Matter UART RX pin (ESP32 <- ESP32-C3 TX)
 ```
 
 ## PlatformIO Setup

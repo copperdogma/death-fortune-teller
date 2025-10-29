@@ -19,10 +19,10 @@
 ## Tasks
 - [x] **Integrate Components**: Connect FortuneGenerator and ThermalPrinter to main.cpp
 - [x] **Implement Snap Action**: Add fortune generation and printing to handleFortuneFlow()
-- [ ] **Implement Bitmap Logo**: Add bitmap logo printing from PoC implementation
+- [x] **Implement Bitmap Logo**: Add bitmap logo printing from PoC implementation
 - [x] **Add Configuration**: Load fortune file path from config.txt
 - [ ] **Test Integration**: Verify complete fortune flow with snap action
-- [ ] **Document Requirements**: SD card fortune file requirements and maintenance workflow
+- [x] **Document Requirements**: SD card fortune file requirements and maintenance workflow
 
 ## Technical Implementation Details
 
@@ -177,8 +177,52 @@
 - **Audio Timing**: Ensure skit is long enough to cover printing time (test during integration)
 - Monitor printer power draw; record any mitigation (caps, wiring) required for reliable output
 - Plan for future mode-specific fortune sets once JSON format stabilizes
+
+## Fortune File Workflow
+- Keep production fortune templates as JSON files under `/fortunes/`. The firmware reads the path from `fortunes_json` in `config.txt` and falls back to `/printer/fortunes_littlekid.json` if the key is missing.
+- Each file must provide `version`, `templates`, and `wordlists` fields. Token names in `templates` must match keys in `wordlists`; the loader validates this on boot and logs any mismatch.
+- To update fortunes: edit the source JSON locally, copy it to the SD card with a unique filename (e.g., `/fortunes/little_kid_fortunes_v2.json`), point `fortunes_json` at the new file, and reboot the skull. Leave the previous file on disk until the new content is validated on hardware.
+- Avoid macOS metadata files (e.g., `._foo.json`). The loader ignores hidden entries but large numbers of them slow the directory scan. Run `dot_clean` after copying if needed.
+- When testing changes without redeploying assets, use the serial console `print fortune` command to inspect the generated text before triggering the full animatronic flow.
+
+## Printer Asset Requirements
+- `printer_logo` in `config.txt` selects the logo; default is `/printer/logo_384w.bmp`. The firmware logs the resolved path on boot and falls back to an ASCII banner if the file is absent.
+- Logos must be uncompressed 1-bit BMPs (`BI_RGB`), width ≤384 dots. Narrower artwork is centered automatically; wider files are rejected with a warning.
+- Save artwork with a black-on-white palette (index 0 = black, index 1 = white). The renderer inverts the bits to match the printer’s “1 = black” raster command.
+- Place logo assets under `/printer/` alongside fortune JSON files so SD copies stay organized. Keep filenames lowercase with no spaces to avoid accidental casing issues on the FAT filesystem.
+- After swapping artwork, reboot the skull and watch for `Bitmap logo printed successfully` in the serial log. If that line is missing, the printer emitted the text fallback instead.
+
 ## Current Progress
 
 - Fortune generation now loads mad-libs templates from `/fortunes/little_kid_fortunes.json`, validates required wordlists, and outputs fully populated fortunes (see story-003a build log dated 2025-10-28).
 - Thermal printer is integrated with the state machine; fortunes print during `FORTUNE_FLOW` and the serial console echoes the complete text.
-- Remaining scope for this story focuses on richer printer handling (bitmap logo, diagnostics, broader testing) and documentation of the SD fortune workflow.
+- Bitmapped logos stream from SD via ESC/POS raster commands with a centered fallback banner when assets are missing.
+- Remaining scope for this story focuses on diagnostics, broader testing, and full-flow validation on hardware.
+
+## Work Log
+
+- **2025-10-29 — Context review**  
+  - **What worked**: Read `README.md`, `docs/spec.md`, `docs/hardware.md`, and `docs/stories/story-003a-state-machine-implementation.md`; inspected `src/main.cpp` state machine implementation to confirm current transitions.  
+  - **What failed**: n/a  
+  - **Lessons learned**: State machine already enforces busy policy and timed transitions; remaining story scope centers on printer logo support and documentation.  
+  - **Next steps**: Clarify bitmap logo requirements, audit existing printer assets, and plan implementation/tests for concurrent audio + printing once ready to resume story work.
+- **2025-10-29 — Bitmap logo pipeline + docs**  
+  - **What worked**: Ported PoC raster command flow into `ThermalPrinter`, added BMP parsing with palette-driven inversion, centered narrow logos, wrapped fortune text, surfaced config-driven logo paths in `setup()`, and built both `esp32dev` + `esp32dev_ota` targets via `pio run`. Documented SD card workflow for fortunes and printer assets.  
+  - **What failed**: Could not exercise the printer on hardware in this pass; firmware changes compiled only locally.  
+  - **Lessons learned**: The CSN-A1X expects palette index 0 to map to black, so inverting the byte stream keeps ESC/POS semantics consistent; documentation needs to emphasize uncompressed 1-bit BMP exports.  
+  - **Next steps**: Flash to the production skull, verify concurrent audio/printing on hardware, and collect printed samples for user sign-off.
+- **2025-10-29 — UART pin audit**  
+  - **What worked**: Reconfirmed Matter UART pinning lives in `uart_controller.h` (GPIO22 RX, GPIO21 TX) while the thermal printer now rides `Serial2` on GPIO18/19. Pulled the Matter pins out of the controller class and defined them next to the other top-level constants so firmware and docs stay in sync; updated `README.md` and `docs/hardware.md` accordingly with reminders about pin isolation.  
+  - **What failed**: n/a  
+  - **Lessons learned**: Hiding critical GPIO assignments inside helper classes makes it easy to miss collisions; document the dedicated UART split whenever we touch printer firmware.  
+  - **Next steps**: Verify the wiring harness still matches the new docs before field testing.
+- **2025-10-29 — Printer self-test command**  
+  - **What worked**: Added `ptest` CLI command that routes through a new `ThermalPrinter::printTestPage()` helper; with stable power restored it now triggers the printer’s built-in self-test (DC2 `T`) so the full diagnostic card prints on demand. Help text documents the command, and `pio run` builds still pass for USB/OTA.  
+  - **What failed**: Hardware verification still pending; test page not yet exercised on the skull.  
+  - **Lessons learned**: Keeping quick diagnostic hooks in firmware makes bench testing faster; the self-test draw is perfect for confirming power delivery before running fortunes.  
+  - **Next steps**: Run `ptest` on hardware to confirm output quality and capture logs/errors if the printer flags faults.
+- **2025-10-29 — Bench power rewire**  
+  - **What worked**: Rebuilt the 5 V distribution: bench PSU now at 5 V/5 A, negative lead into a 5-slot Wago for all grounds, positive lead split into two 3-slot Wagos (one for the WROVER + SuperMini, one for the printer + servo). After the change, `ptest` prints without brownouts. Documented the wiring in `docs/construction.md`.  
+  - **What failed**: n/a  
+  - **Lessons learned**: Even with a capable PSU, shared Dupont jumpers introduce enough resistance to drop the rail when the printer fires; proper bus wiring and higher current limits keep the ESP32 stable.  
+  - **Next steps**: Keep this distribution in mind when transitioning from bench harness to the final perfboard/power PCB.

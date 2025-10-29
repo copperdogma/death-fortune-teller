@@ -1,5 +1,21 @@
 # Changelog
 
+## [2025-10-29] - UART protocol with Matter controller; raw logging and handshakes
+
+### Added
+- Story 006 documenting the dual UART protocol (text and binary) and reliability handshakes
+- Text-based UART commands: `NEAR\n`, `FAR\n`, and `[STATE_NAME]\n` mapping to internal states
+- Binary handshake support: `CMD_BOOT_HELLO (0x0D)` and `CMD_FABRIC_HELLO (0x0E)` with ACK responses `0x90/0x91`
+- Periodic UART handshake status reporting in the main loop
+- Serial console output of every UART message received (hex dump with length)
+
+### Changed
+- `UARTController` now attempts text parsing first, then binary frame parsing, maintaining CRC validation and logging
+- `main.cpp` recognizes handshake commands as processed and does not route them to state transitions
+
+### Documentation
+- Added `/docs/stories/story-006-uart-protocol-matter-controller.md` and linked it in `docs/stories.md`
+
 ## [2025-10-29] - LED Calibration Cues & Fault Logging
 
 ### Added
