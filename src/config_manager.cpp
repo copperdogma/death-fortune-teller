@@ -261,9 +261,9 @@ int ConfigManager::getServoUSMax() const
 
 float ConfigManager::getCapThreshold() const
 {
-    float value = getValue("cap_threshold", "0.002").toFloat();
-    if (value < 0.0001f || value > 1.0f) {
-        return 0.002f; // Default
+    float value = getValue("cap_threshold", "0.1").toFloat();
+    if (value < 0.0f || value > 1.0f) {
+        return 0.1f;
     }
     return value;
 }

@@ -1,5 +1,17 @@
 # Changelog
 
+## [2025-10-29] - Adaptive finger sensor thresholding & calibration hold
+
+### Added
+- Post-calibration settle window that samples ambient noise and streams telemetry (`fon`) with normalized delta, noise, and threshold values.
+- CLI sensitivity command (`fsens`) plus status indicators for noise floor, settle state, and detection enablement.
+
+### Changed
+- Finger sensor calibration now captures min/max samples and waits 2 s before re-enabling detection, producing more reliable adaptive thresholds.
+- Manual recalibration requires a sustained 3 s high-force touch, reducing accidental triggers and enabling self-healing recalibration when noise persists.
+- `config.txt` restores SD-configurable sensitivity with a 0.10 default and updated documentation for the new behavior.
+
+
 ## [2025-10-29] - UART protocol with Matter controller; raw logging and handshakes
 
 ### Added

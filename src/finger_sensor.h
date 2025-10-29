@@ -20,14 +20,18 @@ public:
     float getFilteredValue() const;
     float getNormalizedDelta() const;
     float getThresholdRatio() const;
+    float getSensitivity() const;
     unsigned long getStableDurationMs() const;
     unsigned long getStreamIntervalMs() const;
+    float getNoiseNormalized() const;
+    float getNoiseAbsolute() const;
 
     bool setThresholdRatio(float ratio);
     bool setStableDurationMs(unsigned long durationMs);
     void setStreamEnabled(bool enabled);
     bool isStreamEnabled() const;
     bool setStreamIntervalMs(unsigned long intervalMs);
+    bool setSensitivity(float sensitivity);
 
     bool setTouchCycles(uint16_t initialCycles, uint16_t measureCycles);
     bool setFilterAlpha(float alpha);
@@ -54,12 +58,21 @@ private:
     float m_baseline;
     float m_filtered;
     float m_normalizedDelta;
+    float m_noiseAbsolute;
+    float m_noiseNormalized;
+    float m_sensitivity;
+    float m_manualMinThreshold;
 
     bool m_isCalibrated;
     bool m_isCalibrating;
     unsigned long m_calibrationStartMs;
     uint16_t m_calibrationSamples;
     double m_calibrationSum;
+    float m_calibrationMinSample;
+    float m_calibrationMaxSample;
+    unsigned long m_detectionEnableTime;
+    bool m_isSettling;
+    unsigned long m_settleEndTime;
 
     bool m_touchActive;
     bool m_stableTouch;
@@ -71,8 +84,14 @@ private:
 
     static constexpr unsigned long CALIBRATION_TIME_MS = 1000; // Gather samples for 1 s
     static constexpr unsigned long UPDATE_INTERVAL_MS = 10;    // Update every 10 ms
+    static constexpr unsigned long SETTLE_TIME_MS = 2000;      // Ignore detections while environment settles post-calibration
     static constexpr float FILTER_ALPHA_DEFAULT = 0.3f;     // Default smoothing coefficient
     static constexpr float MIN_THRESHOLD_RATIO = 0.0001f;   // 0.01 %
+    static constexpr float MAX_THRESHOLD_RATIO = 0.05f;     // 5 %
+    static constexpr float MIN_SENSITIVITY = 0.0f;
+    static constexpr float MAX_SENSITIVITY = 1.0f;
+    static constexpr float DEFAULT_SENSITIVITY = 0.15f;
+    static constexpr float MIN_NOISE_NORMALIZED = 0.001f;   // 0.1 % default noise floor
 
     static uint16_t s_touchCyclesInitial;   // touchSetCycles initial
     static uint16_t s_touchCyclesMeasure;   // touchSetCycles measure
@@ -80,6 +99,8 @@ private:
     static float s_baselineDrift;           // baseline drift factor
     static uint8_t s_multisampleCount;      // number of samples averaged
 
+    float computeAdaptiveThreshold(float baseline) const;
+    void applyManualThresholdClamp();
     float readTouchAverage() const;
 };
 

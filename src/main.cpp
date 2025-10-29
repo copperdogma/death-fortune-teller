@@ -153,10 +153,11 @@ bool mouthPulseActive = false;
 static constexpr unsigned long MANUAL_CALIBRATION_WAIT_MS = 5000;
 static constexpr unsigned long MANUAL_CALIBRATION_SETTLE_MS = 1500;
 static constexpr float MANUAL_CALIBRATION_FORCE_MULTIPLIER = 10.0f;
-static constexpr float MANUAL_CALIBRATION_FORCE_RELEASE_RATIO = 0.5f;
+static constexpr unsigned long MANUAL_CALIBRATION_HOLD_MS = 3000;
 
 bool lastFingerDetectedImmediate = false;
-bool highTouchLatch = false;
+bool calibrationHoldActive = false;
+unsigned long calibrationHoldStartMs = 0;
 
 enum class ManualCalibrationStage {
     Idle,
@@ -435,7 +436,6 @@ void triggerManualCalibrationSequence() {
     manualCalibrationStage = ManualCalibrationStage::PreBlink;
     manualCalibrationStageStartMs = millis();
     manualCalibrationCalibrateStartMs = 0;
-    highTouchLatch = true;
     uint8_t blinkBrightness = static_cast<uint8_t>(ConfigManager::getInstance().getMouthLedBright());
     lightController.startMouthBlinkSequence(3, 120, 120, blinkBrightness, false, "Manual calibration start");
 }
@@ -459,22 +459,19 @@ void handleFingerSensorEvents(unsigned long currentTime) {
         }
     }
 
-    if (manualCalibrationStage == ManualCalibrationStage::Idle &&
-        thresholdRatio > 0.0f &&
-        !highTouchLatch &&
-        normalizedDelta >= activationThreshold) {
-        LOG_INFO(LED_TAG, "Manual calibration gesture detected (Δnorm=%.3f%%, threshold=%.3f%%, multiplier=%.1f)",
-                 normalizedDelta * 100.0f,
-                 thresholdRatio * 100.0f,
-                 MANUAL_CALIBRATION_FORCE_MULTIPLIER);
-        triggerManualCalibrationSequence();
-    }
-
-    if (highTouchLatch) {
-        float releaseThreshold = activationThreshold * MANUAL_CALIBRATION_FORCE_RELEASE_RATIO;
-        if (thresholdRatio <= 0.0f || normalizedDelta < releaseThreshold) {
-            highTouchLatch = false;
+    bool strongTouch = thresholdRatio > 0.0f && normalizedDelta >= activationThreshold;
+    if (manualCalibrationStage == ManualCalibrationStage::Idle && strongTouch) {
+        if (!calibrationHoldActive) {
+            calibrationHoldActive = true;
+            calibrationHoldStartMs = currentTime;
+            LOG_INFO(LED_TAG, "Manual calibration hold started (Δnorm=%.3f%%)", normalizedDelta * 100.0f);
+        } else if (currentTime - calibrationHoldStartMs >= MANUAL_CALIBRATION_HOLD_MS) {
+            calibrationHoldActive = false;
+            LOG_INFO(LED_TAG, "Manual calibration hold satisfied (%.1fs)", MANUAL_CALIBRATION_HOLD_MS / 1000.0f);
+            triggerManualCalibrationSequence();
         }
+    } else if (!strongTouch) {
+        calibrationHoldActive = false;
     }
 
     lastFingerDetectedImmediate = detected;
@@ -735,7 +732,7 @@ void setup() {
         fingerSensor->setFilterAlpha(config.getFingerFilterAlpha());
         fingerSensor->setBaselineDrift(config.getFingerBaselineDrift());
         fingerSensor->setMultisampleCount(config.getFingerMultisample());
-        fingerSensor->setThresholdRatio(config.getCapThreshold());
+        fingerSensor->setSensitivity(config.getCapThreshold());
         fingerSensor->begin();
         fingerSensor->setStableDurationMs(fingerStableMs);
         fingerSensor->setStreamIntervalMs(500);
@@ -1562,7 +1559,8 @@ void printHelp() {
     Serial.println("  fhelp           - Finger sensor tuning help");
     Serial.println("  fstatus         - Show live readings snapshot");
     Serial.println("  fsettings       - Show current tuning values");
-    Serial.println("  fthresh <0-1>   - Set normalized threshold (alias: thresh)");
+    Serial.println("  fsens <0-1>     - Set adaptive sensitivity margin (higher = less sensitive)");
+    Serial.println("  fthresh <0-1>   - Set minimum normalized threshold clamp (alias: thresh)");
     Serial.println("  fdebounce <ms>  - Set detection hold duration (30-1000)");
     Serial.println("  finterval <ms>  - Set streaming interval (100-10000)");
     Serial.println("  fcycles <init> <meas> - Set touchSetCycles values (hex/dec)");
@@ -1578,7 +1576,8 @@ void printFingerHelp() {
     Serial.println("Commands:");
     Serial.println("  fhelp             - Show this help");
     Serial.println("  fcal              - Recalibrate finger sensor (1s baseline)");
-    Serial.println("  fthresh <0-1>     - Set normalized threshold (alias: thresh)");
+    Serial.println("  fsens <0-1>       - Set adaptive sensitivity margin (higher = less sensitive)");
+    Serial.println("  fthresh <0-1>     - Set minimum normalized threshold clamp (alias: thresh)");
     Serial.println("  fdebounce <ms>    - Set required stable detection duration");
     Serial.println("  finterval <ms>    - Set streaming interval (100-10000 ms)");
     Serial.println("  fon / foff        - Enable/disable live touch stream");
@@ -1628,6 +1627,36 @@ void processCLI(String cmd) {
             Serial.println(">>> ERROR: Finger sensor not initialized\n");
         }
     }
+    else if (cmd == "fsens" || cmd.startsWith("fsens ")) {
+        if (!fingerSensor) {
+            Serial.println(">>> ERROR: Finger sensor not initialized\n");
+            return;
+        }
+        String valuePart = cmd.length() > 5 ? cmd.substring(5) : "";
+        valuePart.trim();
+        if (valuePart.length() == 0) {
+            Serial.print(">>> Current sensitivity margin: ");
+            Serial.print(fingerSensor->getSensitivity(), 3);
+            Serial.print(" (noise delta ");
+            Serial.print(fingerSensor->getNoiseNormalized() * 100.0f, 3);
+            Serial.println("%)\n");
+            return;
+        }
+        float val = valuePart.toFloat();
+        if (val < 0.0f || val > 1.0f) {
+            Serial.println(">>> ERROR: Sensitivity must be between 0.0 and 1.0\n");
+            return;
+        }
+        if (fingerSensor->setSensitivity(val)) {
+            Serial.print(">>> Sensitivity margin set to ");
+            Serial.print(val, 3);
+            Serial.print(" (effective threshold ");
+            Serial.print(fingerSensor->getThresholdRatio() * 100.0f, 3);
+            Serial.println("%)\n");
+        } else {
+            Serial.println(">>> ERROR: Failed to set sensitivity\n");
+        }
+    }
     else if (cmd == "thresh" || cmd.startsWith("thresh ") ||
              cmd == "fthresh" || cmd.startsWith("fthresh ")) {
         if (!fingerSensor) {
@@ -1652,7 +1681,7 @@ void processCLI(String cmd) {
             return;
         }
         if (fingerSensor->setThresholdRatio(val)) {
-            Serial.print(">>> Threshold set to ");
+            Serial.print(">>> Minimum threshold clamp set to ");
             Serial.print(val * 100.0f, 3);
             Serial.println("%\n");
         } else {

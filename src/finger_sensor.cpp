@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
 
 static constexpr const char *TAG = "FingerSensor";
 
@@ -23,11 +24,20 @@ FingerSensor::FingerSensor(int pin)
       m_baseline(0.0f),
       m_filtered(0.0f),
       m_normalizedDelta(0.0f),
+      m_noiseAbsolute(0.0f),
+      m_noiseNormalized(0.0f),
+      m_sensitivity(DEFAULT_SENSITIVITY),
+      m_manualMinThreshold(0.0f),
       m_isCalibrated(false),
       m_isCalibrating(false),
       m_calibrationStartMs(0),
       m_calibrationSamples(0),
       m_calibrationSum(0.0),
+      m_calibrationMinSample(std::numeric_limits<float>::max()),
+      m_calibrationMaxSample(std::numeric_limits<float>::lowest()),
+      m_detectionEnableTime(0),
+      m_isSettling(false),
+      m_settleEndTime(0),
       m_touchActive(false),
       m_stableTouch(false),
       m_detectionStartMs(0),
@@ -39,6 +49,8 @@ FingerSensor::FingerSensor(int pin)
 void FingerSensor::begin()
 {
     touchSetCycles(s_touchCyclesInitial, s_touchCyclesMeasure);
+    m_isSettling = false;
+    m_settleEndTime = 0;
     startCalibration(true);
 }
 
@@ -81,7 +93,28 @@ void FingerSensor::update()
         m_normalizedDelta = 0.0f;
     }
 
-    bool currentlyDetected = m_normalizedDelta >= m_thresholdRatio;
+    if (m_isSettling) {
+        float baselineReference = m_baseline > 1.0f ? m_baseline : 1.0f;
+        if (m_normalizedDelta > m_noiseNormalized) {
+            m_noiseNormalized = m_normalizedDelta;
+            m_noiseAbsolute = m_noiseNormalized * baselineReference;
+        }
+        if (currentTime >= m_settleEndTime) {
+            m_isSettling = false;
+            m_noiseAbsolute = m_noiseNormalized * baselineReference;
+            m_thresholdRatio = computeAdaptiveThreshold(m_baseline);
+            applyManualThresholdClamp();
+            m_detectionEnableTime = currentTime;
+            LOG_INFO(TAG,
+                     "Finger sensor settle complete — noise=%.3f%% threshold=%.3f%%",
+                     m_noiseNormalized * 100.0f,
+                     m_thresholdRatio * 100.0f);
+        }
+    }
+
+    bool detectionEnabled = (m_detectionEnableTime == 0 || currentTime >= m_detectionEnableTime);
+    bool currentlyDetected = detectionEnabled && (m_normalizedDelta >= m_thresholdRatio);
+
     updateDetection(currentTime, m_normalizedDelta, currentlyDetected);
 
     if (m_streamEnabled) {
@@ -132,6 +165,11 @@ float FingerSensor::getThresholdRatio() const
     return m_thresholdRatio;
 }
 
+float FingerSensor::getSensitivity() const
+{
+    return m_sensitivity;
+}
+
 unsigned long FingerSensor::getStableDurationMs() const
 {
     return m_stableDurationMs;
@@ -142,13 +180,31 @@ unsigned long FingerSensor::getStreamIntervalMs() const
     return m_streamIntervalMs;
 }
 
+float FingerSensor::getNoiseNormalized() const
+{
+    return m_noiseNormalized;
+}
+
+float FingerSensor::getNoiseAbsolute() const
+{
+    return m_noiseAbsolute;
+}
+
 bool FingerSensor::setThresholdRatio(float ratio)
 {
     if (ratio < MIN_THRESHOLD_RATIO || ratio > 1.0f) {
         return false;
     }
-    m_thresholdRatio = ratio;
-    LOG_INFO(TAG, "Threshold updated to %.3f%%", m_thresholdRatio * 100.0f);
+    m_manualMinThreshold = ratio;
+    applyManualThresholdClamp();
+    if (m_isCalibrated) {
+        LOG_INFO(TAG, "Minimum threshold clamp set to %.3f%% (effective threshold %.3f%%)",
+                 m_manualMinThreshold * 100.0f,
+                 m_thresholdRatio * 100.0f);
+    } else {
+        LOG_INFO(TAG, "Minimum threshold clamp set to %.3f%% (calibration pending)",
+                 m_manualMinThreshold * 100.0f);
+    }
     return true;
 }
 
@@ -181,6 +237,25 @@ bool FingerSensor::setStreamIntervalMs(unsigned long intervalMs)
     }
     m_streamIntervalMs = intervalMs;
     LOG_INFO(TAG, "Stream interval set to %lums", m_streamIntervalMs);
+    return true;
+}
+
+bool FingerSensor::setSensitivity(float sensitivity)
+{
+    if (sensitivity < MIN_SENSITIVITY || sensitivity > MAX_SENSITIVITY) {
+        return false;
+    }
+    m_sensitivity = sensitivity;
+    if (m_isCalibrated) {
+        m_thresholdRatio = computeAdaptiveThreshold(m_baseline);
+        applyManualThresholdClamp();
+        LOG_INFO(TAG, "Sensitivity set to %.1f%% — adaptive threshold now %.3f%% (noise=%.3f%%)",
+                 m_sensitivity * 100.0f,
+                 m_thresholdRatio * 100.0f,
+                 m_noiseNormalized * 100.0f);
+    } else {
+        LOG_INFO(TAG, "Sensitivity set to %.1f%% (calibration pending)", m_sensitivity * 100.0f);
+    }
     return true;
 }
 
@@ -239,6 +314,36 @@ void FingerSensor::printStatus(Print &out) const
     out.print("threshold (raw): "); out.println(thresholdAbsolute, 2);
     out.print("delta (norm):    "); out.println(m_normalizedDelta, 4);
     out.print("threshold (norm):"); out.println(m_thresholdRatio, 4);
+    out.print("noise (raw):     "); out.println(m_noiseAbsolute, 3);
+    out.print("noise (norm):    "); out.println(m_noiseNormalized, 4);
+    out.print("sensitivity:     "); out.println(m_sensitivity, 3);
+    out.print("settling:        ");
+    if (m_isSettling) {
+        unsigned long now = millis();
+        unsigned long remaining = (now >= m_settleEndTime) ? 0 : (m_settleEndTime - now);
+        out.print("YES");
+        if (remaining > 0) {
+            out.print(" (");
+            out.print(remaining);
+            out.print(" ms)");
+        }
+        out.println();
+    } else {
+        out.println("NO");
+    }
+    out.print("detect enabled:  ");
+    if (m_detectionEnableTime == 0) {
+        out.println("YES");
+    } else {
+        unsigned long now = millis();
+        if (now >= m_detectionEnableTime) {
+            out.println("YES");
+        } else {
+            out.print("NO (");
+            out.print(m_detectionEnableTime - now);
+            out.println(" ms)");
+        }
+    }
     out.print("stable duration: "); out.print(m_stableDurationMs); out.println(" ms");
     out.print("touchSetCycles:  "); out.print(s_touchCyclesInitial, HEX); out.print(" / "); out.println(s_touchCyclesMeasure, HEX);
     out.print("alpha:           "); out.println(s_filterAlpha, 4);
@@ -256,6 +361,10 @@ void FingerSensor::printSettings(Print &out) const
     out.println("\n=== FINGER SENSOR SETTINGS ===");
     out.print("threshold (norm): "); out.println(m_thresholdRatio, 4);
     out.print("stable duration:  "); out.print(m_stableDurationMs); out.println(" ms");
+    out.print("sensitivity:      "); out.println(m_sensitivity, 3);
+    out.print("manual min thr:   "); out.println(m_manualMinThreshold, 4);
+    out.print("noise (norm):     "); out.println(m_noiseNormalized, 4);
+    out.print("settling:         "); out.println(m_isSettling ? "true" : "false");
     out.print("stream interval:  "); out.print(m_streamIntervalMs); out.println(" ms");
     out.print("touchSetCycles:   "); out.print(s_touchCyclesInitial, HEX); out.print(" / "); out.println(s_touchCyclesMeasure, HEX);
     out.print("alpha:            "); out.println(s_filterAlpha, 4);
@@ -272,6 +381,13 @@ void FingerSensor::startCalibration(bool logMessage)
     m_calibrationStartMs = millis();
     m_calibrationSamples = 0;
     m_calibrationSum = 0.0;
+    m_calibrationMinSample = std::numeric_limits<float>::max();
+    m_calibrationMaxSample = std::numeric_limits<float>::lowest();
+    m_noiseAbsolute = 0.0f;
+    m_noiseNormalized = 0.0f;
+    m_detectionEnableTime = 0;
+    m_isSettling = false;
+    m_settleEndTime = 0;
     m_touchActive = false;
     m_stableTouch = false;
     m_detectionStartMs = 0;
@@ -294,6 +410,12 @@ void FingerSensor::performCalibration()
     float sample = readTouchAverage();
     m_calibrationSum += sample;
     ++m_calibrationSamples;
+    if (sample < m_calibrationMinSample) {
+        m_calibrationMinSample = sample;
+    }
+    if (sample > m_calibrationMaxSample) {
+        m_calibrationMaxSample = sample;
+    }
 
     if (elapsed < CALIBRATION_TIME_MS) {
         if (m_calibrationSamples % 25 == 0) {
@@ -311,15 +433,34 @@ void FingerSensor::performCalibration()
     m_baseline = static_cast<float>(m_calibrationSum / m_calibrationSamples);
     m_filtered = m_baseline;
     m_normalizedDelta = 0.0f;
+    float baselineReference = m_baseline > 1.0f ? m_baseline : 1.0f;
+    float deltaBelow = std::max(0.0f, m_baseline - m_calibrationMinSample);
+    float deltaAbove = std::max(0.0f, m_calibrationMaxSample - m_baseline);
+    m_noiseAbsolute = std::max(deltaBelow, deltaAbove);
+    m_noiseNormalized = m_noiseAbsolute / baselineReference;
+    if (m_noiseNormalized < MIN_NOISE_NORMALIZED) {
+        m_noiseNormalized = MIN_NOISE_NORMALIZED;
+        m_noiseAbsolute = m_noiseNormalized * baselineReference;
+    }
+    m_thresholdRatio = computeAdaptiveThreshold(m_baseline);
+    applyManualThresholdClamp();
     m_isCalibrated = true;
     m_isCalibrating = false;
     m_calibrationSamples = 0;
     m_calibrationSum = 0.0;
+    unsigned long settleStart = millis();
+    m_isSettling = true;
+    m_settleEndTime = settleStart + SETTLE_TIME_MS;
+    m_detectionEnableTime = m_settleEndTime;
 
-    LOG_INFO(TAG, "Finger sensor calibrated — baseline=%.0f threshold=%.3f%% stable=%lums",
+    LOG_INFO(TAG,
+             "Finger sensor calibrated — baseline=%.0f noise=%.3f%% sensitivity=%.1f%% threshold=%.3f%% (min clamp=%.3f%%) settling %lums",
              m_baseline,
+             m_noiseNormalized * 100.0f,
+             m_sensitivity * 100.0f,
              m_thresholdRatio * 100.0f,
-             m_stableDurationMs);
+             m_manualMinThreshold * 100.0f,
+             SETTLE_TIME_MS);
 }
 
 void FingerSensor::updateDetection(unsigned long currentTime, float normalizedDelta, bool currentlyDetected)
@@ -347,27 +488,50 @@ void FingerSensor::updateDetection(unsigned long currentTime, float normalizedDe
 
 void FingerSensor::printStreamSample()
 {
-    float absoluteDelta = std::max(0.0f, m_baseline - m_filtered);
-    float thresholdAbsolute = m_thresholdRatio * (m_baseline > 1.0f ? m_baseline : 1.0f);
-
     Serial.print("Touch: ");
     Serial.print(m_rawValue, 3);
-    Serial.print(" | filtered: ");
+    Serial.print(" | filt: ");
     Serial.print(m_filtered, 3);
-    Serial.print(" | baseline: ");
+    Serial.print(" | base: ");
     Serial.print(m_baseline, 3);
     Serial.print(" | Δnorm: ");
     Serial.print(m_normalizedDelta, 4);
+    Serial.print(" | noise: ");
+    Serial.print(m_noiseNormalized, 4);
     Serial.print(" | thresh: ");
     Serial.print(m_thresholdRatio, 4);
-    Serial.print(" | Δraw: ");
-    Serial.print(absoluteDelta, 3);
-    Serial.print(" | thresh_raw: ");
-    Serial.print(thresholdAbsolute, 3);
+    if (m_isSettling) {
+        unsigned long now = millis();
+        unsigned long remaining = (now >= m_settleEndTime) ? 0 : (m_settleEndTime - now);
+        Serial.print(" | settle_ms: ");
+        Serial.print(remaining);
+    }
     if (m_touchActive) {
         Serial.print(" <<< DETECTED");
     }
     Serial.println();
+}
+
+float FingerSensor::computeAdaptiveThreshold(float baseline) const
+{
+    float noiseNorm = m_noiseNormalized;
+    if (noiseNorm <= 0.0f) {
+        noiseNorm = MIN_THRESHOLD_RATIO;
+    }
+    float adaptive = noiseNorm * (1.0f + m_sensitivity);
+    adaptive = std::max(adaptive, MIN_THRESHOLD_RATIO);
+    adaptive = std::min(adaptive, MAX_THRESHOLD_RATIO);
+    return adaptive;
+}
+
+void FingerSensor::applyManualThresholdClamp()
+{
+    if (m_manualMinThreshold > 0.0f) {
+        m_thresholdRatio = std::max(m_thresholdRatio, m_manualMinThreshold);
+    }
+    if (m_thresholdRatio > MAX_THRESHOLD_RATIO) {
+        m_thresholdRatio = MAX_THRESHOLD_RATIO;
+    }
 }
 
 float FingerSensor::readTouchAverage() const

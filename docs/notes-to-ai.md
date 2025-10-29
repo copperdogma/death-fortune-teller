@@ -18,10 +18,6 @@ NOTE: This file is for the user to write notes to the AI for it to investigate/r
 
 - refactor main.cpp... it's huge and bloated, plus there is duplicate code in it
 
-- Capacitance calibration
-  - Initial calibration: What I keep seeing is that it calibrates and then almost immediately starts saying "finger detected!" IDEALLY the threshold should be set where getting CLOSE to the mouth doesn't trigger it, but going inside the mouth at all triggers it. If our threshold is wrong, it "calibrates" and then immediately starts seeing values far enough outside of baseline that it decides it's detected a finger, even though nothing is near. Maybe this is simple to solve.. Maybe we do the calibration, see the existing range recorded during the calibration, and set the threshold for 10% higher. That's it. 
-  - maybe if you trigger the recalibration, it should GET you to put your finger in its mouth with the light on, wait 5 seconds, then get you to take it out, then wait 5 sewconds, then measure again. Maybe keep the light on the entire time aside from the "take the finger out now" blinks. When light goes out, calibration complete. Could record audio prompts to help. This will let it set a NEW threshold even if the hardcoded threshold is off. 
-
 ## Hardware To Do List
 [x] WROVER up and running
 [x] LED working
@@ -29,12 +25,12 @@ NOTE: This file is for the user to write notes to the AI for it to investigate/r
 [x] Servo working
 [x] Servo breathing animation working
 [x] Hooking up to Bluetooth speaker and playing audio
-[ ] Servo syncing to audio properly within min/max range - I THINK IT IS? Need to see when it's assembled.
+[x] Servo syncing to audio properly within min/max range - I THINK IT IS? Need to see when it's assembled.
 [x] USE THE ONBOARD BLOODY SD CARD READER instead of the one I painstakingly hooked up externally;)
 [x] SuperMini Matter controller up and running
 [x] UART comms working
-[ ] Thermal printer working
-[ ] Capacitive sensor working
+[x] Thermal printer working
+[x] Capacitive sensor working
 
 QUESTIONS
 - if the UART comms fails completely what should we do? currrently we just require a manual reboot. If we can detect failure cases, what should we do in general? How to alert the operator?

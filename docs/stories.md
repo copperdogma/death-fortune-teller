@@ -20,6 +20,7 @@ Death, the Fortune Telling Skeleton
 | 004      | Capacitive Finger Detection & Snap Flow | High     | Done  | /docs/stories/story-004-cap-sense-snap-flow.md          |
 | 004a     | LED Control System & Fault Indicators   | High     | Done  | /docs/stories/story-004a-led-control-system.md         |
 | 004b     | Non-Blocking Runtime Refactor           | High     | To Do  | /docs/stories/story-004b-non-blocking-runtime.md       |
+| 004c     | Adaptive Finger Sensor Threshold        | High     | In Progress | /docs/stories/story-004c-adaptive-finger-threshold.md   |
 | 005      | Thermal Printer Fortune Output          | Medium   | Done | /docs/stories/story-005-thermal-printer-fortune.md      |
 | 005a     | Serial Console & Diagnostics            | Medium   | To Do  | /docs/stories/story-005a-serial-console-diagnostics.md |
 | 006      | UART Protocol with Matter Controller     | High     | Done   | /docs/stories/story-006-uart-protocol-matter-controller.md |
