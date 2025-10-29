@@ -81,18 +81,20 @@ At boot the firmware scans `/audio`, prints the directory tree, and warns if any
 - **Pin Mapping**: CLK=GPIO14, CMD=GPIO15, D0=GPIO2, D1=GPIO4, D2=GPIO12, D3=GPIO13 (internal pull-ups enabled in firmware)
 - **Conflict Warning**: GPIO15 (CMD) must remain unused by other peripherals; reassign any previous loads (e.g., servo control) to avoid SD timeouts.
 
-### UART Communication (Initial Assignment)
-- **GPIO 16**: UART RX (from ESP32-C3) ⚠️ **POTENTIAL CONFLICT**
-- **GPIO 17**: UART TX (to ESP32-C3) ⚠️ **POTENTIAL CONFLICT**
-- **GPIO 1**: Matter trigger pin (interrupt-driven)
+### UART Communication (Final Assignment)
+- **UART1 (Matter link)**
+  - **GPIO 21**: TX → ESP32-C3 RX
+  - **GPIO 22**: RX ← ESP32-C3 TX
+  - **Baud**: 115200 (8N1)
 
 ### Sensors
 - **GPIO 4**: Capacitive finger sensor pin
-- **GPIO 2**: Touch sensor pin ⚠️ **POTENTIAL CONFLICT**
 
-### Thermal Printer (Initial Assignment)
-- **GPIO 18**: ESP32 TX → Printer RXD (now available after SD migration)
-- **GPIO 19**: ESP32 RX ← Printer TXD (now available after SD migration)
+### Thermal Printer
+- **UART2 (printer)**
+  - **GPIO 18**: TX → Printer RXD
+  - **GPIO 19**: RX ← Printer TXD
+  - **Baud**: 9600 (8N1)
 
 ### ESP32-C3 SuperMini (Matter Node)
 - **GPIO 20**: UART RX → connect to ESP32-WROVER TX (IO21)
@@ -102,13 +104,15 @@ At boot the firmware scans `/audio`, prints the directory tree, and warns if any
 
 ## Pin Conflicts Analysis
 
-The following pins have multiple conflicting assignments that need resolution:
+All peripherals are now assigned to conflict-free GPIOs:
 
-1. **GPIO 2**: Mouth LED vs Touch Sensor (also connected to on-board LED on some ESP32 boards)
-2. **GPIO 16/17**: Currently assigned to Matter UART, but could conflict if multiple UART devices share pins
-3. **New availability**: GPIO 5, 18, 19, and 23 freed by SDMMC migration and ready for reassignment (thermal printer, LED clusters, etc.)
+- LEDs on GPIO 32/33
+- Servo on GPIO 23
+- Capacitive sensor on GPIO 4
+- Matter UART on UART1 (TX 21, RX 22)
+- Thermal printer on UART2 (TX 18, RX 19)
 
-**Resolution Strategy**: Use ESP32's multiple hardware UART controllers to eliminate conflicts (see Recommended Solution section).
+There are no GPIO conflicts in the current firmware.
 
 ## Hardware Specifications
 
@@ -237,27 +241,26 @@ The following pins have multiple conflicting assignments that need resolution:
 
 ### Multiple Hardware UART Solution
 
-The ESP32-WROVER has **3 hardware UART interfaces** (UART0, UART1, UART2), allowing each communication device to use its own dedicated UART controller, eliminating all pin conflicts.
+The ESP32-WROVER has **3 hardware UART interfaces** (UART0, UART1, UART2). The firmware dedicates one UART to each external device to eliminate conflicts:
+- UART1 → Matter link (GPIO21/22)
+- UART2 → Thermal printer (GPIO18/19)
 
 #### Final Pin Assignment (Conflict-Free)
 
 ```cpp
-// UART2: ESP32-C3 SuperMini (Matter Controller)
-#define MATTER_UART_NUM     UART_NUM_2
-#define MATTER_TX_PIN       21  // GPIO21 (board silkscreen “21”) -> C3 GPIO20 (RX)
-#define MATTER_RX_PIN       22  // GPIO22 (board silkscreen “22”) <- C3 GPIO21 (TX)
-#define MATTER_BAUD_RATE    115200
+// Pins used by firmware (see src/main.cpp)
+constexpr int EYE_LED_PIN    = 32;  // Eye LED
+constexpr int MOUTH_LED_PIN  = 33;  // Mouth LED
+constexpr int SERVO_PIN      = 23;  // Servo (jaw)
+constexpr int CAP_SENSE_PIN  = 4;   // Capacitive finger sensor
 
-```cpp
-// Pins highlighted in firmware (see src/main.cpp)
-constexpr int EYE_LED_PIN    = 32;
-constexpr int MOUTH_LED_PIN  = 33;
-constexpr int SERVO_PIN      = 23; // relocated off SD CMD
-constexpr int CAP_SENSE_PIN  = 4;
-constexpr int PRINTER_TX_PIN = 18;
-constexpr int PRINTER_RX_PIN = 19;
-constexpr int MATTER_TX_PIN  = 21;
-constexpr int MATTER_RX_PIN  = 22;
+// Thermal printer (UART2)
+constexpr int PRINTER_TX_PIN = 18;  // ESP32 TX → Printer RXD
+constexpr int PRINTER_RX_PIN = 19;  // ESP32 RX ← Printer TXD
+
+// Matter link (UART1)
+constexpr int MATTER_TX_PIN  = 21;  // ESP32 TX → ESP32-C3 RX
+constexpr int MATTER_RX_PIN  = 22;  // ESP32 RX ← ESP32-C3 TX
 
 // SD_MMC slot wiring is internal to the ESP32-WROVER board:
 // CLK = GPIO14, CMD = GPIO15, D0 = GPIO2. Firmware enables 1-bit mode and pull-ups.
@@ -265,8 +268,8 @@ constexpr int MATTER_RX_PIN  = 22;
 
 #### Hardware Wiring Overview
 
-- **ESP32-WROVER ↔ ESP32-C3**: GPIO21 ↔ GPIO20 (RX/TX crossover), GPIO22 ↔ GPIO21, common ground.
-- **Thermal Printer**: UART1 routed to GPIO18 (TX→printer RXD) and GPIO19 (RX←printer TXD); shares ground only.
+- **ESP32-WROVER ↔ ESP32-C3**: Cross-connect UART1 — WROVER TX (GPIO21) → C3 RX, WROVER RX (GPIO22) ← C3 TX; common ground.
+- **Thermal Printer**: UART2 routed to GPIO18 (TX→printer RXD) and GPIO19 (RX←printer TXD); common ground only.
 - **Servo**: Control lead on GPIO23, 5V power from regulated rail, shared ground.
 - **MicroSD**: Insert card into the underside slot; no external wiring required. Ensure card is seated before boot so SD_MMC mounts `/sdcard`.
 - **LEDs / Sensors**: Eye LED GPIO32, mouth LED GPIO33 (each with 100 Ω resistor); capacitive plate on GPIO4; external sensor on GPIO27.
