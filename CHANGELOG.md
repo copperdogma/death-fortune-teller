@@ -1,5 +1,18 @@
 # Changelog
 
+## [2025-10-29] - LED Calibration Cues & Fault Logging
+
+### Added
+- Centralized logging labels for every LightController blink invocation to mirror LED behavior on the serial console.
+
+### Changed
+- Manual calibration flow now keeps the mouth LED steadily lit between the three-start blinks and four-finish blinks for clearer feedback.
+- High-force capacitive touch readings (10× threshold) trigger calibration instead of a timed double tap, matching hardware observations.
+- Printer fault indicator runs two sets of triple eye blinks and then restores the previous brightness instead of looping indefinitely.
+
+### Documentation
+- Story 004 work log captures the steady-on calibration phase and limited printer fault pattern.
+
 ## [2025-10-29] - Capacitive Sensor Tuning & LED Flow
 
 ### Added

@@ -29,6 +29,16 @@ public:
     // Sets the brightness of the eye LED
     // @param brightness: uint8_t value between 0 (off) and 255 (max brightness)
     void setEyeBrightness(uint8_t brightness);
+    bool isEyePatternActive() const;
+    void startEyeBlinkPattern(int numBlinks,
+                              unsigned long onDurationMs = 100,
+                              unsigned long offDurationMs = 100,
+                              unsigned long repeatDelayMs = 700,
+                              uint8_t onBrightness = BRIGHTNESS_MAX,
+                              uint8_t offBrightness = BRIGHTNESS_OFF,
+                              int repeatSets = -1,
+                              const char *label = nullptr);
+    void stopEyeBlinkPattern();
 
     // Configure mouth LED behavior (brightness + pulse parameters)
     void configureMouthLED(uint8_t bright, uint8_t pulseMin, uint8_t pulseMax, unsigned long pulsePeriodMs);
@@ -37,6 +47,13 @@ public:
     void setMouthOff();
     void setMouthBright();
     void setMouthPulse();
+    void startMouthBlinkSequence(int numBlinks,
+                                 unsigned long onDurationMs = 120,
+                                 unsigned long offDurationMs = 120,
+                                 uint8_t blinkBrightness = PWM_MAX,
+                                 bool restorePreviousMode = false,
+                                 const char *label = nullptr);
+    bool isMouthBlinking() const;
 
     // Update function to be called from loop() for animations
     void update();
@@ -63,7 +80,8 @@ private:
     enum class MouthMode {
         OFF,
         BRIGHT,
-        PULSE
+        PULSE,
+        BLINKING
     };
 
     MouthMode _mouthMode;
@@ -72,9 +90,44 @@ private:
     uint8_t _mouthPulseMax;
     unsigned long _mouthPulsePeriodMs;
     unsigned long _mouthLastUpdateMs;
+    MouthMode _mouthPreviousMode;
+    bool _mouthBlinkRestorePrevious;
+
+    struct MouthBlinkState {
+        bool active;
+        int blinksRemaining;
+        unsigned long onDurationMs;
+        unsigned long offDurationMs;
+        unsigned long nextToggleMs;
+        bool isOnPhase;
+        uint8_t onBrightness;
+        uint8_t offBrightness;
+    };
+
+    struct EyePatternState {
+        bool active;
+        bool indefinite;
+        int blinksPerSet;
+        int completedBlinks;
+        unsigned long onDurationMs;
+        unsigned long offDurationMs;
+        unsigned long repeatDelayMs;
+        unsigned long nextToggleMs;
+        bool isOnPhase;
+        uint8_t onBrightness;
+        uint8_t offBrightness;
+        uint8_t storedNormalBrightness;
+        int setsRemaining;
+    };
+
+    MouthBlinkState _mouthBlink;
+    EyePatternState _eyePattern;
 
     void applyMouthBrightness(uint8_t brightness);
     void updateMouthPulse(unsigned long now);
+    void updateMouthBlink(unsigned long now);
+    void updateEyePattern(unsigned long now);
+    void applyEyeBrightness(uint8_t brightness);
 };
 
 #endif // LIGHT_CONTROLLER_H

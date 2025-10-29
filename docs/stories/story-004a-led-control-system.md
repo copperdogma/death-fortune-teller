@@ -12,7 +12,7 @@
 [docs/spec.md §3 State Machine — Fortune Flow](../spec.md#3-state-machine-runtime) - LED behavior during fortune flow
 
 ## Acceptance Criteria
-- Mouth LED provides visual feedback during fortune flow (solid during prompt, pulse during finger wait)
+- Mouth LED provides visual feedback ONLY during finger prompt sequence (solid during PLAY_FINGER_PROMPT, pulse during MOUTH_OPEN_WAIT_FINGER)
 - LED fault indicators provide clear visual feedback for system errors (3 quick blinks for printer faults)
 - LED control integrates seamlessly with state machine transitions
 - Capacative sensor tuning adjustments
@@ -32,15 +32,16 @@
 ### LED Control Requirements
 
 **Mouth LED Behavior:**
-- Solid LED during finger prompt phase (maximum brightness)
-- Pulsing LED while waiting for finger detection (brightness cycling)
+- Solid LED during PLAY_FINGER_PROMPT state (maximum brightness)
+- Pulsing LED during MOUTH_OPEN_WAIT_FINGER state (brightness cycling)
+- LED off during all other states (IDLE, PLAY_WELCOME, WAIT_FOR_NEAR, FINGER_DETECTED, SNAP_WITH_FINGER, SNAP_NO_FINGER, FORTUNE_FLOW, FORTUNE_DONE, COOLDOWN)
 - LED off during snap delay and fortune flow
 - LED off during non-fortune states
 
 **LED State Integration:**
 - LED behavior synchronized with state machine transitions
-- LED off during IDLE, COOLDOWN, and non-fortune states
-- LED active only during FORTUNE_FLOW states
+- LED active only during PLAY_FINGER_PROMPT and MOUTH_OPEN_WAIT_FINGER states
+- LED off during all other states (IDLE, PLAY_WELCOME, WAIT_FOR_NEAR, FINGER_DETECTED, SNAP_WITH_FINGER, SNAP_NO_FINGER, FORTUNE_FLOW, FORTUNE_DONE, COOLDOWN)
 - Handle LED control failures without affecting main flow
 - Support LED brightness configuration per state
 
@@ -135,3 +136,19 @@
 2. **Fault Indicator Testing**: Test LED fault indicators for various system errors
 3. **Integration Testing**: Test LED integration with state machine and fault detection
 4. **Error Handling Testing**: Test LED system behavior during hardware failures
+
+---
+
+## Work Log
+
+### 2025-10-29 — Kickoff & Orientation
+- Result: Reviewed `README.md`, `docs/spec.md`, related stories (003 and 003a), and current `src/main.cpp` state machine implementation to confirm trigger flow and LED requirements context.
+- Worked: No issues encountered during document/code review; noted existing LightController usage (mouth bright in `MOUTH_OPEN_WAIT_FINGER`, off elsewhere).
+- Lessons: Need to align upcoming LED control changes with existing state machine hooks and ensure new fault/tuning patterns coexist with current mouth LED usage.
+- Next Steps: Clarify expectations for fault pattern priorities vs. ongoing state-driven effects before coding.
+
+### 2025-10-29 — LED control implementation & build
+- Result: Added non-blocking mouth blink sequences, eye fault patterns, high-force touch calibration trigger, and printer fault latching; PlatformIO build (`pio run`) passes for both USB and OTA targets.
+- Worked: Verified state transitions guard eye brightness when fault pattern active; reused config mouth brightness for blink amplitude; calibration pipeline runs through blink → steady-on wait → calibrate → completion blink stages; centralized logging for every blink pattern and limited printer faults to two 3-blink bursts before returning to normal brightness.
+- Lessons: Needed dedicated mouth blink state to avoid stomping pulse logic; eye brightness setters must respect active fault pattern so future state transitions don’t clear warnings; finger sensor gesture now keys off a 10× threshold spike so calibration only triggers on deliberate presses.
+- Next Steps: Hardware validation to confirm the high-force delta threshold feels right and to tune blink timing/brightness; integrate additional fault sources once diagnostics land.

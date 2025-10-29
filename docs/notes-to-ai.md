@@ -10,6 +10,10 @@ NOTE: This file is for the user to write notes to the AI for it to investigate/r
 
 - do we NEED to be arduino compatible? why? AI says no, but it might be a bit of a migration.
 
+- Capacitance calibration
+  - Initial calibration: What I keep seeing is that it calibrates and then almost immediately starts saying "finger detected!" IDEALLY the threshold should be set where getting CLOSE to the mouth doesn't trigger it, but going inside the mouth at all triggers it. If our threshold is wrong, it "calibrates" and then immediately starts seeing values far enough outside of baseline that it decides it's detected a finger, even though nothing is near. Maybe this is simple to solve.. Maybe we do the calibration, see the existing range recorded during the calibration, and set the threshold for 10% higher. That's it. 
+  - maybe if you trigger the recalibration, it should GET you to put your finger in its mouth with the light on, wait 5 seconds, then get you to take it out, then wait 5 sewconds, then measure again. Maybe keep the light on the entire time aside from the "take the finger out now" blinks. When light goes out, calibration complete. Could record audio prompts to help. This will let it set a NEW threshold even if the hardcoded threshold is off. 
+
 ## Hardware To Do List
 [x] WROVER up and running
 [x] LED working

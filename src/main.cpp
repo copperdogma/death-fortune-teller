@@ -62,6 +62,7 @@ static constexpr const char *STATE_TAG = "State";
 static constexpr const char *AUDIO_TAG = "Audio";
 static constexpr const char *BT_TAG = "Bluetooth";
 static constexpr const char *FLOW_TAG = "FortuneFlow";
+static constexpr const char *LED_TAG = "LED";
 
 bool g_sdCardMounted = false;
 
@@ -122,6 +123,10 @@ void resetFortuneFlowWork();
 bool ensureFortuneGeneratorLoaded();
 void generateAndPrintFortune();
 void printFortuneToSerial(const String &fortune);
+void handleFingerSensorEvents(unsigned long currentTime);
+void triggerManualCalibrationSequence();
+void updateManualCalibration(unsigned long currentTime);
+void updatePrinterFaultIndicator();
 
 DeathState currentState = DeathState::IDLE;
 unsigned long stateStartTime = 0;
@@ -142,6 +147,27 @@ unsigned long cooldownStart = 0;
 int snapDelayMs = 0;
 bool snapDelayScheduled = false;
 bool mouthPulseActive = false;
+
+static constexpr unsigned long MANUAL_CALIBRATION_WAIT_MS = 5000;
+static constexpr unsigned long MANUAL_CALIBRATION_SETTLE_MS = 1500;
+static constexpr float MANUAL_CALIBRATION_FORCE_MULTIPLIER = 10.0f;
+static constexpr float MANUAL_CALIBRATION_FORCE_RELEASE_RATIO = 0.5f;
+
+bool lastFingerDetectedImmediate = false;
+bool highTouchLatch = false;
+
+enum class ManualCalibrationStage {
+    Idle,
+    PreBlink,
+    WaitBeforeCalibration,
+    Calibrating,
+    CompletionBlink
+};
+
+ManualCalibrationStage manualCalibrationStage = ManualCalibrationStage::Idle;
+unsigned long manualCalibrationStageStartMs = 0;
+unsigned long manualCalibrationCalibrateStartMs = 0;
+bool printerFaultLatched = false;
 
 static constexpr const char *AUDIO_WELCOME_DIR = "/audio/welcome";
 static constexpr const char *AUDIO_FINGER_PROMPT_DIR = "/audio/finger_prompt";
@@ -397,6 +423,122 @@ DeathState stateForCommand(UARTCommand cmd) {
 
 bool isBusy() {
     return currentState != DeathState::IDLE;
+}
+
+void triggerManualCalibrationSequence() {
+    if (manualCalibrationStage != ManualCalibrationStage::Idle) {
+        return;
+    }
+    LOG_INFO(LED_TAG, "Manual calibration sequence initiated");
+    manualCalibrationStage = ManualCalibrationStage::PreBlink;
+    manualCalibrationStageStartMs = millis();
+    manualCalibrationCalibrateStartMs = 0;
+    highTouchLatch = true;
+    uint8_t blinkBrightness = static_cast<uint8_t>(ConfigManager::getInstance().getMouthLedBright());
+    lightController.startMouthBlinkSequence(3, 120, 120, blinkBrightness, false, "Manual calibration start");
+}
+
+void handleFingerSensorEvents(unsigned long currentTime) {
+    if (!fingerSensor) {
+        return;
+    }
+
+    bool detected = fingerSensor->isFingerDetected();
+    float normalizedDelta = fingerSensor->getNormalizedDelta();
+    float thresholdRatio = fingerSensor->getThresholdRatio();
+    float activationThreshold = thresholdRatio * MANUAL_CALIBRATION_FORCE_MULTIPLIER;
+
+    if (detected && !lastFingerDetectedImmediate) {
+        bool restorePrevious = (currentState == DeathState::PLAY_FINGER_PROMPT ||
+                                currentState == DeathState::MOUTH_OPEN_WAIT_FINGER);
+        if (manualCalibrationStage == ManualCalibrationStage::Idle) {
+            uint8_t blinkBrightness = static_cast<uint8_t>(ConfigManager::getInstance().getMouthLedBright());
+            lightController.startMouthBlinkSequence(2, 120, 120, blinkBrightness, restorePrevious, "Finger detection feedback");
+        }
+    }
+
+    if (manualCalibrationStage == ManualCalibrationStage::Idle &&
+        thresholdRatio > 0.0f &&
+        !highTouchLatch &&
+        normalizedDelta >= activationThreshold) {
+        LOG_INFO(LED_TAG, "Manual calibration gesture detected (Δnorm=%.3f%%, threshold=%.3f%%, multiplier=%.1f)",
+                 normalizedDelta * 100.0f,
+                 thresholdRatio * 100.0f,
+                 MANUAL_CALIBRATION_FORCE_MULTIPLIER);
+        triggerManualCalibrationSequence();
+    }
+
+    if (highTouchLatch) {
+        float releaseThreshold = activationThreshold * MANUAL_CALIBRATION_FORCE_RELEASE_RATIO;
+        if (thresholdRatio <= 0.0f || normalizedDelta < releaseThreshold) {
+            highTouchLatch = false;
+        }
+    }
+
+    lastFingerDetectedImmediate = detected;
+}
+
+void updateManualCalibration(unsigned long currentTime) {
+    switch (manualCalibrationStage) {
+        case ManualCalibrationStage::Idle:
+            return;
+
+        case ManualCalibrationStage::PreBlink:
+            if (!lightController.isMouthBlinking()) {
+                manualCalibrationStage = ManualCalibrationStage::WaitBeforeCalibration;
+                manualCalibrationStageStartMs = currentTime;
+                lightController.setMouthBright();
+                LOG_INFO(LED_TAG, "Manual calibration: mouth LED steady while waiting to calibrate");
+                LOG_INFO(LED_TAG, "Manual calibration: waiting %lu ms before calibrate", MANUAL_CALIBRATION_WAIT_MS);
+            }
+            break;
+
+        case ManualCalibrationStage::WaitBeforeCalibration:
+            if (currentTime - manualCalibrationStageStartMs >= MANUAL_CALIBRATION_WAIT_MS) {
+                if (fingerSensor) {
+                    LOG_INFO(LED_TAG, "Manual calibration: starting sensor calibration");
+                    fingerSensor->calibrate();
+                }
+                manualCalibrationCalibrateStartMs = currentTime;
+                manualCalibrationStage = ManualCalibrationStage::Calibrating;
+            }
+            break;
+
+        case ManualCalibrationStage::Calibrating:
+            if (currentTime - manualCalibrationCalibrateStartMs >= MANUAL_CALIBRATION_SETTLE_MS) {
+                uint8_t blinkBrightness = static_cast<uint8_t>(ConfigManager::getInstance().getMouthLedBright());
+                lightController.startMouthBlinkSequence(4, 120, 120, blinkBrightness, false, "Manual calibration finished");
+                manualCalibrationStage = ManualCalibrationStage::CompletionBlink;
+                LOG_INFO(LED_TAG, "Manual calibration: calibration complete, signalling done");
+            }
+            break;
+
+        case ManualCalibrationStage::CompletionBlink:
+            if (!lightController.isMouthBlinking()) {
+                manualCalibrationStage = ManualCalibrationStage::Idle;
+                LOG_INFO(LED_TAG, "Manual calibration sequence finished");
+            }
+            break;
+    }
+}
+
+void updatePrinterFaultIndicator() {
+    if (!thermalPrinter || printerFaultLatched) {
+        return;
+    }
+
+    if (thermalPrinter->hasError()) {
+        printerFaultLatched = true;
+        LOG_WARN(LED_TAG, "Printer fault detected; latching eye fault indicator");
+        lightController.startEyeBlinkPattern(3,
+                                             120,
+                                             120,
+                                             800,
+                                             LightController::BRIGHTNESS_MAX,
+                                             LightController::BRIGHTNESS_OFF,
+                                             2,
+                                             "Printer fault");
+    }
 }
 
 // Breathing cycle state
@@ -752,13 +894,16 @@ void loop() {
 
     if (fingerSensor) {
         fingerSensor->update();
+        unsigned long fingerEventTime = millis();
+        handleFingerSensorEvents(fingerEventTime);
     }
-
-    lightController.update();
 
     if (thermalPrinter) {
         thermalPrinter->update();
+        updatePrinterFaultIndicator();
     }
+
+    lightController.update();
 
     if (uartController) {
         uartController->update();
@@ -771,6 +916,7 @@ void loop() {
     
     // Check if it's time to move the jaw for breathing
     unsigned long currentTime = millis();
+    updateManualCalibration(currentTime);
     updateStateMachine(currentTime);
     bool fingerStreaming = fingerSensor && fingerSensor->isStreamEnabled();
     if (!fingerStreaming && audioPlayer && currentState == DeathState::IDLE &&
@@ -1059,7 +1205,9 @@ void enterState(DeathState newState, const char *reason, bool forced) {
             resetFortuneFlowWork();
             mouthOpen = false;
             servoController.setPosition(servoClosed);
-            lightController.setEyeBrightness(LightController::BRIGHTNESS_DIM);
+            if (!lightController.isEyePatternActive()) {
+                lightController.setEyeBrightness(LightController::BRIGHTNESS_DIM);
+            }
             lightController.setMouthOff();
             mouthPulseActive = false;
             fingerWaitStart = 0;
@@ -1073,14 +1221,18 @@ void enterState(DeathState newState, const char *reason, bool forced) {
                 enterState(DeathState::WAIT_FOR_NEAR, "Welcome audio missing; advancing", forced);
                 return;
             }
-            lightController.setEyeBrightness(LightController::BRIGHTNESS_MAX);
+            if (!lightController.isEyePatternActive()) {
+                lightController.setEyeBrightness(LightController::BRIGHTNESS_MAX);
+            }
             lightController.setMouthOff();
             mouthPulseActive = false;
             break;
 
         case DeathState::WAIT_FOR_NEAR:
             mouthOpen = false;
-            lightController.setEyeBrightness(LightController::BRIGHTNESS_DIM);
+            if (!lightController.isEyePatternActive()) {
+                lightController.setEyeBrightness(LightController::BRIGHTNESS_DIM);
+            }
             lightController.setMouthOff();
             mouthPulseActive = false;
             break;
@@ -1090,8 +1242,10 @@ void enterState(DeathState newState, const char *reason, bool forced) {
                 enterState(DeathState::MOUTH_OPEN_WAIT_FINGER, "Finger prompt audio missing; advancing", forced);
                 return;
             }
-            lightController.setEyeBrightness(LightController::BRIGHTNESS_MAX);
-            lightController.setMouthOff();
+            if (!lightController.isEyePatternActive()) {
+                lightController.setEyeBrightness(LightController::BRIGHTNESS_MAX);
+            }
+            lightController.setMouthBright();
             mouthPulseActive = false;
             break;
 
@@ -1101,7 +1255,9 @@ void enterState(DeathState newState, const char *reason, bool forced) {
             fingerWaitStart = millis();
             lightController.setMouthBright();
             mouthPulseActive = false;
-            lightController.setEyeBrightness(LightController::BRIGHTNESS_MAX);
+            if (!lightController.isEyePatternActive()) {
+                lightController.setEyeBrightness(LightController::BRIGHTNESS_MAX);
+            }
             break;
 
         case DeathState::FINGER_DETECTED:
@@ -1138,7 +1294,9 @@ void enterState(DeathState newState, const char *reason, bool forced) {
         case DeathState::FORTUNE_FLOW:
             servoController.setPosition(servoOpen);
             mouthOpen = true;
-            lightController.setEyeBrightness(LightController::BRIGHTNESS_MAX);
+            if (!lightController.isEyePatternActive()) {
+                lightController.setEyeBrightness(LightController::BRIGHTNESS_MAX);
+            }
             lightController.setMouthOff();
             mouthPulseActive = false;
             generateAndPrintFortune();
@@ -1162,7 +1320,9 @@ void enterState(DeathState newState, const char *reason, bool forced) {
         case DeathState::COOLDOWN:
             mouthOpen = false;
             servoController.setPosition(servoClosed);
-            lightController.setEyeBrightness(LightController::BRIGHTNESS_DIM);
+            if (!lightController.isEyePatternActive()) {
+                lightController.setEyeBrightness(LightController::BRIGHTNESS_DIM);
+            }
             lightController.setMouthOff();
             mouthPulseActive = false;
             cooldownStart = stateStartTime;
