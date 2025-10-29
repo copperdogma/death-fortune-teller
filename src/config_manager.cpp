@@ -81,14 +81,24 @@ bool ConfigManager::loadConfig()
     }
 
     // Validate timing values
+    unsigned long fingerDetect = getValue("finger_detect_ms", "120").toInt();
     unsigned long fingerWait = getValue("finger_wait_ms", "6000").toInt();
     unsigned long snapDelayMin = getValue("snap_delay_min_ms", "1000").toInt();
     unsigned long snapDelayMax = getValue("snap_delay_max_ms", "3000").toInt();
     unsigned long cooldown = getValue("cooldown_ms", "12000").toInt();
+    int mouthBright = getValue("mouth_led_bright", "255").toInt();
+    int mouthPulseMin = getValue("mouth_led_pulse_min", "40").toInt();
+    int mouthPulseMax = getValue("mouth_led_pulse_max", "255").toInt();
+    unsigned long mouthPulsePeriod = getValue("mouth_led_pulse_period_ms", "1500").toInt();
 
     if (snapDelayMin >= snapDelayMax)
     {
         LOG_WARN(TAG, "Invalid snap delay timing (min >= max). Getters will return defaults.");
+    }
+
+    if (fingerDetect < 30 || fingerDetect > 1000)
+    {
+        LOG_WARN(TAG, "Finger detection debounce out of range (30-1000 ms expected). Getter will return default.");
     }
 
     if (fingerWait < 1000)
@@ -99,6 +109,48 @@ bool ConfigManager::loadConfig()
     if (cooldown < 5000)
     {
         LOG_WARN(TAG, "Cooldown period too short (< 5000ms). Getters will return default.");
+    }
+
+    if (mouthBright < 0 || mouthBright > 255)
+    {
+        LOG_WARN(TAG, "Mouth LED bright value out of range (0-255). Getter will return default.");
+    }
+
+    if (mouthPulseMin < 0 || mouthPulseMin > 255 || mouthPulseMax < 0 || mouthPulseMax > 255 || mouthPulseMin > mouthPulseMax)
+    {
+        LOG_WARN(TAG, "Mouth LED pulse bounds invalid. Getters will fall back to defaults.");
+    }
+
+    if (mouthPulsePeriod < 200 || mouthPulsePeriod > 10000)
+    {
+        LOG_WARN(TAG, "Mouth LED pulse period out of range (200-10000 ms). Getter will return default.");
+    }
+
+    // Validate finger tuning parameters
+    uint32_t fingerCyclesInit = strtoul(getValue("finger_cycles_init", "0x1000").c_str(), nullptr, 0);
+    uint32_t fingerCyclesMeasure = strtoul(getValue("finger_cycles_measure", "0x1000").c_str(), nullptr, 0);
+    if (fingerCyclesInit == 0 || fingerCyclesInit > 0xFFFF ||
+        fingerCyclesMeasure == 0 || fingerCyclesMeasure > 0xFFFF)
+    {
+        LOG_WARN(TAG, "Finger touch cycles invalid (must be 1-0xFFFF). Getters will use defaults.");
+    }
+
+    float fingerAlpha = getValue("finger_filter_alpha", "0.3").toFloat();
+    if (fingerAlpha < 0.0f || fingerAlpha > 1.0f)
+    {
+        LOG_WARN(TAG, "Finger filter alpha out of range (0.0-1.0). Getter will use default.");
+    }
+
+    float fingerDrift = getValue("finger_baseline_drift", "0.0001").toFloat();
+    if (fingerDrift < 0.0f || fingerDrift > 0.1f)
+    {
+        LOG_WARN(TAG, "Finger baseline drift out of range (0-0.1). Getter will use default.");
+    }
+
+    int fingerMulti = getValue("finger_multisample", "32").toInt();
+    if (fingerMulti <= 0 || fingerMulti > 255)
+    {
+        LOG_WARN(TAG, "Finger multisample count invalid (1-255). Getter will use default.");
     }
 
     // Validate printer baud rate
@@ -210,8 +262,64 @@ int ConfigManager::getServoUSMax() const
 float ConfigManager::getCapThreshold() const
 {
     float value = getValue("cap_threshold", "0.002").toFloat();
-    if (value < 0.001f || value > 0.1f) {
+    if (value < 0.0001f || value > 1.0f) {
         return 0.002f; // Default
+    }
+    return value;
+}
+
+uint16_t ConfigManager::getFingerCyclesInit() const
+{
+    String val = getValue("finger_cycles_init", "0x1000");
+    uint32_t parsed = strtoul(val.c_str(), nullptr, 0);
+    if (parsed == 0 || parsed > 0xFFFF) {
+        return 0x1000;
+    }
+    return static_cast<uint16_t>(parsed);
+}
+
+uint16_t ConfigManager::getFingerCyclesMeasure() const
+{
+    String val = getValue("finger_cycles_measure", "0x1000");
+    uint32_t parsed = strtoul(val.c_str(), nullptr, 0);
+    if (parsed == 0 || parsed > 0xFFFF) {
+        return 0x1000;
+    }
+    return static_cast<uint16_t>(parsed);
+}
+
+float ConfigManager::getFingerFilterAlpha() const
+{
+    float value = getValue("finger_filter_alpha", "0.3").toFloat();
+    if (value < 0.0f || value > 1.0f) {
+        return 0.3f;
+    }
+    return value;
+}
+
+float ConfigManager::getFingerBaselineDrift() const
+{
+    float value = getValue("finger_baseline_drift", "0.0001").toFloat();
+    if (value < 0.0f || value > 0.1f) {
+        return 0.0001f;
+    }
+    return value;
+}
+
+uint8_t ConfigManager::getFingerMultisample() const
+{
+    int value = getValue("finger_multisample", "32").toInt();
+    if (value <= 0 || value > 255) {
+        return 32;
+    }
+    return static_cast<uint8_t>(value);
+}
+
+unsigned long ConfigManager::getFingerDetectMs() const
+{
+    unsigned long value = getValue("finger_detect_ms", "120").toInt();
+    if (value < 30 || value > 1000) {
+        return 120;
     }
     return value;
 }
@@ -271,4 +379,31 @@ String ConfigManager::getPrinterLogo() const
 String ConfigManager::getFortunesJson() const
 {
     return getValue("fortunes_json", "/fortunes/little_kid_fortunes.json");
+}
+
+uint8_t ConfigManager::getMouthLedBright() const
+{
+    int value = getValue("mouth_led_bright", "255").toInt();
+    return static_cast<uint8_t>(constrain(value, 0, 255));
+}
+
+uint8_t ConfigManager::getMouthLedPulseMin() const
+{
+    int value = getValue("mouth_led_pulse_min", "40").toInt();
+    return static_cast<uint8_t>(constrain(value, 0, 255));
+}
+
+uint8_t ConfigManager::getMouthLedPulseMax() const
+{
+    int value = getValue("mouth_led_pulse_max", "255").toInt();
+    return static_cast<uint8_t>(constrain(value, 0, 255));
+}
+
+unsigned long ConfigManager::getMouthLedPulsePeriodMs() const
+{
+    unsigned long value = getValue("mouth_led_pulse_period_ms", "1500").toInt();
+    if (value < 200) {
+        return 1500;
+    }
+    return value;
 }

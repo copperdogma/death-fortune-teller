@@ -235,10 +235,24 @@ servo_us_max=2500
 cap_threshold=0.002              # 0.2% change threshold (tunable per skull)
 
 # Timing
+finger_detect_ms=120
 finger_wait_ms=6000
 snap_delay_min_ms=1000
 snap_delay_max_ms=3000
 cooldown_ms=12000
+
+# Mouth LED
+mouth_led_bright=255
+mouth_led_pulse_min=40
+mouth_led_pulse_max=255
+mouth_led_pulse_period_ms=1500
+
+# Finger sensor tuning defaults
+finger_cycles_init=0x1000
+finger_cycles_measure=0x1000
+finger_filter_alpha=0.3
+finger_baseline_drift=0.0001
+finger_multisample=32
 
 # Printer - pins hardcoded in firmware
 printer_baud=9600                # PoC default

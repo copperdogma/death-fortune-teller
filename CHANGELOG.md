@@ -1,6 +1,19 @@
 # Changelog
 
-# Changelog
+## [2025-10-29] - Capacitive Sensor Tuning & LED Flow
+
+### Added
+- CLI tuning commands (`fcycles`, `falpha`, `fdrift`, `fmultisample`, `fstatus`, `fon/foff`) with live stream telemetry for the capacitive finger sensor.
+- Runtime configuration support for touch cycles, smoothing, baseline drift, multisampling, and normalized thresholds sourced from `config.txt`.
+- Mouth LED controller modes (`setMouthBright`, `setMouthPulse`, `setMouthOff`) with configurable brightness and pulse timing.
+
+### Changed
+- Finger detection rewritten to use normalized deltas, adjustable stabilization timing, and streaming diagnostics aligned with the PoC behavior.
+- State machine drives the mouth LED sequence per acceptance criteria (OFF → BRIGHT → pulse → OFF) and respects the new finger sensor states.
+
+### Documentation
+- Story 004 marked complete with updated tasks/acceptance log.
+- `docs/spec.md` and `sd-card-files/config.txt` describe the new sensor tuning keys and defaults.
 
 ## [2025-10-28] - Built-in SD Slot Migration
 

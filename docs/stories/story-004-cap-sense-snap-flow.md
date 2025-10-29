@@ -1,6 +1,6 @@
 # Story: Capacitive Finger Detection & Snap Flow
 
-**Status**: To Do
+**Status**: Done
 
 ---
 
@@ -8,46 +8,40 @@
 [docs/spec.md §3 State Machine — Fortune Flow](../spec.md#3-state-machine-runtime)
 
 ## Alignment with Design
-[docs/hardware.md §Current Pin Assignments](../hardware.md#current-pin-assignments) - GPIO4 for capacitive sensor
+[docs/hardware.md §Current Pin Assignments](../hardware.md#current-pin-assignments) — GPIO4 (Touch0) on ESP32-WROVER for the capacitive foil
 [docs/spec.md §8 Config.txt Keys — Cap Sense & Timing](../spec.md#8-configtxt-keys)
+[proof-of-concept-modules/finger-detector-test](../../proof-of-concept-modules/finger-detector-test/README.md) — Baseline touch implementation that currently works on hardware
 
 ## Acceptance Criteria
-- Capacitive sensor calibrates on boot and detects solid finger presence for ≥120ms before triggering snap timer
-- Mouth LED behavior matches prompt/pulse sequence, snap occurs 1–3s after detection even if finger withdraws
-- Fortune flow aborts cleanly after 6s timeout with mouth closure and state reset to IDLE
-- Snap action triggers servo closure and fortune generation/printing
-- [ ] User must sign off on functionality before story can be marked complete
+- Capacitive sensor calibrates on boot while the mouth is open/quiet and detects a solid finger presence for ≥120 ms (configurable) before triggering the snap timer. Detection logic matches the existing proof-of-concept (normalized delta against baseline, 0.2 % default threshold) on ESP32-WROVER GPIO4.
+- Mouth LED starts OFF, jumps to BRIGHT as the mouth opens, then transitions into a slow pulse while waiting for the finger; it turns OFF immediately when the snap fires (finger or timeout).
+- Fortune flow aborts cleanly after the 6 s timeout with jaw closure, LED off, and state reset to IDLE.
+- Snap action drives the servo to the closed position and immediately kicks off fortune generation/printing while audio continues.
+- [x] User must sign off on functionality before story can be marked complete (2025-10-28 “Nice! It's working.”)
 
 ## Tasks
-- [ ] **Fix ESP32-S3 Compatibility**: Update detection logic for ESP32-S3 (values increase when touched)
-- [ ] **Implement Snap Action**: Add servo snap (mouth closure) and fortune generation
-- [ ] **Add Timeout Handling**: Implement 6-second timeout with mouth closure and state reset
-- [ ] **Integrate Mouth LED**: Add LED pulse during finger wait, sync with states
-- [ ] **Add Configuration**: Make thresholds configurable via config.txt
-- [ ] **Test Hardware**: Validate with actual ESP32-S3 and copper electrodes
+- [x] **Implement Baseline/Detection Flow**: Pull normalized delta logic from the finger detector PoC so ESP32-WROVER detects touches reliably with the copper foil on GPIO4.
+- [x] **Implement Snap Action**: Add servo snap (mouth closure) and fortune generation.
+- [x] **Add Timeout Handling**: Implement 6-second timeout with mouth closure and state reset.
+- [x] **Integrate Mouth LED**: Add solid-bright → slow pulse → off sequence driven by state transitions.
+- [x] **Add Configuration**: Surface threshold, debounce duration, timeout, and snap delay via `config.txt`.
+- [x] **Test Hardware**: Validate with the existing copper foil electrode on ESP32-WROVER hardware.
 
 ## Technical Implementation Details
 
-### ESP32-S3 Compatibility Requirements
+### Touch Hardware Notes
 
-**Touch Sensor Behavior:**
-- ESP32-S3 capacitive touch values INCREASE when touched (opposite of ESP32)
-- Detection logic must be inverted from ESP32 implementation
-- Threshold calibration must account for ESP32-S3 behavior
-- Boot-time calibration must work with ESP32-S3 touch characteristics
-
-**Calibration Requirements:**
-- Perform calibration with mouth open and electronics quiet
-- Establish baseline threshold for each hardware build
-- Store calibration values for consistent operation
-- Handle calibration failures gracefully with sensible defaults
+- Production hardware uses the ESP32-WROVER Touch0 pad (GPIO4) tied to a copper foil electrode via shielded coax with the shield grounded.
+- Calibrate after boot while the mouth remains open and the electronics are quiet, adopting the PoC baseline smoothing approach.
+- Normal ESP32 touch values decrease on contact; the PoC already accounts for ESP32-S3 increasing behavior if we ever migrate, but the MVP targets WROVER.
+- Handle calibration failures gracefully with sensible defaults and log warnings.
 
 ### Finger Detection Requirements
 
 **Detection Logic:**
-- Require solid finger presence for ≥120ms before triggering snap timer
+- Require solid finger presence for ≥120 ms (configurable) before triggering the snap timer
 - Implement debounce to prevent false triggers from brief touches
-- Support configurable detection threshold per skull hardware
+- Use normalized delta `(baseline - filtered) / baseline` for ESP32 touch input (per PoC) with a default 0.2 % threshold configurable via `config.txt`
 - Handle sensor noise and environmental interference
 
 **Timing Requirements:**
@@ -73,10 +67,11 @@
 ### Mouth LED Requirements
 
 **LED Behavior:**
-- Solid LED during finger prompt phase
-- Pulsing LED while waiting for finger detection
-- LED off during snap delay and fortune flow
-- Configurable LED brightness and pulse timing
+- Mouth LED OFF before the prompt plays
+- BRIGHT as the mouth opens for the prompt
+- Slow pulse (e.g., 1 Hz fade) while waiting for finger detection
+- LED OFF during snap delay, snap, and the rest of the fortune flow
+- Configurable LED brightness/pulse timing (default matches PoC guidance)
 
 **State Integration:**
 - LED behavior synchronized with state machine transitions
@@ -87,11 +82,11 @@
 ### Configuration Requirements
 
 **Configurable Parameters:**
-- Capacitive sensor threshold (tunable per skull)
-- Finger detection duration (minimum solid detection time)
-- Finger wait timeout (maximum wait time)
-- Snap delay range (minimum and maximum delay)
-- LED brightness and pulse timing
+- Capacitive sensor threshold (`cap_threshold`)
+- Finger detection duration (`finger_detect_ms`)
+- Finger wait timeout (`finger_wait_ms`)
+- Snap delay range (`snap_delay_min_ms` / `snap_delay_max_ms`)
+- LED brightness and pulse timing (`mouth_led_bright`, `mouth_led_pulse_min`, `mouth_led_pulse_max`, `mouth_led_pulse_period_ms`)
 
 **Hardware-Specific Settings:**
 - Pin assignments hardcoded in firmware (not configurable)
@@ -140,9 +135,22 @@
 - Preserve existing audio quality and synchronization
 
 ## Notes
-- **Critical**: ESP32-S3 touch behavior is opposite to ESP32 - values INCREASE when touched
+- **Critical**: ESP32 touch behavior changes across MCU families. Our current build uses ESP32-WROVER (values drop on touch); the PoC accommodates ESP32-S3 (values rise) if needed later.
 - Coordinate with Story 005 (Thermal Printer) for fortune generation
-- Test with actual copper electrodes and ESP32-S3 hardware
+- Test with actual copper electrodes on ESP32-WROVER hardware
+
+## Implementation Log
+- 2025-10-28 14:20 PDT — Documented WROVER touch hardware assumptions, LED behavior sequence, and PoC reference; refreshed acceptance criteria/tasks for story scope. (Success)
+- 2025-10-28 16:05 PDT — Refactored `finger_sensor` with PoC-style baseline/normalized delta logic, added config-driven debounce, and wired new mouth LED pulse controls plus state-machine updates. (Success)
+- 2025-10-28 16:35 PDT — Built `esp32dev` and `esp32dev_ota` environments via `pio run`; OTA target warned about missing `upload_port` (expected) but both builds succeeded. (Success)
+- 2025-10-28 17:05 PDT — Added `f*` tuning CLI commands (threshold/debounce/stream) with live sensor streaming (`fon`/`foff`) mirroring the PoC workflow. (Success)
+- 2025-10-28 17:22 PDT — Updated `help` output to highlight finger tuning commands; attempted USB/OTA uploads via `pio run -t upload`, but both failed (serial port busy / OTA args missing). (Partial)
+- 2025-10-28 17:40 PDT — Reworked finger sensor stream/status output to show raw and normalized deltas alongside thresholds; rebuilt firmware (`pio run`). (Success)
+- 2025-10-28 17:55 PDT — Added multi-sample averaging for finger sensor (32 samples) and higher precision telemetry for better field tuning; rebuilt firmware (`pio run`). (Success)
+- 2025-10-28 18:25 PDT — Expanded threshold command parsing to accept both `thresh` and `fthresh` forms; rebuilt firmware (`pio run`). (Success)
+- 2025-10-28 18:35 PDT — Disabled jaw “breathing” animation while finger sensor streaming is active to keep serial output continuous; rebuilt firmware (`pio run`). (Success)
+- 2025-10-28 18:55 PDT — Exposed finger sensor tuning controls (`fcycles`, `falpha`, `fdrift`, `fmultisample`) and added runtime status fields for touchSetCycles, smoothing, drift, and multisample count. (Success)
+- 2025-10-28 19:20 PDT — Hooked finger tuning parameters into `config.txt`, widened threshold range checks, and applied new defaults during initialization. (Success)
 - Consider fallback behavior when finger sensor fails
 - Ensure proper servo safety limits during snap action
 - Capture empirical threshold values for different hardware builds in config guidance

@@ -117,6 +117,7 @@ void breathingJawMovement();
 void processCLI(String cmd);
 void printHelp();
 void printSDCardInfo();
+void printFingerHelp();
 void resetFortuneFlowWork();
 bool ensureFortuneGeneratorLoaded();
 void generateAndPrintFortune();
@@ -127,21 +128,20 @@ unsigned long stateStartTime = 0;
 unsigned long lastTriggerTime = 0;
 const unsigned long TRIGGER_DEBOUNCE_MS = 2000;
 
+unsigned long fingerStableMs = 120;
 unsigned long fingerWaitMs = 6000;
 unsigned long snapDelayMinMs = 1000;
 unsigned long snapDelayMaxMs = 3000;
 unsigned long cooldownMs = 12000;
-const unsigned long FINGER_STABLE_MS = 120;
 
 // Fortune flow state
 bool mouthOpen = false;
-bool fingerDetected = false;
-unsigned long fingerDetectionStart = 0;
 unsigned long fingerWaitStart = 0;
 unsigned long snapDelayStart = 0;
 unsigned long cooldownStart = 0;
 int snapDelayMs = 0;
 bool snapDelayScheduled = false;
+bool mouthPulseActive = false;
 
 static constexpr const char *AUDIO_WELCOME_DIR = "/audio/welcome";
 static constexpr const char *AUDIO_FINGER_PROMPT_DIR = "/audio/finger_prompt";
@@ -487,6 +487,7 @@ void setup() {
     
     // Initialize servo with config values if loaded, otherwise use safe defaults
     if (configLoaded) {
+        fingerStableMs = config.getFingerDetectMs();
         fingerWaitMs = config.getFingerWaitMs();
         snapDelayMinMs = config.getSnapDelayMinMs();
         snapDelayMaxMs = config.getSnapDelayMaxMs();
@@ -496,8 +497,12 @@ void setup() {
             snapDelayMinMs = snapDelayMaxMs;
             snapDelayMaxMs = temp;
         }
-        LOG_INFO(FLOW_TAG, "Timer config — fingerWait=%lums snapDelay=%lu-%lums cooldown=%lums",
-                 fingerWaitMs, snapDelayMinMs, snapDelayMaxMs, cooldownMs);
+        LOG_INFO(FLOW_TAG, "Timer config — fingerStable=%lums fingerWait=%lums snapDelay=%lu-%lums cooldown=%lums",
+                 fingerStableMs, fingerWaitMs, snapDelayMinMs, snapDelayMaxMs, cooldownMs);
+        lightController.configureMouthLED(config.getMouthLedBright(),
+                                          config.getMouthLedPulseMin(),
+                                          config.getMouthLedPulseMax(),
+                                          config.getMouthLedPulsePeriodMs());
         int minUs = config.getServoUSMin();
         int maxUs = config.getServoUSMax();
         LOG_INFO(TAG, "Initializing servo with config values: %d-%d µs", minUs, maxUs);
@@ -575,7 +580,14 @@ void setup() {
     }
 
     if (fingerSensor) {
+        fingerSensor->setTouchCycles(config.getFingerCyclesInit(), config.getFingerCyclesMeasure());
+        fingerSensor->setFilterAlpha(config.getFingerFilterAlpha());
+        fingerSensor->setBaselineDrift(config.getFingerBaselineDrift());
+        fingerSensor->setMultisampleCount(config.getFingerMultisample());
+        fingerSensor->setThresholdRatio(config.getCapThreshold());
         fingerSensor->begin();
+        fingerSensor->setStableDurationMs(fingerStableMs);
+        fingerSensor->setStreamIntervalMs(500);
     } else {
         LOG_WARN(FLOW_TAG, "Finger sensor allocation failed");
     }
@@ -742,6 +754,8 @@ void loop() {
         fingerSensor->update();
     }
 
+    lightController.update();
+
     if (thermalPrinter) {
         thermalPrinter->update();
     }
@@ -758,7 +772,8 @@ void loop() {
     // Check if it's time to move the jaw for breathing
     unsigned long currentTime = millis();
     updateStateMachine(currentTime);
-    if (audioPlayer && currentState == DeathState::IDLE &&
+    bool fingerStreaming = fingerSensor && fingerSensor->isStreamEnabled();
+    if (!fingerStreaming && audioPlayer && currentState == DeathState::IDLE &&
         currentTime - lastJawMovementTime >= BREATHING_INTERVAL && !audioPlayer->isAudioPlaying()) {
         breathingJawMovement();
         lastJawMovementTime = currentTime;
@@ -1032,10 +1047,6 @@ void enterState(DeathState newState, const char *reason, bool forced) {
     currentState = newState;
     stateStartTime = millis();
 
-    if (newState != DeathState::FINGER_DETECTED) {
-        fingerDetected = false;
-        fingerDetectionStart = 0;
-    }
     snapDelayScheduled = false;
     snapDelayMs = 0;
     snapDelayStart = 0;
@@ -1049,6 +1060,8 @@ void enterState(DeathState newState, const char *reason, bool forced) {
             mouthOpen = false;
             servoController.setPosition(servoClosed);
             lightController.setEyeBrightness(LightController::BRIGHTNESS_DIM);
+            lightController.setMouthOff();
+            mouthPulseActive = false;
             fingerWaitStart = 0;
             cooldownStart = 0;
             break;
@@ -1061,11 +1074,15 @@ void enterState(DeathState newState, const char *reason, bool forced) {
                 return;
             }
             lightController.setEyeBrightness(LightController::BRIGHTNESS_MAX);
+            lightController.setMouthOff();
+            mouthPulseActive = false;
             break;
 
         case DeathState::WAIT_FOR_NEAR:
             mouthOpen = false;
             lightController.setEyeBrightness(LightController::BRIGHTNESS_DIM);
+            lightController.setMouthOff();
+            mouthPulseActive = false;
             break;
 
         case DeathState::PLAY_FINGER_PROMPT:
@@ -1074,19 +1091,20 @@ void enterState(DeathState newState, const char *reason, bool forced) {
                 return;
             }
             lightController.setEyeBrightness(LightController::BRIGHTNESS_MAX);
+            lightController.setMouthOff();
+            mouthPulseActive = false;
             break;
 
         case DeathState::MOUTH_OPEN_WAIT_FINGER:
             servoController.setPosition(servoOpen);
             mouthOpen = true;
             fingerWaitStart = millis();
-            fingerDetected = false;
-            fingerDetectionStart = 0;
+            lightController.setMouthBright();
+            mouthPulseActive = false;
             lightController.setEyeBrightness(LightController::BRIGHTNESS_MAX);
             break;
 
         case DeathState::FINGER_DETECTED:
-            fingerDetected = true;
             mouthOpen = true;
             snapDelayMs = snapDelayMinMs == snapDelayMaxMs ? snapDelayMinMs
                                                            : static_cast<int>(random(snapDelayMinMs, snapDelayMaxMs + 1));
@@ -1098,6 +1116,8 @@ void enterState(DeathState newState, const char *reason, bool forced) {
         case DeathState::SNAP_WITH_FINGER:
             servoController.setPosition(servoClosed);
             mouthOpen = false;
+            lightController.setMouthOff();
+            mouthPulseActive = false;
             if (!queueRandomClipFromDir(AUDIO_FINGER_SNAP_DIR, "snap with finger")) {
                 enterState(DeathState::FORTUNE_FLOW, "Snap-with-finger audio missing; skipping", forced);
                 return;
@@ -1107,6 +1127,8 @@ void enterState(DeathState newState, const char *reason, bool forced) {
         case DeathState::SNAP_NO_FINGER:
             servoController.setPosition(servoClosed);
             mouthOpen = false;
+            lightController.setMouthOff();
+            mouthPulseActive = false;
             if (!queueRandomClipFromDir(AUDIO_NO_FINGER_DIR, "no-finger response")) {
                 enterState(DeathState::FORTUNE_FLOW, "Snap-no-finger audio missing; skipping", forced);
                 return;
@@ -1117,6 +1139,8 @@ void enterState(DeathState newState, const char *reason, bool forced) {
             servoController.setPosition(servoOpen);
             mouthOpen = true;
             lightController.setEyeBrightness(LightController::BRIGHTNESS_MAX);
+            lightController.setMouthOff();
+            mouthPulseActive = false;
             generateAndPrintFortune();
             if (!queueRandomClipFromDir(AUDIO_FORTUNE_PREAMBLE_DIR, "fortune preamble")) {
                 enterState(DeathState::FORTUNE_DONE, "Fortune audio missing; advancing", forced);
@@ -1127,6 +1151,8 @@ void enterState(DeathState newState, const char *reason, bool forced) {
         case DeathState::FORTUNE_DONE:
             mouthOpen = false;
             servoController.setPosition(servoClosed);
+            lightController.setMouthOff();
+            mouthPulseActive = false;
             if (!queueRandomClipFromDir(AUDIO_GOODBYE_DIR, "goodbye skit")) {
                 enterState(DeathState::COOLDOWN, "Fortune done audio missing; advancing", forced);
                 return;
@@ -1137,6 +1163,8 @@ void enterState(DeathState newState, const char *reason, bool forced) {
             mouthOpen = false;
             servoController.setPosition(servoClosed);
             lightController.setEyeBrightness(LightController::BRIGHTNESS_DIM);
+            lightController.setMouthOff();
+            mouthPulseActive = false;
             cooldownStart = stateStartTime;
             if (fortunePrintAttempted) {
                 LOG_INFO(FLOW_TAG, "Fortune cycle summary — printed=%s text=\"%s\"",
@@ -1150,21 +1178,14 @@ void enterState(DeathState newState, const char *reason, bool forced) {
 void updateStateMachine(unsigned long currentTime) {
     switch (currentState) {
         case DeathState::MOUTH_OPEN_WAIT_FINGER: {
-            if (fingerSensor && fingerSensor->isFingerDetected()) {
-                if (!fingerDetected) {
-                    fingerDetected = true;
-                    fingerDetectionStart = currentTime;
-                    LOG_INFO(FLOW_TAG, "Finger contact detected");
-                } else if (currentTime - fingerDetectionStart >= FINGER_STABLE_MS) {
-                    enterState(DeathState::FINGER_DETECTED, "Finger stabilized");
-                    return;
-                }
-            } else {
-                if (fingerDetected && currentTime - fingerDetectionStart >= FINGER_STABLE_MS) {
-                    LOG_INFO(FLOW_TAG, "Finger removed before stabilization");
-                }
-                fingerDetected = false;
-                fingerDetectionStart = 0;
+            if (!mouthPulseActive && currentTime - stateStartTime >= 250) {
+                lightController.setMouthPulse();
+                mouthPulseActive = true;
+            }
+
+            if (fingerSensor && fingerSensor->hasStableTouch()) {
+                enterState(DeathState::FINGER_DETECTED, "Finger stabilized");
+                return;
             }
 
             if (fingerWaitStart > 0 && currentTime - fingerWaitStart >= fingerWaitMs) {
@@ -1340,12 +1361,43 @@ void breathingJawMovement() {
 
 void printHelp() {
     Serial.println("\n=== DEATH FORTUNE TELLER CLI ===");
+    Serial.println("Core commands:");
+    Serial.println("  help            - Show this help");
+    Serial.println("  config          - Show configuration settings");
+    Serial.println("  sd              - Show SD card content info");
+    Serial.println("  servo_init      - Run servo initialization sweep\n");
+
+    Serial.println("Finger sensor tuning:");
+    Serial.println("  cal / fcal      - Recalibrate finger sensor baseline");
+    Serial.println("  fhelp           - Finger sensor tuning help");
+    Serial.println("  fstatus         - Show live readings snapshot");
+    Serial.println("  fsettings       - Show current tuning values");
+    Serial.println("  fthresh <0-1>   - Set normalized threshold (alias: thresh)");
+    Serial.println("  fdebounce <ms>  - Set detection hold duration (30-1000)");
+    Serial.println("  finterval <ms>  - Set streaming interval (100-10000)");
+    Serial.println("  fcycles <init> <meas> - Set touchSetCycles values (hex/dec)");
+    Serial.println("  falpha <0-1>    - Set smoothing alpha (0=slow,1=fast)");
+    Serial.println("  fdrift <0-0.1>  - Set baseline drift factor");
+    Serial.println("  fmultisample <N>- Set sample averaging count (>=1)");
+    Serial.println("  fon / foff      - Enable or disable continuous streaming");
+    Serial.println();
+}
+
+void printFingerHelp() {
+    Serial.println("\n=== FINGER SENSOR TUNING ===");
     Serial.println("Commands:");
-    Serial.println("  help           - Show this help");
-    Serial.println("  cal            - Recalibrate finger sensor");
-    Serial.println("  config         - Show configuration settings");
-    Serial.println("  sd             - Show SD card content info");
-    Serial.println("  servo_init     - Run servo initialization sweep");
+    Serial.println("  fhelp             - Show this help");
+    Serial.println("  fcal              - Recalibrate finger sensor (1s baseline)");
+    Serial.println("  fthresh <0-1>     - Set normalized threshold (alias: thresh)");
+    Serial.println("  fdebounce <ms>    - Set required stable detection duration");
+    Serial.println("  finterval <ms>    - Set streaming interval (100-10000 ms)");
+    Serial.println("  fon / foff        - Enable/disable live touch stream");
+    Serial.println("  fstatus           - Show current readings");
+    Serial.println("  fsettings         - Show current tuning values");
+    Serial.println("  fcycles <init> <meas> - Set touchSetCycles initial/measure");
+    Serial.println("  falpha <0-1>      - Set smoothing alpha");
+    Serial.println("  fdrift <0-0.1>    - Set baseline drift factor");
+    Serial.println("  fmultisample <N>  - Set sample averaging count");
     Serial.println();
 }
 
@@ -1369,18 +1421,179 @@ void printSDCardInfo() {
 void processCLI(String cmd) {
     cmd.trim();
     cmd.toLowerCase();
-    
+
     if (cmd == "help" || cmd == "?") {
         printHelp();
     }
-    else if (cmd == "cal" || cmd == "calibrate") {
+    else if (cmd == "fhelp" || cmd == "f?") {
+        printFingerHelp();
+    }
+    else if (cmd == "cal" || cmd == "calibrate" || cmd == "fcal" || cmd == "fcalibrate") {
         Serial.println("\n>>> Calibrating finger sensor...");
         Serial.println(">>> REMOVE YOUR FINGER NOW!");
         if (fingerSensor) {
             fingerSensor->calibrate();
-            Serial.println(">>> Calibration complete!\n");
+            Serial.println(">>> Calibration running (watch logs for completion)...\n");
         } else {
             Serial.println(">>> ERROR: Finger sensor not initialized\n");
+        }
+    }
+    else if (cmd == "thresh" || cmd.startsWith("thresh ") ||
+             cmd == "fthresh" || cmd.startsWith("fthresh ")) {
+        if (!fingerSensor) {
+            Serial.println(">>> ERROR: Finger sensor not initialized\n");
+            return;
+        }
+        String valuePart;
+        if (cmd.startsWith("fthresh")) {
+            valuePart = cmd.substring(strlen("fthresh"));
+        } else {
+            valuePart = cmd.substring(strlen("thresh"));
+        }
+        valuePart.trim();
+        if (valuePart.length() == 0) {
+            Serial.println(">>> ERROR: Missing value. Use e.g. fthresh 0.005\n");
+            return;
+        }
+
+        float val = valuePart.toFloat();
+        if (val <= 0.0f || val > 1.0f) {
+            Serial.println(">>> ERROR: Threshold must be between 0 and 1 (e.g., 0.002)\n");
+            return;
+        }
+        if (fingerSensor->setThresholdRatio(val)) {
+            Serial.print(">>> Threshold set to ");
+            Serial.print(val * 100.0f, 3);
+            Serial.println("%\n");
+        } else {
+            Serial.println(">>> ERROR: Threshold out of supported range (0.0001 - 1.0)\n");
+        }
+    }
+    else if (cmd.startsWith("fdebounce ")) {
+        if (!fingerSensor) {
+            Serial.println(">>> ERROR: Finger sensor not initialized\n");
+            return;
+        }
+        unsigned long val = cmd.substring(10).toInt();
+        if (fingerSensor->setStableDurationMs(val)) {
+            fingerStableMs = val;
+            Serial.print(">>> Stable detection duration set to ");
+            Serial.print(val);
+            Serial.println(" ms\n");
+        } else {
+            Serial.println(">>> ERROR: Duration must be between 30 and 1000 ms\n");
+        }
+    }
+    else if (cmd.startsWith("finterval ")) {
+        if (!fingerSensor) {
+            Serial.println(">>> ERROR: Finger sensor not initialized\n");
+            return;
+        }
+        unsigned long val = cmd.substring(10).toInt();
+        if (fingerSensor->setStreamIntervalMs(val)) {
+            Serial.print(">>> Stream interval set to ");
+            Serial.print(val);
+            Serial.println(" ms\n");
+        } else {
+            Serial.println(">>> ERROR: Interval must be between 100 and 10000 ms\n");
+        }
+    }
+    else if (cmd == "fon") {
+        if (fingerSensor) {
+            fingerSensor->setStreamEnabled(true);
+            Serial.println(">>> Finger sensor stream enabled\n");
+        } else {
+            Serial.println(">>> ERROR: Finger sensor not initialized\n");
+        }
+    }
+    else if (cmd == "foff") {
+        if (fingerSensor) {
+            fingerSensor->setStreamEnabled(false);
+            Serial.println(">>> Finger sensor stream disabled\n");
+        } else {
+            Serial.println(">>> ERROR: Finger sensor not initialized\n");
+        }
+    }
+    else if (cmd == "fstatus") {
+        if (fingerSensor) {
+            fingerSensor->printStatus(Serial);
+        } else {
+            Serial.println(">>> ERROR: Finger sensor not initialized\n");
+        }
+    }
+    else if (cmd == "fsettings") {
+        if (fingerSensor) {
+            fingerSensor->printSettings(Serial);
+        } else {
+            Serial.println(">>> ERROR: Finger sensor not initialized\n");
+        }
+    }
+    else if (cmd.startsWith("fcycles ")) {
+        if (!fingerSensor) {
+            Serial.println(">>> ERROR: Finger sensor not initialized\n");
+            return;
+        }
+        String args = cmd.substring(strlen("fcycles"));
+        args.trim();
+        int spaceIdx = args.indexOf(' ');
+        if (spaceIdx <= 0) {
+            Serial.println(">>> ERROR: Usage fcycles <initial> <measure>\n");
+            return;
+        }
+        String initStr = args.substring(0, spaceIdx);
+        String measStr = args.substring(spaceIdx + 1);
+        uint16_t initVal = static_cast<uint16_t>(strtol(initStr.c_str(), nullptr, 0));
+        uint16_t measVal = static_cast<uint16_t>(strtol(measStr.c_str(), nullptr, 0));
+        if (fingerSensor->setTouchCycles(initVal, measVal)) {
+            Serial.print(">>> touchSetCycles updated to init=0x");
+            Serial.print(initVal, HEX);
+            Serial.print(" measure=0x");
+            Serial.print(measVal, HEX);
+            Serial.println("\n");
+        } else {
+            Serial.println(">>> ERROR: Invalid cycle values (must be >0)\n");
+        }
+    }
+    else if (cmd.startsWith("falpha ")) {
+        if (!fingerSensor) {
+            Serial.println(">>> ERROR: Finger sensor not initialized\n");
+            return;
+        }
+        float val = cmd.substring(7).toFloat();
+        if (fingerSensor->setFilterAlpha(val)) {
+            Serial.print(">>> Filter alpha set to ");
+            Serial.println(val, 4);
+            Serial.println();
+        } else {
+            Serial.println(">>> ERROR: Alpha must be within 0.0 - 1.0\n");
+        }
+    }
+    else if (cmd.startsWith("fdrift ")) {
+        if (!fingerSensor) {
+            Serial.println(">>> ERROR: Finger sensor not initialized\n");
+            return;
+        }
+        float val = cmd.substring(7).toFloat();
+        if (fingerSensor->setBaselineDrift(val)) {
+            Serial.print(">>> Baseline drift set to ");
+            Serial.println(val, 6);
+            Serial.println();
+        } else {
+            Serial.println(">>> ERROR: Drift must be within 0.0 - 0.1\n");
+        }
+    }
+    else if (cmd.startsWith("fmultisample ")) {
+        if (!fingerSensor) {
+            Serial.println(">>> ERROR: Finger sensor not initialized\n");
+            return;
+        }
+        int val = cmd.substring(12).toInt();
+        if (fingerSensor->setMultisampleCount(static_cast<uint8_t>(val))) {
+            Serial.print(">>> Multisample count set to ");
+            Serial.println(val);
+            Serial.println();
+        } else {
+            Serial.println(">>> ERROR: Count must be >= 1\n");
         }
     }
     else if (cmd == "config" || cmd == "settings") {
@@ -1394,7 +1607,7 @@ void processCLI(String cmd) {
     }
     else if (cmd == "servo_init") {
         Serial.println("\n>>> Running servo initialization sweep...");
-        if (servoController.getPosition() >= 0) { // Check if servo is initialized
+        if (servoController.getPosition() >= 0) {
             servoController.reattachWithConfigLimits();
             Serial.println(">>> Servo sweep complete!\n");
         } else {
@@ -1404,4 +1617,5 @@ void processCLI(String cmd) {
     else if (cmd.length() > 0) {
         Serial.print(">>> Unknown command: "); Serial.print(cmd); Serial.println(". Type 'help' for commands.\n");
     }
+
 }

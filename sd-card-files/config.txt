@@ -17,8 +17,14 @@ speaker_volume=100
 servo_us_min=900
 servo_us_max=2200
 
-# Cap sense - threshold configurable per skull
-cap_threshold=0.002
+# Capacative finger sensor tuning
+finger_cycles_init=0xFFFF
+finger_cycles_measure=0xFFFF
+finger_filter_alpha=0.1
+finger_baseline_drift=0.0001
+finger_multisample=32
+finger_detect_ms=120
+cap_threshold=0.003  # If it exceeds this it will say it detected a finger
 
 # Timing
 finger_wait_ms=6000

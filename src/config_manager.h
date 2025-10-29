@@ -32,8 +32,14 @@ public:
 
     // Capacitive sensor configuration
     float getCapThreshold() const;
+    uint16_t getFingerCyclesInit() const;
+    uint16_t getFingerCyclesMeasure() const;
+    float getFingerFilterAlpha() const;
+    float getFingerBaselineDrift() const;
+    uint8_t getFingerMultisample() const;
 
     // Timing configuration
+    unsigned long getFingerDetectMs() const;
     unsigned long getFingerWaitMs() const;
     unsigned long getSnapDelayMinMs() const;
     unsigned long getSnapDelayMaxMs() const;
@@ -43,6 +49,12 @@ public:
     int getPrinterBaud() const;
     String getPrinterLogo() const;
     String getFortunesJson() const;
+
+    // Mouth LED configuration
+    uint8_t getMouthLedBright() const;
+    uint8_t getMouthLedPulseMin() const;
+    uint8_t getMouthLedPulseMax() const;
+    unsigned long getMouthLedPulsePeriodMs() const;
 
 private:
     ConfigManager() {}

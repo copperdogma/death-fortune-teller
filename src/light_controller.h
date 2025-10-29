@@ -30,6 +30,17 @@ public:
     // @param brightness: uint8_t value between 0 (off) and 255 (max brightness)
     void setEyeBrightness(uint8_t brightness);
 
+    // Configure mouth LED behavior (brightness + pulse parameters)
+    void configureMouthLED(uint8_t bright, uint8_t pulseMin, uint8_t pulseMax, unsigned long pulsePeriodMs);
+
+    // Mouth LED control helpers
+    void setMouthOff();
+    void setMouthBright();
+    void setMouthPulse();
+
+    // Update function to be called from loop() for animations
+    void update();
+
     // Blinks the eye LED a specified number of times
     // @param numBlinks: Number of times to blink
     // @param onBrightness: Brightness level when eye is on (default: BRIGHTNESS_MAX)
@@ -48,6 +59,22 @@ private:
     int _eyePin;            // Pin number for the eye LED (GPIO 32)
     int _mouthPin;          // Pin number for the mouth LED (GPIO 33)
     int _currentBrightness; // Current brightness level of the eye LED
+
+    enum class MouthMode {
+        OFF,
+        BRIGHT,
+        PULSE
+    };
+
+    MouthMode _mouthMode;
+    uint8_t _mouthBright;
+    uint8_t _mouthPulseMin;
+    uint8_t _mouthPulseMax;
+    unsigned long _mouthPulsePeriodMs;
+    unsigned long _mouthLastUpdateMs;
+
+    void applyMouthBrightness(uint8_t brightness);
+    void updateMouthPulse(unsigned long now);
 };
 
 #endif // LIGHT_CONTROLLER_H

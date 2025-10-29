@@ -15,14 +15,16 @@
 - Mouth LED provides visual feedback during fortune flow (solid during prompt, pulse during finger wait)
 - LED fault indicators provide clear visual feedback for system errors (3 quick blinks for printer faults)
 - LED control integrates seamlessly with state machine transitions
-- LED brightness and timing are configurable via config.txt
+- Capacative sensor tuning adjustments
+  - Blink Twice: have the mouth LED blink twice any time it detects a finger. This will help us see if the sensor is working properly. If it's just blinking twice all the time with no finger, it needs to be recalibrated.
+  - Manual recalibration: if I tap the capacative sensor twice quickly, it will blink the mouth LED three times, wait 5 seconds, then calibrate, then blink the mouth LED four times to say it's done.
 - [ ] User must sign off on functionality before story can be marked complete
 
 ## Tasks
-- [ ] **Implement LED Control System**: Create LED control system with brightness and timing control
+- [ ] **Implement LED Control System**: Create LED control system
 - [ ] **Add State-Based LED Behavior**: Integrate LED behavior with state machine transitions
 - [ ] **Add Fault Indicators**: Implement LED fault indicators for system errors
-- [ ] **Add Configuration**: Make LED settings configurable via config.txt
+- [ ] **Add Capacitive Sensor Tuning**: Implement LED feedback for capacitive sensor testing and calibration
 - [ ] **Test Integration**: Verify LED behavior works with state machine and fault detection
 
 ## Technical Implementation Details
@@ -34,7 +36,6 @@
 - Pulsing LED while waiting for finger detection (brightness cycling)
 - LED off during snap delay and fortune flow
 - LED off during non-fortune states
-- Configurable LED brightness levels and pulse timing
 
 **LED State Integration:**
 - LED behavior synchronized with state machine transitions
@@ -59,20 +60,28 @@
 - Fault indicators persist until system reset or error cleared
 - Support for multiple fault types with different patterns
 
-### Configuration Requirements
+### Capacitive Sensor Tuning Requirements
 
-**Configurable Parameters:**
-- LED brightness levels (dim, medium, bright, maximum)
-- Pulse timing (pulse frequency, pulse duration)
-- Fault indicator patterns (blink count, blink timing)
-- LED pin assignments (hardcoded in firmware)
-- Default LED behavior settings
+**Sensor Detection Feedback:**
+- 2 quick blinks whenever capacitive sensor detects a finger
+- Immediate visual feedback for sensor testing and debugging
+- Clear indication that sensor is responding to touch
+- Helps identify false positives or sensor calibration issues
 
-**Hardware-Specific Settings:**
-- Pin assignments hardcoded in firmware (not configurable)
-- LED brightness levels configurable per hardware build
-- Default values for all LED parameters
-- Support for different LED types and configurations
+**Manual Calibration Mode:**
+- Triggered by double-tap on capacitive sensor (two quick touches)
+- 3 quick blinks to indicate calibration mode start
+- 5-second wait period for sensor stabilization
+- Automatic sensor recalibration process
+- 4 quick blinks to indicate calibration completion
+- Clear visual feedback for calibration success/failure
+
+**Calibration Integration:**
+- Integrate with existing capacitive sensor calibration system
+- Maintain existing sensor sensitivity and threshold settings
+- Support calibration without affecting normal operation
+- Handle calibration failures gracefully with appropriate LED feedback
+
 
 ### Error Handling and Recovery
 
@@ -115,7 +124,6 @@
 - **Fault Indicators**: LED fault indicators provide visual feedback when audio is not available
 - **State Synchronization**: LED behavior must be perfectly synchronized with state machine transitions
 - **Error Recovery**: LED system must handle failures gracefully without affecting main system operation
-- **Configuration**: LED settings should be configurable for different hardware builds and use cases
 
 ## Dependencies
 - Story 003a (State Machine Implementation) - State machine integration
@@ -125,6 +133,5 @@
 ## Testing Strategy
 1. **LED Behavior Testing**: Test LED behavior during all state transitions
 2. **Fault Indicator Testing**: Test LED fault indicators for various system errors
-3. **Configuration Testing**: Test LED configuration via config.txt
-4. **Integration Testing**: Test LED integration with state machine and fault detection
-5. **Error Handling Testing**: Test LED system behavior during hardware failures
+3. **Integration Testing**: Test LED integration with state machine and fault detection
+4. **Error Handling Testing**: Test LED system behavior during hardware failures

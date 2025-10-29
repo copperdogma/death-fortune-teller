@@ -16,9 +16,10 @@ Death, the Fortune Telling Skeleton
 | 002b     | Skit Category Support & Directory Structure | High     | Done   | /docs/stories/story-002b-skit-category-support.md       |
 | 003      | Matter UART Trigger Handling            | High     | Done  | /docs/stories/story-003-matter-uart-trigger-handling.md |
 | 003a     | State Machine Implementation            | High     | Done   | /docs/stories/story-003a-state-machine-implementation.md |
-| 003b     | Built-in SD Card Migration              | High     | To Do  | /docs/stories/story-003b-built-in-sd-card-migration.md |
-| 004      | Capacitive Finger Detection & Snap Flow | High     | To Do  | /docs/stories/story-004-cap-sense-snap-flow.md          |
+| 003b     | Built-in SD Card Migration              | High     | Done  | /docs/stories/story-003b-built-in-sd-card-migration.md |
+| 004      | Capacitive Finger Detection & Snap Flow | High     | Done  | /docs/stories/story-004-cap-sense-snap-flow.md          |
 | 004a     | LED Control System & Fault Indicators   | High     | To Do  | /docs/stories/story-004a-led-control-system.md         |
+| 004b     | Non-Blocking Runtime Refactor           | High     | To Do  | /docs/stories/story-004b-non-blocking-runtime.md       |
 | 005      | Thermal Printer Fortune Output          | Medium   | In Progress | /docs/stories/story-005-thermal-printer-fortune.md      |
 | 005a     | Serial Console & Diagnostics            | Medium   | To Do  | /docs/stories/story-005a-serial-console-diagnostics.md |
 | 006      | Bluetooth A2DP Reliability & Testing    | Medium   | To Do  | /docs/stories/story-006-bluetooth-a2dp-reliability.md   |

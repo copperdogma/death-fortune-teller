@@ -1,9 +1,19 @@
 #include "light_controller.h"
+#include <algorithm>
+#include <math.h>
 
 // LightController class constructor
 // Initializes the pins for eye and mouth LEDs and sets initial brightness to off
 LightController::LightController(int eyePin, int mouthPin)
-    : _eyePin(eyePin), _mouthPin(mouthPin), _currentBrightness(BRIGHTNESS_OFF) {}
+    : _eyePin(eyePin),
+      _mouthPin(mouthPin),
+      _currentBrightness(BRIGHTNESS_OFF),
+      _mouthMode(MouthMode::OFF),
+      _mouthBright(PWM_MAX),
+      _mouthPulseMin(40),
+      _mouthPulseMax(PWM_MAX),
+      _mouthPulsePeriodMs(1500),
+      _mouthLastUpdateMs(0) {}
 
 // Initializes the LightController
 // Sets up PWM channels and attaches them to the eye and mouth pins
@@ -24,9 +34,9 @@ void LightController::begin()
 
     // Initialize eye LED to maximum brightness
     setEyeBrightness(BRIGHTNESS_MAX);
-    
-    // Initialize mouth LED to off (defaults to off unlike eye LED)
-    ledcWrite(PWM_CHANNEL_MOUTH, BRIGHTNESS_OFF);
+
+    configureMouthLED(PWM_MAX, 40, PWM_MAX, 1500);
+    setMouthOff();
 }
 
 // Sets the brightness of the eye LED
@@ -65,6 +75,42 @@ void LightController::setEyeBrightness(uint8_t brightness)
     }
 }
 
+void LightController::configureMouthLED(uint8_t bright, uint8_t pulseMin, uint8_t pulseMax, unsigned long pulsePeriodMs)
+{
+    _mouthBright = constrain(bright, 0, PWM_MAX);
+    _mouthPulseMin = constrain(pulseMin, 0, PWM_MAX);
+    _mouthPulseMax = constrain(pulseMax, 0, PWM_MAX);
+    if (_mouthPulseMin > _mouthPulseMax) {
+        std::swap(_mouthPulseMin, _mouthPulseMax);
+    }
+    _mouthPulsePeriodMs = pulsePeriodMs < 200 ? 200 : pulsePeriodMs; // Prevent hyper-fast pulsing
+}
+
+void LightController::setMouthOff()
+{
+    _mouthMode = MouthMode::OFF;
+    applyMouthBrightness(BRIGHTNESS_OFF);
+}
+
+void LightController::setMouthBright()
+{
+    _mouthMode = MouthMode::BRIGHT;
+    applyMouthBrightness(_mouthBright);
+}
+
+void LightController::setMouthPulse()
+{
+    _mouthMode = MouthMode::PULSE;
+    _mouthLastUpdateMs = 0;
+}
+
+void LightController::update()
+{
+    if (_mouthMode == MouthMode::PULSE) {
+        updateMouthPulse(millis());
+    }
+}
+
 // Blinks the eye LED a specified number of times
 // @param numBlinks: Number of times to blink
 // @param onBrightness: Brightness level when eye is on
@@ -85,14 +131,21 @@ void LightController::blinkEyes(int numBlinks, int onBrightness, int offBrightne
 // @param numBlinks: Number of times to blink
 void LightController::blinkMouth(int numBlinks)
 {
+    MouthMode previousMode = _mouthMode;
     for (int i = 0; i < numBlinks; i++)
     {
-        ledcWrite(PWM_CHANNEL_MOUTH, BRIGHTNESS_MAX); // Mouth LED on
+        applyMouthBrightness(BRIGHTNESS_MAX); // Mouth LED on
         delay(100); // Mouth LED on for 100ms
-        ledcWrite(PWM_CHANNEL_MOUTH, BRIGHTNESS_OFF); // Mouth LED off
+        applyMouthBrightness(BRIGHTNESS_OFF); // Mouth LED off
         delay(100); // Mouth LED off for 100ms
     }
-    ledcWrite(PWM_CHANNEL_MOUTH, BRIGHTNESS_OFF); // Ensure mouth LED is off at the end (defaults to off)
+    if (previousMode == MouthMode::BRIGHT) {
+        setMouthBright();
+    } else if (previousMode == MouthMode::PULSE) {
+        setMouthPulse();
+    } else {
+        setMouthOff();
+    }
 }
 
 // Blinks eye and mouth LEDs sequentially with non-blocking delay
@@ -111,4 +164,28 @@ void LightController::blinkLights(int numBlinks)
     
     // Then blink mouth LED
     blinkMouth(numBlinks);
+}
+
+void LightController::applyMouthBrightness(uint8_t brightness)
+{
+    ledcWrite(PWM_CHANNEL_MOUTH, constrain(brightness, 0, PWM_MAX));
+}
+
+void LightController::updateMouthPulse(unsigned long now)
+{
+    if (_mouthPulsePeriodMs == 0) {
+        applyMouthBrightness(_mouthPulseMax);
+        return;
+    }
+
+    if (_mouthLastUpdateMs != 0 && now - _mouthLastUpdateMs < 15) {
+        return; // Limit update rate to reduce jitter
+    }
+    _mouthLastUpdateMs = now;
+
+    float phase = static_cast<float>(now % _mouthPulsePeriodMs) / static_cast<float>(_mouthPulsePeriodMs);
+    float angle = phase * TWO_PI;
+    float normalized = (sinf(angle) + 1.0f) * 0.5f; // Range 0..1
+    uint8_t brightness = static_cast<uint8_t>(_mouthPulseMin + normalized * (_mouthPulseMax - _mouthPulseMin));
+    applyMouthBrightness(brightness);
 }
