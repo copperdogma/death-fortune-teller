@@ -39,12 +39,3 @@ NOTE: This file is for the user to write notes to the AI for it to investigate/r
 QUESTIONS
 - if the UART comms fails completely what should we do? currrently we just require a manual reboot. If we can detect failure cases, what should we do in general? How to alert the operator?
 
-## To Do Later
-- newline support in fortunes.. See printer story; it was started
-
-## Bugs
-- death-matter-controller: never sends the RSP_FABRIC_ACK message when it's connected to Apple Home. I KNOW it is because I can open Apple Home and send commands and it works, and the WROVER receives them.
-- MAYBE: SD shutdown over time? it boots, reads SD, plays audio, responds to commmands.. if it sits for a while I got:
-  I/Audio: Queued audio for welcome skit: /audio/welcome/welcome.wav
-  E (288570) diskio_sdmmc: sdmmc_read_blocks failed (257)
-  E/AudioPlayer: Failed to open audio file: /audio/welcome/welcome.wav

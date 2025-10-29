@@ -20,7 +20,7 @@ Death, the Fortune Telling Skeleton
 | 004      | Capacitive Finger Detection & Snap Flow | High     | Done  | /docs/stories/story-004-cap-sense-snap-flow.md          |
 | 004a     | LED Control System & Fault Indicators   | High     | Done  | /docs/stories/story-004a-led-control-system.md         |
 | 004b     | Non-Blocking Runtime Refactor           | High     | To Do  | /docs/stories/story-004b-non-blocking-runtime.md       |
-| 005      | Thermal Printer Fortune Output          | Medium   | In Progress | /docs/stories/story-005-thermal-printer-fortune.md      |
+| 005      | Thermal Printer Fortune Output          | Medium   | Done | /docs/stories/story-005-thermal-printer-fortune.md      |
 | 005a     | Serial Console & Diagnostics            | Medium   | To Do  | /docs/stories/story-005a-serial-console-diagnostics.md |
 | 006      | UART Protocol with Matter Controller     | High     | Done   | /docs/stories/story-006-uart-protocol-matter-controller.md |
 | 007      | Bluetooth A2DP Reliability & Testing    | Medium   | To Do  | /docs/stories/story-007-bluetooth-a2dp-reliability.md   |
@@ -32,3 +32,13 @@ Death, the Fortune Telling Skeleton
 - Update priorities and statuses as planning evolves and milestones complete.
 - Consider splitting stories if scope expands beyond a single deliverable.
 - Story 007 is a "maybe" story for potential framework migration from Arduino to ESP-IDF.
+
+## To Do Later
+- newline support when printing fortunes.. See printer story; it was started
+
+## Bugs
+- death-matter-controller: never sends the RSP_FABRIC_ACK message when it's connected to Apple Home. I KNOW it is because I can open Apple Home and send commands and it works, and the WROVER receives them.
+- MAYBE: SD shutdown over time? it boots, reads SD, plays audio, responds to commmands.. if it sits for a while I got:
+  I/Audio: Queued audio for welcome skit: /audio/welcome/welcome.wav
+  E (288570) diskio_sdmmc: sdmmc_read_blocks failed (257)
+  E/AudioPlayer: Failed to open audio file: /audio/welcome/welcome.wav
