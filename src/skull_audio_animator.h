@@ -44,6 +44,9 @@ public:
     // Sets the playback ended state
     void setPlaybackEnded(const String &filePath);
 
+    // Holds the jaw at a fixed position when no audio is playing (e.g., wait-for-finger prompt)
+    void setJawHoldOverride(bool active, int holdPositionDegrees = 0);
+
 private:
     ServoController &m_servoController;
     LightController &m_lightController;
@@ -101,6 +104,8 @@ private:
 
     int m_servoMinDegrees;
     int m_servoMaxDegrees;
+    bool m_jawHoldActive;
+    int m_jawHoldPosition;
 
     SpeakingStateCallback m_speakingStateCallback;
 

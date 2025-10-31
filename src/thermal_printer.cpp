@@ -110,7 +110,6 @@ bool ThermalPrinter::printFortune(const String &fortune) {
     serial.println();
 
     feedLines(3);
-    serial.flush();
 
     lastCommandTime = 0;
     hasErrorState = false;
@@ -147,7 +146,6 @@ bool ThermalPrinter::printTestPage() {
     serial.write(0x12); // DC2
     serial.write('T');  // 'T' — built-in self-test
     feedLines(3);
-    serial.flush();
     lastCommandTime = 0;
     return true;
 }

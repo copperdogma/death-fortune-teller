@@ -27,6 +27,7 @@ Death, the Fortune Telling Skeleton
 | 007      | Bluetooth A2DP Reliability & Testing    | Medium   | To Do  | /docs/stories/story-007-bluetooth-a2dp-reliability.md   |
 | 008      | ESP-IDF Framework Migration              | Maybe    | To Do  | /docs/stories/story-008-esp-idf-migration.md           |
 | 009      | Access WROVER SD Card From USB-C         | Medium   | Future | /docs/stories/story-009-usb-sd-card-access.md          |
+| 010      | Finger Prompt Jaw Hold                   | High     | Done   | /docs/stories/story-010-finger-prompt-jaw-hold.md      |
 | 2026-001 | Detailed Fortune Flow Implementation     | Medium   | Future | /docs/stories/story-2026-001-detailed-fortune-flow.md |
 
 ## Notes

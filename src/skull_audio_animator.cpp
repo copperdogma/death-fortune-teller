@@ -37,7 +37,9 @@ SkullAudioAnimator::SkullAudioAnimator(bool isPrimary, ServoController &servoCon
       m_currentSkitLineNumber(-1),
       m_smoothedAmplitude(0.0),
       m_previousJawPosition(servoMinDegrees),
-      FFT(vReal, vImag, SAMPLES, SAMPLE_RATE)
+      FFT(vReal, vImag, SAMPLES, SAMPLE_RATE),
+      m_jawHoldActive(false),
+      m_jawHoldPosition(servoMinDegrees)
 {
 }
 
@@ -72,6 +74,22 @@ void SkullAudioAnimator::setPlaybackEnded(const String &filePath)
     // Process audio frames for various animations
     updateSkit();
     updateEyes();
+}
+
+void SkullAudioAnimator::setJawHoldOverride(bool active, int holdPositionDegrees)
+{
+    if (active)
+    {
+        m_jawHoldActive = true;
+        m_jawHoldPosition = constrain(holdPositionDegrees, m_servoMinDegrees, m_servoMaxDegrees);
+        m_servoController.setPosition(m_jawHoldPosition);
+        m_previousJawPosition = m_jawHoldPosition;
+        m_smoothedAmplitude = 0.0;
+    }
+    else
+    {
+        m_jawHoldActive = false;
+    }
 }
 
 // Updates the current skit state and speaking status based on audio playback
@@ -182,7 +200,30 @@ void SkullAudioAnimator::updateJawPosition(const Frame *frames, int32_t frameCou
     // Interrupt any ongoing smooth movement
     m_servoController.interruptMovement();
 
-    if (frameCount > 0)
+    if (frameCount <= 0)
+    {
+        if (m_jawHoldActive)
+        {
+            m_servoController.setPosition(m_jawHoldPosition);
+            m_previousJawPosition = m_jawHoldPosition;
+        }
+        else
+        {
+            m_servoController.setPosition(m_servoMinDegrees);
+            m_previousJawPosition = m_servoMinDegrees;
+        }
+
+        m_smoothedAmplitude = 0.0;
+        return;
+    }
+
+    if (m_jawHoldActive)
+    {
+        // Release the hold once new audio frames start arriving
+        m_jawHoldActive = false;
+    }
+
+    // Process audio-driven jaw motion while audio is playing
     {
         // Compute RMS amplitude over the frames
         double rmsAmplitude = calculateRMSFromFrames(frames, frameCount);
@@ -214,13 +255,6 @@ void SkullAudioAnimator::updateJawPosition(const Frame *frames, int32_t frameCou
 
         // For debugging purposes
         // Serial.printf("RMS Amplitude: %.2f, Adjusted Amplitude: %.2f, Jaw Position: %d\n", rmsAmplitude, adjustedAmplitude, jawPosition);
-    }
-    else
-    {
-        // Close the jaw when there's no audio
-        m_servoController.setPosition(m_servoMinDegrees);
-        m_previousJawPosition = m_servoMinDegrees;
-        m_smoothedAmplitude = 0.0;
     }
 }
 
