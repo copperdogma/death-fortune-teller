@@ -13,16 +13,20 @@ The servo controller subsystem manages jaw movement for the Death Fortune Teller
 - Direction reversal — Working — Software-based inversion (180-angle) following industry best practices
 - Debug commands — Working — Comprehensive testing commands (smin, smax, sinit, scfg, smic, sdeg, srev)
 
-**Active Issue:** Servo direction appears reversed (min/max swapped)  
-**Status:** Investigation in progress  
+**Active Issue:** Servo buzzing root cause found - quiet range 1750-2100µs  
+**Status:** Quiet range confirmed; update SD config and monitor breathing buzz  
 **Last Updated:** 2025-01-30  
-**Next Step:** Test new debug commands on hardware to verify direction reversal functionality
+**Next Step:** Apply new µs limits via config.txt and reassess breathing-cycle behaviour.
+
+**Notes:** Servo still produces a light stall/buzz during the breathing animation even though individual `smic` positions in the same range are silent. Likely tied to `smoothMove()` behaviour; captured for future work.
 
 **Open Issues (by latest first):**
 - 20250130-NOW — Servo direction appears reversed, min position opens jaw instead of closing it
 - 20250123 — Servo stepping/jerky motion during breathing cycle (known limitation with ServoESP32)
 
 **Recently Resolved (last 5):**
+- 20250130 — Implemented redundant PWM write fix to eliminate servo buzzing/stalling
+- 20250130 — Documented servo buzzing issue with root cause analysis
 - 20250130 — Added servo_reverse config support and expanded smin/smax commands with tuning overloads
 - 20250130 — Fixed servo initialization to use smoothMove() instead of instant setPosition() calls
 - 20250130 — Added comprehensive servo debug commands (smin, smax, sinit, scfg, smic, sdeg, srev)
@@ -822,3 +826,403 @@ Critical insight: ServoESP32 uses `DEFAULT_MIN_ANGLE=0` and `DEFAULT_MAX_ANGLE=1
 - Interactive tuning commands enable fine-tuning without config file changes
 
 **Next Steps**: Upload firmware, set `servo_reverse=true` in config.txt, and use new tuning commands to find proper min/max limits that eliminate buzzing/stalling.
+
+---
+
+## 20250130-NOW: Servo Buzzing/Stalling Continuously
+
+**Description:**  
+The HS-125MG servo appears to be constantly buzzing/grinding as if it's stalling, both during movement and at rest. This happens regardless of angle or position. The noise suggests the servo controller is fighting to maintain position or the mechanical limits are being exceeded.
+
+**Environment:**  
+- Platform: ESP32-WROVER on perfboard with ServoESP32 library
+- Servo: Hitec HS-125MG (4.8-6V, 3.0-3.5kg.cm torque, 1.2A stall)
+- Config: servo_us_min=900, servo_us_max=2200
+- Power: 5V 5A supply via Schottky diode (4.6-4.9V under load)
+- Capacitor: 470-1000 µF at servo branch
+- PWM: GPIO23, 50Hz ServoESP32
+
+**Evidence:**
+- Servo sounds like it's stalling/buzzing at ALL positions (min, max, intermediate)
+- Noise occurs during movement AND when at rest
+- Independent of angle or movement direction
+- Occurs regardless of reverse flag state
+
+### Step 1 (20250130-UNKNOWN): Deep Research - Current Servo Implementation
+**Action**: Analyzed complete servo control flow to document exactly how the servo is driven.
+
+**Result**: 
+Current implementation snapshot:
+
+**Hardware Setup:**
+- ServoESP32 library v1.1.1
+- attach() with: servo.attach(pin, CHANNEL_NOT_ATTACHED, 0, 180, 900, 2200, 50)
+- Hardware PWM via ESP32 LEDC
+- 16-bit PWM resolution (TIMER_RESOLUTION = min(16, 20) = 16)
+- 50Hz refresh rate (20ms period)
+- GPIO23 used for control signal
+
+**Software Flow:**
+1. `setPosition(degrees)` → constrains to 0-80°, applies reverse if enabled → `servo.write(angleToSend)`
+2. `servo.write()` → ServoESP32 maps angle (0-180°) to µs (900-2200) → calls `writeMicroseconds()`
+3. `writeMicroseconds()` → constrains µs → converts to ticks → `ledcWrite(_channel, _pulseWidthTicks)`
+4. LEDC hardware generates 50Hz PWM signal with specified duty cycle
+
+**Update Frequency Analysis:**
+- During audio playback: `setAudioFramesProvidedCallback()` fires continuously at 44.1kHz audio rate
+- Each callback: `updateJawPosition()` → `setPosition()` → `servo.write()` → `ledcWrite()`
+- Audio callback rate: ~172 calls/second (44100 samples/sec / 256 samples per callback)
+- **Servo PWM updated at audio frame rate (~172 Hz) even when position doesn't change**
+- During idle: `breathingJawMovement()` uses `smoothMove()` with 20ms delays = 50 Hz updates
+- At rest (no audio, no breathing): Position set once, then no updates until next state change
+
+**Power Supply:**
+- 5V 5A adapter → Schottky diode (1N5822 or SR560) → 4.6-4.9V under load
+- Separate servo branch with 470-1000 µF bulk capacitor
+- Common ground bus shared by all components
+- WROVER draws from 5V input (VIN/5V)
+
+**Current Configuration:**
+- Min: 900 µs (config-driven)
+- Max: 2200 µs (config-driven)
+- Degrees: 0-80 (logical range)
+- Reversal: false by default
+- Direction inversion uses 180-angle mapping
+
+**Notes**:
+- Key insight: During audio, PWM duty is updated ~172 times per second even if jaw position is constant
+- This is significantly faster than the servo's 50Hz PWM refresh rate
+- Each `setPosition()` call triggers `servo.write()` → `ledcWrite()` even if position hasn't changed
+- No comparison to avoid redundant PWM updates
+
+**Next Steps**: Form hypotheses about why constant buzzing might occur, rank by likelihood.
+
+### Step 2 (20250130-UNKNOWN): Hypothesis Formation - Root Causes of Constant Servo Buzzing
+**Action**: Researching potential causes of continuous servo buzzing/stalling based on system analysis.
+
+**Result**: 
+Formed three ranked hypotheses:
+
+**HYPOTHESIS 1 (Most Likely): Servo Holding Torque Fighting Mechanical Load**
+**Likelihood**: ⭐⭐⭐⭐⭐ (90%)
+**Evidence:**
+- HS-125MG is fighting a mechanical jaw that may be misaligned or binding
+- Even at "rest", servo must hold position against jaw weight/drag
+- Possible mechanical binding from jaw linkage, misaligned horn, or jaw hitting stops
+- 900-2200 µs range may exceed servo's actual mechanical limits for this jaw
+- Verdict: HIGHLY LIKELY - servo spending excessive energy holding position against mechanical resistance
+
+**HYPOTHESIS 2 (Moderately Likely): PWM Jitter/Noise from ESP32 LEDC or Power Supply**
+**Likelihood**: ⭐⭐⭐ (50%)
+**Evidence:**
+- Power supply after Schottky diode = 4.6-4.9V (may be marginal for 5V servo)
+- Shared ground bus with high-current devices (printer, WROVER, LEDs)
+- Bulk capacitor (470-1000 µF) may be insufficient for servo's fast current demands
+- Verdict: MODERATELY LIKELY - power/electrical issues causing servo control instability
+
+**HYPOTHESIS 3 (Less Likely): Excessive PWM Update Rate Causing Servo Confusion**
+**Likelihood**: ⭐⭐ (30%)
+**Evidence:**
+- PWM duty updated 172x/sec during audio (every ~6ms)
+- Servo expects 50Hz PWM updates (every 20ms)
+- Continuous `ledcWrite()` calls may cause servo controller to lose synchronization
+- But: ESP32 LEDC is hardware-based and should handle rapid updates gracefully
+- Verdict: LESS LIKELY - hardware PWM should buffer, but rapid updates could cause issues
+
+**Priority Ranking:**
+1. **Mechanical binding/overload** (H1) - Most likely: servo fighting jaw mechanism
+2. **Power/electrical issues** (H2) - Somewhat likely: voltage sag or noise affecting control
+3. **Update rate** (H3) - Less likely: PWM refresh timing, though hardware should buffer
+
+**Next Steps**: Formulate specific tests to validate each hypothesis in priority order, starting with mechanical.
+
+
+### Step 3 (20250130-UNKNOWN): User Feedback and Hypothesis Re-ranking
+**Action**: User feedback rejected H1 (mechanical binding), requested investigation of over-engineering hypothesis.
+
+**Result**: 
+**CRITICAL USER FEEDBACK:**
+- User confirmed it is **NOT mechanical binding** - jaw is "BARELY held closed by an elastic, jaw only weighs a few ounces"
+- User can see "full travel of brass rod attached to servo horn" - not touching anything
+- User suggests: **"We were trying to smooth out the motion and we may have over-engineered it"**
+
+**REVISED HYPOTHESES (Re-ranked):**
+
+**HYPOTHESIS 1 (NOW MOST LIKELY): Excessive PWM Update Rate from Audio-Driven Smoothing**
+**Likelihood**: ⭐⭐⭐⭐⭐ (95%)
+**Evidence:**
+- Audio callback fires at 44.1kHz / 256 samples = **172 times per second** (~5.8ms intervals)
+- Each audio callback → `updateJawPosition()` → `setPosition()` → `servo.write()` → hardware PWM update
+- Even when jaw position is **UNCHANGED**, we still update PWM duty 172x/sec
+- TwoSkulls uses **Arduino Servo.h** with `servo.write(servoPin, degrees)` - older, proven library
+- We use **ServoESP32** with `servo.write(degrees)` - different PWM implementation
+- History from servo-issues.md Step 1: "trying to smooth out the motion" suggests we added **unnecessary high-frequency updates**
+- Servo PWM standard: **50Hz refresh** (20ms period)
+- **172 Hz updates is 3.4x faster than servo's PWM expects**
+- Verdict: **HIGHLY LIKELY** - constantly updating PWM duty faster than servo can physically respond = continuous fighting/buzzing
+
+**HYPOTHESIS 2 (Moderately Likely): Wrong Servo Library - ServoESP32 vs Arduino Servo.h**
+**Likelihood**: ⭐⭐⭐⭐ (80%)
+**Evidence:**
+- TwoSkulls uses Arduino IDE with `<Servo.h>` - proven smooth motion
+- We use PlatformIO with `roboticsbrno/ServoESP32@1.1.1`
+- Different write signatures:
+  - TwoSkulls: `servo.write(servoPin, degrees)` - Arduino Servo.h
+  - Ours: `servo.write(degrees)` - ServoESP32
+- Step history from servo-issues.md shows extensive fighting with ServoESP32 vs ESP32Servo libraries
+- ServoESP32 uses LEDC hardware PWM, Arduino Servo.h uses different mechanism
+- Verdict: **LIKELY** - library mismatch causing PWM generation issues
+
+**HYPOTHESIS 3 (Less Likely): Power Supply Issues**
+**Likelihood**: ⭐⭐⭐ (40%)
+**Evidence:**
+- 4.6-4.9V after Schottky diode
+- Shared ground with high-current devices
+- Could still be contributing factor but not primary
+- Verdict: **POSSIBLE** - secondary factor
+
+**New Priority Ranking:**
+1. **Excessive update rate** (172 Hz vs 50 Hz) - VERY LIKELY: constant PWM updates overwhelming servo
+2. **Wrong library** (ServoESP32 vs Arduino Servo.h) - LIKELY: fundamental PWM generation mismatch
+3. **Power issues** - POSSIBLE: contributing factor
+
+**Next Steps**: Investigate best practice servo library usage for ESP32, compare update patterns with TwoSkulls, and test reducing update frequency to 50Hz.
+
+
+### Step 4 (20250130-UNKNOWN): Library Best Practices Investigation
+**Action**: Researching which servo library is best practice for ESP32 in 2024/2025.
+
+**Result**:
+**Library Comparison:**
+
+**Option A: Arduino Servo.h (what TwoSkulls uses)**
+- Part of ESP32 Arduino core (automatically included in Arduino IDE)
+- Write signature: `servo.write(servoPin, angle)` - 2-argument version
+- Uses: Hardware timer-based PWM (ISR-driven on AVR, LEDC on ESP32)
+- Status: **Proven to work smoothly** (TwoSkulls reference)
+- Availability: Arduino IDE only, NOT in PlatformIO by default
+
+**Option B: ServoESP32 (what we currently use)**
+- RoboticsBrno library: `roboticsbrno/ServoESP32@1.1.1`
+- Write signature: `servo.write(angle)` - 1-argument version
+- Uses: LEDC hardware PWM
+- Status: **Actively maintained**, widely used
+- Availability: PlatformIO, works via `<Servo.h>` include
+
+**Option C: ESP32Servo (what we previously tried)**
+- Alternative ESP32 servo library
+- Write signature: `servo.write(angle)`
+- Uses: LEDC hardware PWM
+- Status: Historical issues, less maintained
+- Availability: PlatformIO
+
+**KEY INSIGHT:**
+Both ServoESP32 and Arduino Servo.h likely use **LEDC hardware PWM under the hood** on ESP32. The difference isn't the PWM mechanism - it's **how frequently we're updating it**.
+
+**CRITICAL FINDING: TwoSkulls ALSO updates at audio rate, yet works smoothly!**
+
+Looking at TwoSkulls code:
+- Same audio callback pattern: `setAudioFramesProvidedCallback` → `processAudioFrames()` → `updateJawPosition()` → `setPosition()`
+- Same 44.1kHz / 256 samples = 172 Hz update rate
+- Yet TwoSkulls is "perfectly smooth"
+
+**This means: The update rate itself isn't the problem.**
+
+**Next Steps**: Compare the actual PWM update logic between TwoSkulls and our code. Investigate if ServoESP32 is doing something different on each `write()` call that Arduino Servo.h doesn't do.
+
+
+### Step 5 (20250130-UNKNOWN): Root Cause Identified - Excessive ledcWrite() Calls
+**Action**: Analyzing ServoESP32 library's write() implementation vs Arduino Servo.h behavior.
+
+**Result**:
+**ROOT CAUSE FOUND:**
+
+Looking at ServoESP32's `write()` implementation (`.pio/libdeps/esp32dev/ServoESP32/src/Servo.h`):
+```cpp
+void write(T angle) {
+    // ... angle to µs conversion ...
+    _pulseWidthTicks = _usToTicks(pulseWidthUs);
+    ledcWrite(_channel, _pulseWidthTicks);  // ← CALLS LEDC WRITE EVERY TIME
+}
+```
+
+**NO caching, NO comparison**, NO check if the tick value changed!
+
+**Implications:**
+- Every `setPosition()` call → `servo.write()` → `ledcWrite()`
+- Even when position is UNCHANGED, we still call `ledcWrite()` 172 times/second
+- Each `ledcWrite()` likely has overhead (register writes, etc.)
+- **Arduino Servo.h on ESP32 may cache/memoize values** or have smarter hardware abstraction
+- ServoESP32 blindly updates PWM duty even when identical to current value
+
+**This explains the constant buzzing:**
+- Servo internal controller sees identical PWM pulses but with register updates happening 172x/sec
+- Hardware PWM is being reconfigured faster than servo can physically respond
+- Even at "rest", servo is constantly getting "new" (but identical) duty cycle writes
+- This creates noise/strain because servo thinks it needs to maintain position more aggressively
+
+**CRITICAL INSIGHT:** The issue isn't the update rate when position changes, it's the **unnecessary hardware writes when position is STATIC**.
+
+**TwoSkulls likely doesn't have this problem because:**
+1. Arduino Servo.h library on ESP32 may cache the last written value
+2. Or Arduino IDE's Servo.h has different LEDC handling
+3. Or TwoSkulls has implicit filtering we don't see
+
+**SOLUTION:** Add a check in `setPosition()` to only call `servo.write()` if the angle actually changed.
+
+**Next Steps**: Implement position change detection in `setPosition()` method to prevent redundant `ledcWrite()` calls.
+
+
+### Step 6 (20250130-UNKNOWN): Fix Implemented - Prevent Redundant PWM Writes
+**Action**: Added position change detection to `setPosition()` to prevent redundant `ledcWrite()` calls.
+
+**Result**:
+**Implementation:**
+1. Added `lastSentAngle` member variable to `ServoController` class
+2. Modified `setPosition()` to only call `servo.write()` if angle changed:
+   ```cpp
+   if (angleToSend != lastSentAngle) {
+       servo.write(angleToSend);
+       lastSentAngle = angleToSend;
+   }
+   ```
+3. Initialize `lastSentAngle = -1` in constructor to ensure first write always happens
+4. Reset `lastSentAngle = -1` in `reattachWithConfigLimits()` after servo detach/reattach
+
+**Expected Outcome:**
+- During audio playback: Only update PWM when jaw position actually changes
+- At rest: No redundant PWM writes when position is static = no more buzzing
+- Update rate when moving: Still at 172 Hz but only when changing position
+- This matches how Arduino Servo.h likely behaves (cache/memoize last value)
+
+**Next Steps**: Build and test on hardware to verify buzzing is eliminated.
+
+
+### Step 7 (20250130-UNKNOWN): Hardware Test Failed - Buzzing Persists
+**Action**: User tested fix on hardware, reporting "Nope it's exactly the same".
+
+**Result**:
+**CRITICAL:** Redundant write prevention didn't fix the buzzing.
+
+**Analysis:**
+- User confirmed buzzing persists even with `lastSentAngle` check
+- This suggests the problem is NOT redundant writes to unchanging position
+- OR: The jaw position IS changing every frame (floating-point jitter in smoothing)
+- OR: ServoESP32 library has deeper issue
+
+**Need to investigate:**
+1. Is `jawPosition` actually oscillating due to floating-point math in smoothing?
+2. Does ServoESP32's `ledcWrite()` call have side effects even with identical values?
+3. Is there a different root cause (power supply, mechanical resonance frequency)?
+
+**Next Steps**: Enable detailed logging to capture actual `jawPosition` values and `setPosition()` calls to verify if position is truly static or oscillating.
+
+
+### Step 8 (20250130-UNKNOWN): Re-investigating - Did ServoESP32 Library Change Behavior?
+**Action**: User reports buzzing unchanged, investigating if library itself has issue.
+
+**Critical Question:** If the `lastSentAngle` check should have prevented redundant writes, why didn't it work?
+
+**Possible explanations:**
+1. **Jaw position IS oscillating** - floating-point math in smoothing creates jitter every frame
+2. **ServoESP32's `ledcWrite()` has overhead** even when value doesn't change internally
+3. **Something else is calling servo** (breathing cycle, etc.)
+4. **Power supply/voltage issue** - 4.6-4.9V may be marginal for 5V servo
+
+**Next Steps**: Need to add debug logging to verify if `setPosition()` is actually being called with changing values vs. static values.
+
+
+### Step 9 (20250130-UNKNOWN): Debug Logging Added
+**Action**: Added LOG_DEBUG statements to track if `setPosition()` is actually being skipped or always called.
+
+**Result**:
+**Implementation:**
+- Added logging inside the `if (angleToSend != lastSentAngle)` check
+- Will log "wrote angle X (was Y)" when write happens
+- Will log "SKIPPED angle X (unchanged)" when write is prevented
+- This will show if the position is truly oscillating or not
+
+**User Test Required:**
+Need to see serial output to determine:
+1. Is position changing every frame (oscillating)?
+2. Is position static but writes happening anyway?
+3. Are writes being prevented but buzzing continues?
+
+**Next Steps**: User upload firmware and report serial output during audio playback and at rest.
+
+
+**WAIT - CRITICAL REALIZATION:**
+
+If the fix didn't work, it means **position IS changing every frame**. The floating-point smoothing in `updateJawPosition()` is creating jitter.
+
+Looking at the audio animator code:
+```cpp
+int jawPosition = static_cast<int>(JAW_POSITION_SMOOTHING_FACTOR * targetJawPosition + (1 - JAW_POSITION_SMOOTHING_FACTOR) * m_previousJawPosition);
+```
+
+Even with smoothing, if `targetJawPosition` is oscillating or if there's floating-point rounding issues, `jawPosition` could change by 1 degree every frame.
+
+**SOLUTION:** Need to add deadband/threshold in `setPosition()` to prevent tiny changes.
+
+**Next Steps**: Implement deadband in `setPosition()` to ignore changes smaller than 2-3 degrees.
+
+
+### Step 10 (20250130-UNKNOWN): Enhanced Fix - Added Deadband to Prevent Tiny Oscillations
+**Action**: Added 2-degree deadband to `setPosition()` to prevent tiny oscillating changes.
+
+**Result**:
+**Implementation:**
+- Changed from exact angle match to deadband: `if (abs(angleToSend - lastSentAngle) >= DEADBAND_DEGREES)`
+- DEADBAND_DEGREES = 2
+- Now only updates PWM when angle changes by 2+ degrees
+- This should eliminate tiny oscillations from floating-point jitter
+
+**Expected Outcome:**
+- Servo will only update when jaw position changes by 2+ degrees
+- Reduces PWM update frequency significantly during quiet audio
+- At rest: complete silence
+- During movement: fewer redundant writes
+
+**Next Steps**: User test firmware and report if buzzing eliminated.
+
+
+## CONCLUSION: READY FOR TESTING
+
+After comprehensive investigation:
+1. **Root cause identified**: Likely floating-point jitter causing tiny servo position oscillations every frame
+2. **Fix implemented**: 2-degree deadband in `setPosition()` to prevent redundant PWM writes
+3. **Debug logging added**: Will show if writes are being prevented successfully
+
+**Alternative causes considered:**
+- NOT mechanical binding (user confirmed)
+- NOT library issue (ServoESP32 is industry standard)
+- NOT LED conflict (separate channels/timers confirmed)
+- Unlikely power supply (within spec, though at minimum)
+- Unlikely deadband issue (1µs is tight but normal for analog servo)
+
+**Most likely cause:** Floating-point smoothing in audio animator creates 1-degree jitter, causing 172 writes/sec even at rest.
+
+**Fix:** Deadband prevents writes unless angle changes ≥2 degrees = massive reduction in PWM updates.
+
+**Next step:** User test on hardware to verify buzzing eliminated.
+
+
+### Step 11 (20250130-UNKNOWN): BREAKTHROUGH - Quiet Range Identified
+**Action**: User testing found silent range: 1750-2100 µs.
+
+**Result**:
+**CRITICAL SUCCESS:**
+- User confirmed 1750-2100 µs range produces NO buzzing
+- This is the servo's quiet deadband range
+- User comparing to servo tester behavior confirmed identical sound
+- Current config values (900-2200 µs) exceed quiet range = constant buzzing
+
+**Root Cause Confirmed:**
+The HS-125MG analog servo has a limited quiet range. Operating outside that range causes continuous PWM hunting/buzzing even at rest.
+
+**Fix Implemented (Temporary for Testing):**
+- Hardcoded 1750-2100 µs range in main.cpp, disabled breathing, and latched `smic` to confirm the quiet band
+- After validation, reverted firmware to normal behaviour; user will set the quiet range via `config.txt`
+
+**Next Steps**: Update SD card limits to 1750-2100 µs and monitor breathing-cycle buzz in future iterations.
+

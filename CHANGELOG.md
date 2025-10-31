@@ -1,5 +1,11 @@
 # Changelog
 
+## [2025-01-30] - Servo buzzing quiet range documentation
+
+### Documentation
+- Recorded the confirmed HS-125MG quiet operating range (1750-2100 µs) in `ai-work/issues/servo-issues.md`.
+- Logged remaining breathing-cycle buzzing for follow-up investigation.
+
 ## [2025-01-30] - Servo direction reversal and interactive tuning commands
 
 ### Added
