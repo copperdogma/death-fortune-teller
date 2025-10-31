@@ -1,5 +1,17 @@
 # Changelog
 
+## [2025-01-30] - Replaced smoothMove with instant positioning in servo initialization
+
+### Fixed
+- Removed `smoothMove()` from all servo initialization methods (`initialize()` and `reattachWithConfigLimits()`)
+- Unified initialization sweep behavior: instant positioning to max/min instead of 1.5s linear interpolation
+- Eliminates 50-75 redundant PWM writes per initialization sweep that could cause servo buzz
+- Consolidated `sinit` command to use same instant positioning pattern as boot initialization
+
+### Changed
+- All init sweeps now use `setPosition()` for immediate positioning with brief 500-1000ms pause at max
+- Breathing and CLI commands (`smin`/`smax` without args) still use `smoothMove()` for gradual motion
+
 ## [2025-01-30] - Servo buzzing quiet range documentation
 
 ### Documentation

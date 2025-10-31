@@ -23,6 +23,8 @@ The servo controller subsystem manages jaw movement for the Death Fortune Teller
 **Open Issues (by latest first):**
 - 20250130-NOW — Servo direction appears reversed, min position opens jaw instead of closing it
 - 20250123 — Servo stepping/jerky motion during breathing cycle (known limitation with ServoESP32)
+- 20251031: Servo settings seem off/weird. If I use smic to set ranges, if I go beyond some it doesn't move anymore, and they seem reversed from normal? Maybe? Is our µs to degrees mapping wrong?
+- 20251031: smooveMove() (used by breathing) is TERRIBLE and needs to be redone.. It just makes it sound like it's stalling the entire time.
 
 **Recently Resolved (last 5):**
 - 20250130 — Implemented redundant PWM write fix to eliminate servo buzzing/stalling

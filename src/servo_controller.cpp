@@ -49,13 +49,13 @@ void ServoController::initialize(int pin, int minDeg, int maxDeg)
              minMicroseconds,
              maxMicroseconds);
 
-    // Perform full sweep animation using smoothMove for proper timing
+    // Perform full sweep animation - instant positioning
     LOG_DEBUG(TAG, "Servo animation init: moving to max position (%d degrees)", maxDegrees);
-    smoothMove(maxDegrees, 1500); // 1.5 seconds to move to max
-    delay(200); // Brief pause at max position
+    setPosition(maxDegrees);
+    delay(500); // Brief pause at max position
     
     LOG_DEBUG(TAG, "Servo animation init: moving to min position (%d degrees)", minDegrees);
-    smoothMove(minDegrees, 1500); // 1.5 seconds to move back to min
+    setPosition(minDegrees);
     LOG_INFO(TAG, "Servo animation init complete");
 }
 
@@ -87,13 +87,13 @@ void ServoController::initialize(int pin, int minDeg, int maxDeg, int minUs, int
              minMicroseconds,
              maxMicroseconds);
 
-    // Perform full sweep animation using smoothMove for proper timing
+    // Perform full sweep animation - instant positioning
     LOG_DEBUG(TAG, "Servo animation init: moving to max position (%d degrees)", maxDegrees);
-    smoothMove(maxDegrees, 1500); // 1.5 seconds to move to max
-    delay(200); // Brief pause at max position
+    setPosition(maxDegrees);
+    delay(1000); // Brief pause at max position
     
     LOG_DEBUG(TAG, "Servo animation init: moving to min position (%d degrees)", minDegrees);
-    smoothMove(minDegrees, 1500); // 1.5 seconds to move back to min
+    setPosition(minDegrees);
     LOG_INFO(TAG, "Servo animation init complete");
 }
 
@@ -246,12 +246,12 @@ void ServoController::reattachWithConfigLimits()
     setPosition(minDegrees);
     delay(100); // Brief pause to ensure servo is at known position
 
-    // Perform full sweep animation using smoothMove for proper timing
+    // Perform full sweep animation - instant positioning
     LOG_DEBUG(TAG, "Servo config animation: moving to max position (%d degrees)", maxDegrees);
-    smoothMove(maxDegrees, 1500); // 1.5 seconds to move to max
-    delay(200); // Brief pause at max position
+    setPosition(maxDegrees);
+    delay(500); // Brief pause at max position
     
     LOG_DEBUG(TAG, "Servo config animation: moving to min position (%d degrees)", minDegrees);
-    smoothMove(minDegrees, 1500); // 1.5 seconds to move back to min
+    setPosition(minDegrees);
     LOG_INFO(TAG, "Servo config animation complete");
 }
