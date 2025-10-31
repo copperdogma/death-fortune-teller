@@ -1,5 +1,27 @@
 # Changelog
 
+## [2025-01-30] - Servo direction reversal and interactive tuning commands
+
+### Added
+- Comprehensive servo diagnostic CLI commands: `smin`, `smax`, `sinit`, `scfg`, `smic`, `sdeg`, `srev`
+- Servo direction reversal support via software mapping (invert 180-angle) following industry best practices
+- Config parameter `servo_reverse` in `config.txt` (default: false) for persistent direction control
+- Interactive tuning: `smin <µs>`, `smax <µs>` to set limits, and `smin +/-`, `smax +/-` to adjust by ±100 µs
+- Enhanced servo configuration display showing current min/max µs and reversal state
+
+### Fixed
+- Servo initialization sweep now uses `smoothMove()` instead of instant `setPosition()` calls for proper timing
+- Servo reverse flag now properly loaded during initialization from config or defaults
+
+### Changed
+- Renamed `servo_init` command to `sinit` for consistency
+- Increased servo µs tuning range from 500-2500 to 500-10000 to accommodate wider servo ranges
+- Updated help text to document all servo command variations
+
+### Documentation
+- Added comprehensive servo issues log (162 lines) documenting root cause analysis and industry research
+- Documented servo buzzing/stalling observation for hardware tuning reference
+
 ## [2025-10-29] - Adaptive finger sensor thresholding & calibration hold
 
 ### Added

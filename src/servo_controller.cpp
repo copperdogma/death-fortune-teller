@@ -13,6 +13,7 @@ ServoController::ServoController()
       maxDegrees(0),
       minMicroseconds(1400),
       maxMicroseconds(1600),
+      reverseDirection(false),
       smoothedPosition(0),
       lastPosition(0),
       maxObservedRMS(0),
@@ -27,6 +28,7 @@ void ServoController::initialize(int pin, int minDeg, int maxDeg)
     ConfigManager &config = ConfigManager::getInstance();
     minMicroseconds = config.getServoUSMin();
     maxMicroseconds = config.getServoUSMax();
+    reverseDirection = config.getServoReverse();
 
     servo.attach(servoPin,
                 Servo::CHANNEL_NOT_ATTACHED,
@@ -47,14 +49,14 @@ void ServoController::initialize(int pin, int minDeg, int maxDeg)
              minMicroseconds,
              maxMicroseconds);
 
-    LOG_DEBUG(TAG, "Servo animation init: %d (min) degrees", minDegrees);
-    setPosition(minDegrees);
-    LOG_DEBUG(TAG, "Servo animation init: %d (max) degrees", maxDegrees);
-    delay(500);
-    setPosition(maxDegrees);
-    LOG_INFO(TAG, "Servo animation init complete; resetting to %d degrees", minDegrees);
-    delay(500);
-    setPosition(minDegrees);
+    // Perform full sweep animation using smoothMove for proper timing
+    LOG_DEBUG(TAG, "Servo animation init: moving to max position (%d degrees)", maxDegrees);
+    smoothMove(maxDegrees, 1500); // 1.5 seconds to move to max
+    delay(200); // Brief pause at max position
+    
+    LOG_DEBUG(TAG, "Servo animation init: moving to min position (%d degrees)", minDegrees);
+    smoothMove(minDegrees, 1500); // 1.5 seconds to move back to min
+    LOG_INFO(TAG, "Servo animation init complete");
 }
 
 void ServoController::initialize(int pin, int minDeg, int maxDeg, int minUs, int maxUs)
@@ -63,6 +65,9 @@ void ServoController::initialize(int pin, int minDeg, int maxDeg, int minUs, int
     minMicroseconds = minUs;
     maxMicroseconds = maxUs;
 
+    ConfigManager &config = ConfigManager::getInstance();
+    reverseDirection = config.getServoReverse();
+
     servo.attach(servoPin,
                 Servo::CHANNEL_NOT_ATTACHED,
                 Servo::DEFAULT_MIN_ANGLE,
@@ -82,30 +87,44 @@ void ServoController::initialize(int pin, int minDeg, int maxDeg, int minUs, int
              minMicroseconds,
              maxMicroseconds);
 
-    LOG_DEBUG(TAG, "Servo animation init: %d (min) degrees", minDegrees);
-    setPosition(minDegrees);
-    LOG_DEBUG(TAG, "Servo animation init: %d (max) degrees", maxDegrees);
-    delay(500);
-    setPosition(maxDegrees);
-    LOG_INFO(TAG, "Servo animation init complete; resetting to %d degrees", minDegrees);
-    delay(500);
-    setPosition(minDegrees);
+    // Perform full sweep animation using smoothMove for proper timing
+    LOG_DEBUG(TAG, "Servo animation init: moving to max position (%d degrees)", maxDegrees);
+    smoothMove(maxDegrees, 1500); // 1.5 seconds to move to max
+    delay(200); // Brief pause at max position
+    
+    LOG_DEBUG(TAG, "Servo animation init: moving to min position (%d degrees)", minDegrees);
+    smoothMove(minDegrees, 1500); // 1.5 seconds to move back to min
+    LOG_INFO(TAG, "Servo animation init complete");
 }
 
 void ServoController::setPosition(int degrees)
 {
     int constrainedDegrees = constrain(degrees, minDegrees, maxDegrees);
-    servo.write(constrainedDegrees);
+    int angleToSend = constrainedDegrees;
+    
+    // Apply direction reversal if enabled (invert the angle before sending to servo)
+    if (reverseDirection) {
+        angleToSend = 180 - angleToSend;
+    }
+    
+    servo.write(angleToSend);
 
     // LOG_DEBUG(TAG,
     //           "setPosition(%d°) within [%d,%d]° (µs %d-%d)",
-    //           constrainedDegrees,
+    //           angleToSend,
     //           minDegrees,
     //           maxDegrees,
     //           minMicroseconds,
     //           maxMicroseconds);
 
+    // Track the original (non-inverted) position for our own bookkeeping
     currentPosition = constrainedDegrees;
+}
+
+void ServoController::writeMicroseconds(int microseconds)
+{
+    int constrainedUs = constrain(microseconds, minMicroseconds, maxMicroseconds);
+    servo.writeMicroseconds(constrainedUs);
 }
 
 int ServoController::getPosition() const
@@ -204,6 +223,7 @@ void ServoController::reattachWithConfigLimits()
     ConfigManager &config = ConfigManager::getInstance();
     minMicroseconds = config.getServoUSMin();
     maxMicroseconds = config.getServoUSMax();
+    reverseDirection = config.getServoReverse();
 
     servo.detach();
     servo.attach(servoPin,

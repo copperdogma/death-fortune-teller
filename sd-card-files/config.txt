@@ -16,6 +16,7 @@ speaker_volume=100
 # Override if your servo has different limits (e.g., 900-2200 for tested servo)
 servo_us_min=900
 servo_us_max=2200
+servo_reverse=false
 
 # Capacitive finger sensor tuning
 finger_cycles_init=0xFFFF

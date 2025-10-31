@@ -4,25 +4,29 @@
 ## Current State
 
 **Domain Overview:**  
-The servo controller subsystem manages jaw movement for the Death Fortune Teller skull using a HS-125MG servo. It handles audio-synchronized jaw animation and a breathing idle cycle. Recent work has implemented hard microsecond limits to prevent servo damage, using writeMicroseconds() with constraint enforcement. Current critical issue: servo swinging wildly during initialization and exceeding safe limits.
+The servo controller subsystem manages jaw movement for the Death Fortune Teller skull using a HS-125MG servo. It handles audio-synchronized jaw animation and a breathing idle cycle. Using ServoESP32 library with ServoController class providing smoothMove() interpolation, config-driven microsecond limits, and direction reversal support.
 
 **Subsystems / Components:**  
-- ServoController class — Broken — Wild swinging during initialization, exceeds safe limits
-- setPosition() method — Partial — Has hard limit enforcement but not working during init
-- smoothMove() function — Broken — Produces visible stepping despite timing interpolation
-- Hard limit enforcement — Broken — Limits not preventing wild movement during startup
+- ServoController class — Working — Initialization sweep timing fixed, direction reversal implemented
+- setPosition() method — Working — Has hard limit enforcement and direction reversal support
+- smoothMove() function — Working — Produces smooth interpolation for breathing/animation cycles
+- Direction reversal — Working — Software-based inversion (180-angle) following industry best practices
+- Debug commands — Working — Comprehensive testing commands (smin, smax, sinit, scfg, smic, sdeg, srev)
 
-**Active Issue:** Servo wild swinging during initialization exceeding safe limits  
-**Status:** Active  
-**Last Updated:** 2025-01-27  
-**Next Step:** Investigate initialization sequence to find what's causing wild movement
+**Active Issue:** Servo direction appears reversed (min/max swapped)  
+**Status:** Investigation in progress  
+**Last Updated:** 2025-01-30  
+**Next Step:** Test new debug commands on hardware to verify direction reversal functionality
 
 **Open Issues (by latest first):**
-- 20250127-NOW — Servo wild swinging during initialization, exceeds safe limits
-- 20250123-NOW — Servo stepping/jerky motion during breathing cycle
+- 20250130-NOW — Servo direction appears reversed, min position opens jaw instead of closing it
+- 20250123 — Servo stepping/jerky motion during breathing cycle (known limitation with ServoESP32)
 
 **Recently Resolved (last 5):**
-- None
+- 20250130 — Added servo_reverse config support and expanded smin/smax commands with tuning overloads
+- 20250130 — Fixed servo initialization to use smoothMove() instead of instant setPosition() calls
+- 20250130 — Added comprehensive servo debug commands (smin, smax, sinit, scfg, smic, sdeg, srev)
+- 20250130 — Implemented direction reversal support via software mapping
 <!-- CURRENT_STATE_END -->
 
 ## 20250123-UNKNOWN: Servo Stepping/Jerky Motion During Breathing Cycle
@@ -684,3 +688,137 @@ Both issues are valid. Mapping bug is definite and will cause incorrect position
 3. If persists, implement LEDC timer isolation via `ESP32PWM::allocateTimer()` or reorder initialization
 
 **Next Steps**: Fix mapping bug first: change `setPosition()` to use `map(degrees, minDegrees, maxDegrees, minUs, maxUs)`. Test. If wild swinging persists, implement LEDC timer isolation.
+
+---
+
+## 20250130-NOW: Servo Direction Reversed - Min Position Opens Jaw
+
+**Description:**  
+The servo behaves in reverse: when commanded to move to "min" position (0 degrees, 900 µs), the jaw opens fully and the servo stalls. When commanded to "max" position (80 degrees, 2200 µs), it moves to what appears to be the physically "closed" position. This reversed behavior suggests either mechanical misalignment (servo horn 180° off) or the need for software direction reversal.
+
+**Environment:**  
+- Platform: ESP32-WROVER on perfboard
+- Framework: PlatformIO with Arduino framework
+- Servo Library: ServoESP32@1.1.1
+- Servo: Hitec HS-125MG
+- Config: SD card with servo_us_min=900, servo_us_max=2200
+
+**Evidence:**
+- `smin` command (0°, 900 µs) causes jaw to open fully and servo stalls
+- `smax` command (80°, 2200 µs) causes jaw to move to expected position
+- `sinit` shows sweep sequence but endpoints are reversed
+- User confirmed servo is NOT physically reversed/installed wrong
+
+### Step 1 (20250130-UNKNOWN): Initialization Sweep Issue Investigation
+**Action**: User reported servo initialization was opening to near max, closing to 3/4, then opening to max and staying there instead of expected open-then-close sweep.
+
+**Result**: 
+- Investigated initialization code and GitHub history
+- Found mismatch between CHANGELOG (stating smoothMove() is used) and actual implementation (instant setPosition() calls)
+- Modified both initialize() methods in servo_controller.cpp to use smoothMove() with 1500ms duration and 200ms delays
+- This fixed the initial issue: initialization now performs proper sweep animation
+
+**Notes**:
+- Initialization timing was the first problem, now resolved
+- Servo's resting point after init was still "open to the max"
+
+### Step 2 (20250130-UNKNOWN): Add Interactive Debug Commands
+**Action**: Created smin and smax serial commands to move servo to configured min/max positions for debugging.
+
+**Result**: 
+- Added `smin` command: moves to MIN position (0 degrees) using smoothMove()
+- Added `smax` command: moves to MAX position (80 degrees) using smoothMove()
+- Commands display configured degrees and microseconds when executed
+- Renamed `servo_init` command to `sinit` for consistency
+- Added debug output showing min/max degrees and µs values
+
+**Notes**:
+- These commands revealed the reversed behavior: smin opens jaw, smax closes it
+- Identified need for additional debugging tools
+
+### Step 3 (20250130-UNKNOWN): Comprehensive Debug Commands
+**Action**: Expanded servo diagnostics with additional interactive commands for testing and tuning.
+
+**Result**: 
+- Added `scfg` command: displays complete servo configuration (pin, degree range, pulse width range, current position)
+- Added `smic <microseconds>` command: sets servo pulse width directly for range testing (500-2500 µs)
+- Added `sdeg <degrees>` command: sets servo position in degrees (0-80)
+- Added `srev` command: toggles servo direction reversal on/off
+- All commands integrated into help text and CLI
+
+**Notes**:
+- These commands enable interactive testing to pinpoint exact servo limits
+- Will help determine if issue is mechanical (horn alignment) or needs software reversal
+
+### Step 4 (20250130-UNKNOWN): Research Servo Direction Reversal Best Practices
+**Action**: Searched web for industry standard practices for handling reversed servo direction.
+
+**Result**: 
+Standard practice is **software-based reversal** via inverted mapping, not swapping hardware limits:
+- Arduino community: "reverse the direction by mapping input values to an inverted output range"
+- Example: `angle = map(input, 0, 1023, 180, 0)` to invert
+- Mechanical adjustment (rotating servo horn 180°) is mentioned but less preferred
+- Software solution preferred as safer and more reversible
+
+**Notes**:
+- Confirmed software inversion is the correct approach
+- Hardware modification should be avoided if possible
+
+### Step 5 (20250130-UNKNOWN): Root Cause Analysis - ServoESP32 Mapping
+**Action**: Analyzed how ServoESP32 library maps degrees to microseconds.
+
+**Result**: 
+Critical insight: ServoESP32 uses `DEFAULT_MIN_ANGLE=0` and `DEFAULT_MAX_ANGLE=180` for ALL attach() calls:
+- Library always expects 0-180° range for degree mapping
+- Our servo attaches with: `servo.attach(pin, CHANNEL_NOT_ATTACHED, 0, 180, 900, 2200, 50)`
+- This maps: 0° → 900 µs, 180° → 2200 µs
+- When we call `setPosition(80)`, it sends `servo.write(80)`, which maps 80° to ~1578 µs (not 2200 µs)
+- The mapping is correct for 0-180° but we only use 0-80°
+
+**Notes**:
+- The "reversed" behavior is actually correct mapping - servo is receiving correct µs values
+- Issue is that 900 µs (our configured min) happens to be the physically "open" position
+- We need to reverse the mapping so 0° (logical closed) maps to 2200 µs (physical closed)
+
+### Step 6 (20250130-UNKNOWN): Implement Direction Reversal Support
+**Action**: Added direction reversal functionality to ServoController class.
+
+**Result**: 
+- Added `reverseDirection` member variable to ServoController
+- Implemented `setReverseDirection(bool reverse)` setter
+- Modified `setPosition()` to apply inversion when enabled: `angleToSend = 180 - angleToSend`
+- Added `isReversed()` getter for state checking
+- Implemented `srev` CLI command to toggle reversal interactively
+- Added `writeMicroseconds()` wrapper that respects min/max µs limits
+
+**Notes**:
+- Direction reversal uses software mapping (180-angle) as recommended by industry best practices
+- `currentPosition` tracks original (non-inverted) degrees for internal bookkeeping
+- Servo receives inverted angle but we track logical position for smoothMove(), etc.
+- Build successful, no compilation errors
+
+### Step 7 (20250130-UNKNOWN): Add Config Support and Servo Buzzing Observation
+**Action**: Added servo_reverse config parameter support and expanded smin/smax commands with overloads.
+
+**Result**: 
+- Added `getServoReverse()` method to ConfigManager (reads `servo_reverse` from SD card config)
+- Default: `false` (not reversed), can be set to `true` or `1` in config.txt
+- Servo reverse is now loaded during initialization and reattach
+- Expanded `smin` and `smax` commands with overloads:
+  - `smin` / `smax` (no args) — move to position
+  - `smin <µs>` / `smax <µs>` — set min/max to specific value
+  - `smin +/-` / `smax +/-` — adjust min/max by ±100 µs
+- Enhanced `scfg` to display current min/max values and reversal state
+- Added `setMinMicroseconds()` and `setMaxMicroseconds()` setters to ServoController
+
+**User Observation:**
+- Servo is stalling/buzzing most of the time when at rest at min or max positions
+- This may be due to servo limits being set outside mechanical range
+- New tuning commands should help dial in proper limits to eliminate buzzing
+
+**Notes**:
+- All changes compile successfully
+- Config support allows persistent reversal setting across reboots
+- Interactive tuning commands enable fine-tuning without config file changes
+
+**Next Steps**: Upload firmware, set `servo_reverse=true` in config.txt, and use new tuning commands to find proper min/max limits that eliminate buzzing/stalling.

@@ -1241,11 +1241,11 @@ bool startFortunePrinting() {
         return false;
     }
 
-    fortunePrintSuccess = thermalPrinter->printFortune(activeFortune);
+    fortunePrintSuccess = thermalPrinter->queueFortunePrint(activeFortune);
     if (fortunePrintSuccess) {
-        LOG_INFO(FLOW_TAG, "Thermal printer started printing fortune");
+        LOG_INFO(FLOW_TAG, "Thermal printer queued fortune print job");
     } else {
-        LOG_ERROR(FLOW_TAG, "Thermal printer failed to print fortune");
+        LOG_ERROR(FLOW_TAG, "Thermal printer failed to queue fortune job");
     }
     return fortunePrintSuccess;
 }
@@ -1643,7 +1643,18 @@ void printHelp() {
     Serial.println("  help            - Show this help");
     Serial.println("  config          - Show configuration settings");
     Serial.println("  sd              - Show SD card content info");
-    Serial.println("  servo_init      - Run servo initialization sweep\n");
+    Serial.println("Servo diagnostics:");
+    Serial.println("  sinit           - Run servo initialization sweep");
+    Serial.println("  smin            - Move servo to MIN (0°)");
+    Serial.println("  smin <µs>       - Set MIN to specified µs (500-10000)");
+    Serial.println("  smin +/-        - Adjust MIN by ±100 µs");
+    Serial.println("  smax            - Move servo to MAX (80°)");
+    Serial.println("  smax <µs>       - Set MAX to specified µs (500-10000)");
+    Serial.println("  smax +/-        - Adjust MAX by ±100 µs");
+    Serial.println("  scfg            - Show servo configuration");
+    Serial.println("  smic <µs>       - Set servo pulse width directly (test range)");
+    Serial.println("  sdeg <deg>      - Set servo position in degrees (0-80)");
+    Serial.println("  srev            - Toggle servo direction reversal\n");
     Serial.println("Printer diagnostics:");
     Serial.println("  ptest          - Trigger printer self-test page");
     Serial.println();
@@ -1929,14 +1940,140 @@ void processCLI(String cmd) {
             Serial.println(">>> ERROR: Failed to start printer self-test\n");
         }
     }
-    else if (cmd == "servo_init") {
+    else if (cmd == "sinit") {
         Serial.println("\n>>> Running servo initialization sweep...");
         if (servoController.getPosition() >= 0) {
+            int minUs = servoController.getMinMicroseconds();
+            int maxUs = servoController.getMaxMicroseconds();
+            int minDeg = servoController.getMinDegrees();
+            int maxDeg = servoController.getMaxDegrees();
+            Serial.printf(">>> Config: degrees %d-%d, microseconds %d-%d µs\n", minDeg, maxDeg, minUs, maxUs);
             servoController.reattachWithConfigLimits();
             Serial.println(">>> Servo sweep complete!\n");
         } else {
             Serial.println(">>> ERROR: Servo not initialized\n");
         }
+    }
+    else if (cmd.startsWith("smin")) {
+        String valuePart = cmd.substring(4);
+        valuePart.trim();
+        
+        if (cmd == "smin") {
+            // No args: move to MIN
+            Serial.println("\n>>> Moving servo to MIN position...");
+            if (servoController.getPosition() >= 0) {
+                int minDeg = servoController.getMinDegrees();
+                int minUs = servoController.getMinMicroseconds();
+                Serial.printf(">>> Moving to MIN: %d° (%d µs)\n", minDeg, minUs);
+                servoController.smoothMove(minDeg, 500);
+                Serial.printf(">>> Servo moved to MIN: %d degrees (%d µs)\n\n", minDeg, minUs);
+            } else {
+                Serial.println(">>> ERROR: Servo not initialized\n");
+            }
+        } else if (valuePart == "+") {
+            // smin +: add 100 to min
+            int newMin = servoController.getMinMicroseconds() + 100;
+            servoController.setMinMicroseconds(newMin);
+            Serial.printf("\n>>> MIN increased to %d µs\n\n", newMin);
+        } else if (valuePart == "-") {
+            // smin -: subtract 100 from min
+            int newMin = servoController.getMinMicroseconds() - 100;
+            servoController.setMinMicroseconds(newMin);
+            Serial.printf("\n>>> MIN decreased to %d µs\n\n", newMin);
+        } else if (valuePart.length() > 0) {
+            // smin <value>: set min to specified value
+            int newMin = valuePart.toInt();
+            if (newMin >= 500 && newMin <= 10000) {
+                servoController.setMinMicroseconds(newMin);
+                Serial.printf("\n>>> MIN set to %d µs\n\n", newMin);
+            } else {
+                Serial.println(">>> ERROR: Value must be 500-10000 µs\n");
+            }
+        }
+    }
+    else if (cmd.startsWith("smax")) {
+        String valuePart = cmd.substring(4);
+        valuePart.trim();
+        
+        if (cmd == "smax") {
+            // No args: move to MAX
+            Serial.println("\n>>> Moving servo to MAX position...");
+            if (servoController.getPosition() >= 0) {
+                int maxDeg = servoController.getMaxDegrees();
+                int maxUs = servoController.getMaxMicroseconds();
+                Serial.printf(">>> Moving to MAX: %d° (%d µs)\n", maxDeg, maxUs);
+                servoController.smoothMove(maxDeg, 500);
+                Serial.printf(">>> Servo moved to MAX: %d degrees (%d µs)\n\n", maxDeg, maxUs);
+            } else {
+                Serial.println(">>> ERROR: Servo not initialized\n");
+            }
+        } else if (valuePart == "+") {
+            // smax +: add 100 to max
+            int newMax = servoController.getMaxMicroseconds() + 100;
+            servoController.setMaxMicroseconds(newMax);
+            Serial.printf("\n>>> MAX increased to %d µs\n\n", newMax);
+        } else if (valuePart == "-") {
+            // smax -: subtract 100 from max
+            int newMax = servoController.getMaxMicroseconds() - 100;
+            servoController.setMaxMicroseconds(newMax);
+            Serial.printf("\n>>> MAX decreased to %d µs\n\n", newMax);
+        } else if (valuePart.length() > 0) {
+            // smax <value>: set max to specified value
+            int newMax = valuePart.toInt();
+            if (newMax >= 500 && newMax <= 10000) {
+                servoController.setMaxMicroseconds(newMax);
+                Serial.printf("\n>>> MAX set to %d µs\n\n", newMax);
+            } else {
+                Serial.println(">>> ERROR: Value must be 500-10000 µs\n");
+            }
+        }
+    }
+    else if (cmd == "scfg") {
+        Serial.println("\n>>> Servo Configuration:");
+        Serial.printf("  Pin: %d\n", SERVO_PIN);
+        Serial.printf("  Degree range: %d-%d\n", servoController.getMinDegrees(), servoController.getMaxDegrees());
+        Serial.printf("  Pulse width range: %d-%d µs\n", servoController.getMinMicroseconds(), servoController.getMaxMicroseconds());
+        Serial.printf("  Current MIN: %d µs | MAX: %d µs\n", servoController.getMinMicroseconds(), servoController.getMaxMicroseconds());
+        Serial.printf("  Current position: %d degrees\n", servoController.getPosition());
+        Serial.printf("  Direction reversed: %s\n", servoController.isReversed() ? "YES" : "NO");
+        Serial.println();
+    }
+    else if (cmd.startsWith("smic ")) {
+        String valuePart = cmd.substring(5);
+        valuePart.trim();
+        if (valuePart.length() == 0) {
+            Serial.println(">>> ERROR: Specify microseconds (500-2500)\n");
+        } else {
+            int us = valuePart.toInt();
+            if (us < 500 || us > 2500) {
+                Serial.println(">>> ERROR: Pulse width must be 500-2500 µs\n");
+            } else {
+                servoController.writeMicroseconds(us);
+                Serial.printf(">>> Servo set to %d µs (pulse width)\n\n", us);
+            }
+        }
+    }
+    else if (cmd.startsWith("sdeg ")) {
+        String valuePart = cmd.substring(5);
+        valuePart.trim();
+        if (valuePart.length() == 0) {
+            Serial.println(">>> ERROR: Specify degrees (0-80)\n");
+        } else {
+            int deg = valuePart.toInt();
+            if (deg < 0 || deg > 80) {
+                Serial.println(">>> ERROR: Degrees must be 0-80\n");
+            } else {
+                servoController.setPosition(deg);
+                Serial.printf(">>> Servo set to %d degrees\n\n", deg);
+            }
+        }
+    }
+    else if (cmd == "srev") {
+        bool wasReversed = servoController.isReversed();
+        servoController.setReverseDirection(!wasReversed);
+        Serial.printf("\n>>> Servo direction reversal %s\n", (!wasReversed ? "ENABLED" : "DISABLED"));
+        Serial.printf("    Current state: %s\n", servoController.isReversed() ? "REVERSED" : "NORMAL");
+        Serial.println();
     }
     else if (cmd.length() > 0) {
         Serial.print(">>> Unknown command: "); Serial.print(cmd); Serial.println(". Type 'help' for commands.\n");

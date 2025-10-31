@@ -259,6 +259,13 @@ int ConfigManager::getServoUSMax() const
     return value;
 }
 
+bool ConfigManager::getServoReverse() const
+{
+    // Default: false (not reversed)
+    String value = getValue("servo_reverse", "false");
+    return value.equalsIgnoreCase("true") || value == "1";
+}
+
 float ConfigManager::getCapThreshold() const
 {
     float value = getValue("cap_threshold", "0.1").toFloat();

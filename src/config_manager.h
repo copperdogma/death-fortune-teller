@@ -29,6 +29,7 @@ public:
     // Servo configuration (microseconds)
     int getServoUSMin() const;
     int getServoUSMax() const;
+    bool getServoReverse() const;
 
     // Capacitive sensor configuration
     float getCapThreshold() const;
