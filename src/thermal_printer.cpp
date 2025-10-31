@@ -40,10 +40,16 @@ ThermalPrinter::ThermalPrinter(HardwareSerial &serialPort, int txPin, int rxPin,
       lastCommandTime(0),
       jobStage(PrintJobStage::Idle),
       pendingFortune(),
+      fortuneLines(),
       fortuneLineIndex(0),
-      footerStep(0),
+      lineCharIndex(0),
+      feedLinesRemaining(0),
+      logoCache(),
       logoCacheValid(false),
-      logoCacheOffset(0) {
+      logoCacheOffset(0),
+      logoFallbackPending(false),
+      fortuneBodyLineCount(0),
+      lastSerialWriteMs(0) {
 }
 
 void ThermalPrinter::begin() {
@@ -124,14 +130,30 @@ bool ThermalPrinter::queueFortunePrint(const String &fortune) {
     }
 
     pendingFortune = fortune;
-    buildFortuneLines(pendingFortune, fortuneLines);
+
+    std::vector<String> bodyLines;
+    buildFortuneLines(pendingFortune, bodyLines);
+    fortuneBodyLineCount = bodyLines.size();
+
+    fortuneLines.clear();
+    fortuneLines.emplace_back("Your fortune:");
+    fortuneLines.emplace_back("");
+    fortuneLines.insert(fortuneLines.end(), bodyLines.begin(), bodyLines.end());
+    fortuneLines.emplace_back("");
+    fortuneLines.emplace_back("--- Death ---");
+    fortuneLines.emplace_back("");
+
     fortuneLineIndex = 0;
-    footerStep = 0;
+    lineCharIndex = 0;
+    feedLinesRemaining = 3;
     logoCacheOffset = 0;
+    logoFallbackPending = false;
+    lastSerialWriteMs = 0;
+
     jobStage = PrintJobStage::InitSequence;
     LOG_INFO(TAG, "Queued fortune print job (%u chars, %u lines)",
              static_cast<unsigned>(fortune.length()),
-             static_cast<unsigned>(fortuneLines.size()));
+             static_cast<unsigned>(fortuneBodyLineCount));
     return true;
 }
 
@@ -144,8 +166,12 @@ void ThermalPrinter::resetPrintJob() {
     pendingFortune.clear();
     fortuneLines.clear();
     fortuneLineIndex = 0;
-    footerStep = 0;
+    lineCharIndex = 0;
+    feedLinesRemaining = 0;
     logoCacheOffset = 0;
+    logoFallbackPending = false;
+    fortuneBodyLineCount = 0;
+    lastSerialWriteMs = 0;
 }
 
 bool ThermalPrinter::printTestPage() {
@@ -585,34 +611,50 @@ void ThermalPrinter::processPrintJob() {
         return;
     }
 
+    auto canWrite = [this]() -> bool {
+        unsigned long now = millis();
+        if (lastSerialWriteMs != 0 && now - lastSerialWriteMs < SERIAL_WRITE_INTERVAL_MS) {
+            return false;
+        }
+        return serial.availableForWrite() > 0;
+    };
+
     switch (jobStage) {
         case PrintJobStage::InitSequence:
             sendInitSequence();
             jobStage = PrintJobStage::LogoStart;
             break;
 
-        case PrintJobStage::LogoStart: {
+        case PrintJobStage::LogoStart:
             setJustification(1);
             setDefaultLineSpacing();
             if (ensureLogoCache() && !logoCache.empty()) {
                 logoCacheOffset = 0;
                 jobStage = PrintJobStage::LogoRow;
             } else {
-                printTextLogoFallback();
+                logoFallbackPending = true;
                 jobStage = PrintJobStage::LogoComplete;
             }
             break;
-        }
 
         case PrintJobStage::LogoRow: {
-            constexpr size_t CHUNK_SIZE = 128;
-            size_t remaining = logoCache.size() - logoCacheOffset;
-            size_t toWrite = remaining < CHUNK_SIZE ? remaining : CHUNK_SIZE;
-            if (toWrite > 0) {
-                serial.write(logoCache.data() + logoCacheOffset, toWrite);
-                logoCacheOffset += toWrite;
-                delay(0);
+            if (logoCacheOffset >= logoCache.size()) {
+                jobStage = PrintJobStage::LogoComplete;
+                break;
             }
+            if (!canWrite()) {
+                return;
+            }
+            size_t writable = serial.availableForWrite();
+            if (writable == 0) {
+                return;
+            }
+            size_t remaining = logoCache.size() - logoCacheOffset;
+            size_t toWrite = std::min<size_t>(LOGO_CHUNK_SIZE, remaining);
+            toWrite = std::min(toWrite, writable);
+            serial.write(logoCache.data() + logoCacheOffset, toWrite);
+            logoCacheOffset += toWrite;
+            lastSerialWriteMs = millis();
             if (logoCacheOffset >= logoCache.size()) {
                 jobStage = PrintJobStage::LogoComplete;
             }
@@ -620,60 +662,89 @@ void ThermalPrinter::processPrintJob() {
         }
 
         case PrintJobStage::LogoComplete:
-            serial.println();
             jobStage = PrintJobStage::BodyHeader;
             break;
 
-        case PrintJobStage::BodyHeader:
+        case PrintJobStage::BodyHeader: {
+            std::vector<String> prefix;
+            if (logoFallbackPending) {
+                prefix.emplace_back("******************************");
+                prefix.emplace_back("      DEATH'S FORTUNE");
+                prefix.emplace_back("           TELLER");
+                prefix.emplace_back("******************************");
+                logoFallbackPending = false;
+            }
+            prefix.emplace_back(String());
+            fortuneLines.insert(fortuneLines.begin(), prefix.begin(), prefix.end());
+
             setJustification(0);
             setDefaultLineSpacing();
-            serial.println("Your fortune:");
-            serial.println();
             fortuneLineIndex = 0;
+            lineCharIndex = 0;
             jobStage = PrintJobStage::BodyLine;
             break;
+        }
 
-        case PrintJobStage::BodyLine:
-            if (fortuneLineIndex < fortuneLines.size()) {
-                const String &line = fortuneLines[fortuneLineIndex++];
-                if (line.length() == 0) {
-                    serial.println();
-                } else {
-                    serial.println(line);
-                }
-            } else {
-                jobStage = PrintJobStage::Footer;
+        case PrintJobStage::BodyLine: {
+            if (fortuneLineIndex >= fortuneLines.size()) {
+                jobStage = PrintJobStage::Feed;
+                break;
+            }
+
+            unsigned long now = millis();
+            if (lastSerialWriteMs != 0 && now - lastSerialWriteMs < SERIAL_WRITE_INTERVAL_MS) {
+                return;
+            }
+
+            size_t writable = serial.availableForWrite();
+            if (writable == 0) {
+                return;
+            }
+
+            const String &line = fortuneLines[fortuneLineIndex];
+            if (lineCharIndex < line.length()) {
+                size_t remaining = line.length() - lineCharIndex;
+                size_t toWrite = std::min<size_t>(remaining, writable);
+                serial.write(reinterpret_cast<const uint8_t *>(line.c_str() + lineCharIndex), toWrite);
+                lineCharIndex += toWrite;
+                lastSerialWriteMs = now;
+                return;
+            }
+
+            serial.write('\n');
+            lastSerialWriteMs = millis();
+            ++fortuneLineIndex;
+            lineCharIndex = 0;
+            return;
+        }
+
+        case PrintJobStage::Feed: {
+            if (feedLinesRemaining == 0) {
+                jobStage = PrintJobStage::Complete;
+                break;
+            }
+
+            if (!canWrite()) {
+                return;
+            }
+            if (serial.availableForWrite() == 0) {
+                return;
+            }
+
+            serial.write('\n');
+            lastSerialWriteMs = millis();
+            if (feedLinesRemaining > 0) {
+                --feedLinesRemaining;
             }
             break;
-
-        case PrintJobStage::Footer:
-            switch (footerStep) {
-                case 0:
-                    serial.println();
-                    break;
-                case 1:
-                    serial.println("--- Death ---");
-                    break;
-                case 2:
-                    serial.println();
-                    break;
-                default:
-                    jobStage = PrintJobStage::Feed;
-                    break;
-            }
-            if (jobStage == PrintJobStage::Footer) {
-                ++footerStep;
-            }
-            break;
-
-        case PrintJobStage::Feed:
-            feedLines(3);
-            jobStage = PrintJobStage::Complete;
-            break;
+        }
 
         case PrintJobStage::Complete:
-            LOG_INFO(TAG, "Fortune print job completed (%u lines)", static_cast<unsigned>(fortuneLines.size()));
+            LOG_INFO(TAG, "Fortune print job completed (%u body lines)", static_cast<unsigned>(fortuneBodyLineCount));
             resetPrintJob();
+            break;
+
+        case PrintJobStage::Idle:
             break;
     }
 }

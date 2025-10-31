@@ -30,7 +30,6 @@ private:
         LogoComplete,
         BodyHeader,
         BodyLine,
-        Footer,
         Feed,
         Complete
     };
@@ -77,11 +76,18 @@ private:
     String pendingFortune;
     std::vector<String> fortuneLines;
     size_t fortuneLineIndex;
-    uint8_t footerStep;
+    size_t lineCharIndex;
+    uint8_t feedLinesRemaining;
 
     std::vector<uint8_t> logoCache;
     bool logoCacheValid;
     size_t logoCacheOffset;
+    bool logoFallbackPending;
+    size_t fortuneBodyLineCount;
+    unsigned long lastSerialWriteMs;
+
+    static constexpr size_t LOGO_CHUNK_SIZE = 32;
+    static constexpr unsigned long SERIAL_WRITE_INTERVAL_MS = 4;
 };
 
 #endif // THERMAL_PRINTER_H
