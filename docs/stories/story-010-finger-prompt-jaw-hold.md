@@ -38,6 +38,8 @@ Death now keeps his mouth wide open while waiting for a finger, logs each state 
 - Playback callbacks now mark that the fortune preamble has begun; the main loop waits until audio has played for at least 250 ms (or 1.5 s maximum) before calling `startFortunePrinting()`.
 - `startFortunePrinting()` tracks pending/attempted states so retries are idempotent and logging stays clean.
 - Printer code no longer calls `Serial.flush()`, preventing USB CDC writes from blocking the CPU while the host drains data.
+- Bitmap logo data is cached once at startup and streamed to the printer in 128-byte chunks, so SD card reads do not collide with audio playback during fortune delivery.
+- Fortune printing now runs as a staged job inside `update()`, interleaving logo output, body lines, and trailing feed across frames instead of blocking the main loop.
 
 ## Testing
 - 2025-10-31 11:42 PDT — `pio run -e esp32dev` (success). Baseline build after jaw hold implementation.
@@ -51,6 +53,7 @@ Death now keeps his mouth wide open while waiting for a finger, logs each state 
 - **Finger wait timer expired instantly.** Cause: reused `stateStartTime`, which wrapped when interpreted as elapsed. Fixed by resetting timers with new `millis()` values and validating config.
 - **Fortune printed before preamble audio.** Cause: print triggered during the state transition. Deferred printing until playback is active and added a minimum playback window.
 - **Printer writes blocked audio.** Cause: `Serial.flush()` and potentially long USB CDC waits. Eliminated blocking flush and scheduled printing from the main loop after playback begins.
+  Added logo caching and chunked output so SD reads and serial writes no longer monopolize the loop.
 - **SD card occasionally threw `sdmmc_read_blocks failed (257)` during rapid cycles.** No code fix yet; recorded as a risk for future SD prioritization work.
 
 ## Lessons Learned
@@ -73,3 +76,4 @@ Death now keeps his mouth wide open while waiting for a finger, logs each state 
 - 2025-10-31 12:32 PDT — Deferred fortune printing until the main loop observes the preamble playing, avoiding blocking the audio callback and fixing the near-immediate finger timeout. (Success)
 - 2025-10-31 12:48 PDT — Added playback-time threshold so the preamble talks for ~250 ms before the printer engages, with a failsafe after 1.5 s. (Success)
 - 2025-10-31 12:55 PDT — Removed blocking `Serial.flush()` calls so printer transmissions no longer stall audio playback. (Success)
+- 2025-10-31 13:20 PDT — Cached bitmap logo and converted fortune printing into a staged job to keep audio responsive during print. (Success)

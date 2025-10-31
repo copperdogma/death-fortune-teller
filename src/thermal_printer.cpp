@@ -4,6 +4,7 @@
 #include <SD_MMC.h>
 #include <algorithm>
 #include <memory>
+#include <vector>
 
 namespace {
 constexpr size_t BMP_HEADER_BYTES = 54;
@@ -36,7 +37,13 @@ ThermalPrinter::ThermalPrinter(HardwareSerial &serialPort, int txPin, int rxPin,
       logoPath(),
       initialized(false),
       hasErrorState(false),
-      lastCommandTime(0) {
+      lastCommandTime(0),
+      jobStage(PrintJobStage::Idle),
+      pendingFortune(),
+      fortuneLineIndex(0),
+      footerStep(0),
+      logoCacheValid(false),
+      logoCacheOffset(0) {
 }
 
 void ThermalPrinter::begin() {
@@ -49,12 +56,15 @@ void ThermalPrinter::begin() {
              printerBaud,
              txPin,
              rxPin);
+    resetPrintJob();
 }
 
 void ThermalPrinter::update() {
     if (!initialized) {
         return;
     }
+
+    processPrintJob();
 
     if (lastCommandTime > 0 && millis() - lastCommandTime > COMMAND_TIMEOUT_MS) {
         if (!hasErrorState) {
@@ -73,47 +83,15 @@ void ThermalPrinter::setLogoPath(const String &path) {
     } else {
         LOG_INFO(TAG, "Printer logo path set to %s", logoPath.c_str());
     }
+    logoCacheValid = false;
+    logoCache.clear();
+    if (logoPath.length() != 0) {
+        ensureLogoCache();
+    }
 }
 
 bool ThermalPrinter::printFortune(const String &fortune) {
-    if (!initialized) {
-        LOG_WARN(TAG, "Thermal printer not initialized; skipping fortune print");
-        return false;
-    }
-    if (hasErrorState) {
-        LOG_WARN(TAG, "Thermal printer in error state; skipping fortune print");
-        return false;
-    }
-
-    LOG_INFO(TAG, "Printing fortune (%u chars)", static_cast<unsigned>(fortune.length()));
-
-    sendInitSequence();
-
-    bool bitmapPrinted = printLogo();
-    if (!bitmapPrinted) {
-        LOG_WARN(TAG, "Bitmap logo unavailable; printed text fallback instead");
-    }
-
-    // Leave a blank line after the logo so the fortune text begins cleanly.
-    serial.println();
-
-    setJustification(0);              // Left align for body text
-    setDefaultLineSpacing();
-
-    serial.println("Your fortune:");
-    serial.println();
-
-    printFortuneBody(fortune);
-
-    serial.println();
-    serial.println("--- Death ---");
-    serial.println();
-
-    feedLines(3);
-
-    lastCommandTime = 0;
-    hasErrorState = false;
-    return true;
+    return queueFortunePrint(fortune);
 }
 
 bool ThermalPrinter::printLogo() {
@@ -129,6 +107,45 @@ bool ThermalPrinter::printLogo() {
         printTextLogoFallback();
     }
     return success;
+}
+
+bool ThermalPrinter::queueFortunePrint(const String &fortune) {
+    if (!initialized) {
+        LOG_WARN(TAG, "Thermal printer not initialized; skipping fortune print");
+        return false;
+    }
+    if (hasErrorState) {
+        LOG_WARN(TAG, "Thermal printer in error state; skipping fortune print");
+        return false;
+    }
+    if (jobStage != PrintJobStage::Idle) {
+        LOG_WARN(TAG, "Thermal printer already busy with a print job");
+        return false;
+    }
+
+    pendingFortune = fortune;
+    buildFortuneLines(pendingFortune, fortuneLines);
+    fortuneLineIndex = 0;
+    footerStep = 0;
+    logoCacheOffset = 0;
+    jobStage = PrintJobStage::InitSequence;
+    LOG_INFO(TAG, "Queued fortune print job (%u chars, %u lines)",
+             static_cast<unsigned>(fortune.length()),
+             static_cast<unsigned>(fortuneLines.size()));
+    return true;
+}
+
+bool ThermalPrinter::isPrinting() const {
+    return jobStage != PrintJobStage::Idle;
+}
+
+void ThermalPrinter::resetPrintJob() {
+    jobStage = PrintJobStage::Idle;
+    pendingFortune.clear();
+    fortuneLines.clear();
+    fortuneLineIndex = 0;
+    footerStep = 0;
+    logoCacheOffset = 0;
 }
 
 bool ThermalPrinter::printTestPage() {
@@ -247,27 +264,84 @@ void ThermalPrinter::feedLines(uint8_t count) {
     }
 }
 
-bool ThermalPrinter::printBitmapLogo() {
+void ThermalPrinter::writeByte(uint8_t byte, std::vector<uint8_t> *buffer) {
+    if (buffer) {
+        buffer->push_back(byte);
+    } else {
+        serial.write(byte);
+    }
+}
+
+void ThermalPrinter::writeData(const uint8_t *data, size_t length, std::vector<uint8_t> *buffer) {
+    if (buffer) {
+        buffer->insert(buffer->end(), data, data + length);
+    } else {
+        serial.write(data, length);
+    }
+}
+
+bool ThermalPrinter::ensureLogoCache() {
+    if (logoCacheValid) {
+        return true;
+    }
     if (logoPath.length() == 0) {
-        LOG_WARN(TAG, "No printer logo path configured");
+        return false;
+    }
+    return loadLogoCache();
+}
+
+bool ThermalPrinter::loadLogoCache() {
+    if (logoPath.length() == 0) {
         return false;
     }
 
-    File logoFile = SD_MMC.open(logoPath.c_str(), FILE_READ);
-    if (!logoFile) {
+    File file = SD_MMC.open(logoPath.c_str(), FILE_READ);
+    if (!file) {
         LOG_WARN(TAG, "Printer logo file not found: %s", logoPath.c_str());
         return false;
     }
 
-    bool success = printBitmapFromFile(logoFile);
-    logoFile.close();
+    logoCache.clear();
+    bool success = processBitmap(file, &logoCache);
+    file.close();
     if (success) {
-        LOG_INFO(TAG, "Bitmap logo printed successfully");
+        logoCacheValid = true;
+        LOG_INFO(TAG, "Cached printer logo (%u bytes)", static_cast<unsigned>(logoCache.size()));
+    } else {
+        logoCache.clear();
+        logoCacheValid = false;
     }
     return success;
 }
 
+bool ThermalPrinter::printBitmapLogo() {
+    if (!ensureLogoCache()) {
+        LOG_WARN(TAG, "No cached logo available; falling back to text logo");
+        return false;
+    }
+
+    if (logoCache.empty()) {
+        LOG_WARN(TAG, "Cached logo buffer empty; falling back to text logo");
+        return false;
+    }
+
+    constexpr size_t CHUNK_SIZE = 128;
+    size_t offset = 0;
+    while (offset < logoCache.size()) {
+        size_t remaining = logoCache.size() - offset;
+        size_t toWrite = remaining < CHUNK_SIZE ? remaining : CHUNK_SIZE;
+        serial.write(logoCache.data() + offset, toWrite);
+        offset += toWrite;
+        delay(0);
+    }
+    return true;
+}
+
 bool ThermalPrinter::printBitmapFromFile(File &file) {
+    return processBitmap(file, nullptr);
+}
+
+bool ThermalPrinter::processBitmap(File &file, std::vector<uint8_t> *buffer) {
     uint8_t header[BMP_HEADER_BYTES];
     size_t bytesRead = file.read(header, sizeof(header));
     if (bytesRead != sizeof(header)) {
@@ -326,7 +400,6 @@ bool ThermalPrinter::printBitmapFromFile(File &file) {
         return false;
     }
 
-    // Determine palette order to know whether to invert bits (ESC/POS expects 1=black).
     bool invertBits = false;
     uint32_t paletteStart = 14 + dibHeaderSize;
     if (!file.seek(paletteStart)) {
@@ -348,16 +421,16 @@ bool ThermalPrinter::printBitmapFromFile(File &file) {
         invertBits = true;
     }
 
-    return streamBitmap(file, width, height, dataOffset, invertBits);
+    return streamBitmap(file, width, height, dataOffset, invertBits, buffer);
 }
 
-bool ThermalPrinter::streamBitmap(File &file, int32_t width, int32_t height, uint32_t dataOffset, bool invert) {
+bool ThermalPrinter::streamBitmap(File &file, int32_t width, int32_t height, uint32_t dataOffset, bool invert, std::vector<uint8_t> *buffer) {
     int32_t absWidth = width < 0 ? -width : width;
     int32_t absHeight = height < 0 ? -height : height;
     bool bottomUp = height > 0;
 
     const uint16_t payloadBytes = static_cast<uint16_t>((absWidth + 7) / 8);
-    const uint16_t strideBytes = static_cast<uint16_t>(((payloadBytes + 3) / 4) * 4); // rows padded to 4-byte boundary
+    const uint16_t strideBytes = static_cast<uint16_t>(((payloadBytes + 3) / 4) * 4);
     const uint16_t maxRowBytes = static_cast<uint16_t>((PRINTER_MAX_WIDTH_DOTS + 7) / 8);
     const uint16_t padBytes = (payloadBytes < maxRowBytes) ? static_cast<uint16_t>((maxRowBytes - payloadBytes) / 2) : 0;
 
@@ -373,18 +446,17 @@ bool ThermalPrinter::streamBitmap(File &file, int32_t width, int32_t height, uin
         return false;
     }
 
-    const uint8_t mode = 0x00; // Single-density, normal
+    const uint8_t mode = 0x00;
     const uint16_t sendRowBytes = padBytes + payloadBytes;
 
-    // ESC/POS raster bitmap header: GS v 0 m xL xH yL yH
-    serial.write(0x1D);
-    serial.write('v');
-    serial.write('0');
-    serial.write(mode);
-    serial.write(static_cast<uint8_t>(sendRowBytes & 0xFF));
-    serial.write(static_cast<uint8_t>((sendRowBytes >> 8) & 0xFF));
-    serial.write(static_cast<uint8_t>(absHeight & 0xFF));
-    serial.write(static_cast<uint8_t>((absHeight >> 8) & 0xFF));
+    writeByte(0x1D, buffer);
+    writeByte('v', buffer);
+    writeByte('0', buffer);
+    writeByte(mode, buffer);
+    writeByte(static_cast<uint8_t>(sendRowBytes & 0xFF), buffer);
+    writeByte(static_cast<uint8_t>((sendRowBytes >> 8) & 0xFF), buffer);
+    writeByte(static_cast<uint8_t>(absHeight & 0xFF), buffer);
+    writeByte(static_cast<uint8_t>((absHeight >> 8) & 0xFF), buffer);
 
     const uint8_t remainBitsMask = (absWidth % 8 == 0) ? 0xFF : static_cast<uint8_t>(0xFF << (8 - (absWidth % 8)));
 
@@ -415,9 +487,9 @@ bool ThermalPrinter::streamBitmap(File &file, int32_t width, int32_t height, uin
         }
 
         for (uint16_t i = 0; i < padBytes; ++i) {
-            serial.write(static_cast<uint8_t>(0x00));
+            writeByte(0x00, buffer);
         }
-        serial.write(lineBuffer.get(), payloadBytes);
+        writeData(lineBuffer.get(), payloadBytes, buffer);
     }
 
     return true;
@@ -431,46 +503,47 @@ bool ThermalPrinter::printTextLogoFallback() {
     return false;
 }
 
-void ThermalPrinter::printWrappedLine(const String &line) {
-    if (line.length() == 0) {
-        serial.println();
+void ThermalPrinter::buildFortuneLines(const String &fortune, std::vector<String> &outLines) {
+    outLines.clear();
+    if (fortune.length() == 0) {
+        outLines.emplace_back("[No fortune available]");
         return;
     }
 
-    int start = 0;
-    const int maxCols = static_cast<int>(MAX_TEXT_COLUMNS);
+    auto appendWrapped = [this, &outLines](const String &line) {
+        if (line.length() == 0) {
+            outLines.emplace_back(String());
+            return;
+        }
 
-    while (start < line.length()) {
-        int remaining = line.length() - start;
-        int length = remaining < maxCols ? remaining : maxCols;
+        int start = 0;
+        const int maxCols = static_cast<int>(MAX_TEXT_COLUMNS);
 
-        if (remaining > maxCols) {
-            int lastSpace = line.lastIndexOf(' ', start + length);
-            if (lastSpace >= start && lastSpace - start <= maxCols) {
-                length = lastSpace - start;
+        while (start < line.length()) {
+            int remaining = line.length() - start;
+            int length = remaining < maxCols ? remaining : maxCols;
+
+            if (remaining > maxCols) {
+                int lastSpace = line.lastIndexOf(' ', start + length);
+                if (lastSpace >= start && lastSpace - start <= maxCols) {
+                    length = lastSpace - start;
+                }
+            }
+
+            if (length <= 0) {
+                length = std::min(remaining, maxCols);
+            }
+
+            String segment = line.substring(start, start + length);
+            segment.trim();
+            outLines.emplace_back(segment);
+
+            start += length;
+            while (start < line.length() && line.charAt(start) == ' ') {
+                ++start;
             }
         }
-
-        if (length <= 0) {
-            length = std::min(remaining, maxCols);
-        }
-
-        String segment = line.substring(start, start + length);
-        segment.trim();
-        serial.println(segment);
-
-        start += length;
-        while (start < line.length() && line.charAt(start) == ' ') {
-            ++start;
-        }
-    }
-}
-
-void ThermalPrinter::printFortuneBody(const String &fortune) {
-    if (fortune.length() == 0) {
-        serial.println("[No fortune available]");
-        return;
-    }
+    };
 
     int lineStart = 0;
     while (lineStart <= fortune.length()) {
@@ -488,9 +561,119 @@ void ThermalPrinter::printFortuneBody(const String &fortune) {
         String trimmed = line;
         trimmed.trim();
         if (trimmed.length() == 0) {
-            serial.println();
+            outLines.emplace_back(String());
             continue;
         }
-        printWrappedLine(trimmed);
+        appendWrapped(trimmed);
+    }
+}
+
+void ThermalPrinter::printFortuneBody(const String &fortune) {
+    std::vector<String> lines;
+    buildFortuneLines(fortune, lines);
+    for (const auto &line : lines) {
+        if (line.length() == 0) {
+            serial.println();
+        } else {
+            serial.println(line);
+        }
+    }
+}
+
+void ThermalPrinter::processPrintJob() {
+    if (jobStage == PrintJobStage::Idle) {
+        return;
+    }
+
+    switch (jobStage) {
+        case PrintJobStage::InitSequence:
+            sendInitSequence();
+            jobStage = PrintJobStage::LogoStart;
+            break;
+
+        case PrintJobStage::LogoStart: {
+            setJustification(1);
+            setDefaultLineSpacing();
+            if (ensureLogoCache() && !logoCache.empty()) {
+                logoCacheOffset = 0;
+                jobStage = PrintJobStage::LogoRow;
+            } else {
+                printTextLogoFallback();
+                jobStage = PrintJobStage::LogoComplete;
+            }
+            break;
+        }
+
+        case PrintJobStage::LogoRow: {
+            constexpr size_t CHUNK_SIZE = 128;
+            size_t remaining = logoCache.size() - logoCacheOffset;
+            size_t toWrite = remaining < CHUNK_SIZE ? remaining : CHUNK_SIZE;
+            if (toWrite > 0) {
+                serial.write(logoCache.data() + logoCacheOffset, toWrite);
+                logoCacheOffset += toWrite;
+                delay(0);
+            }
+            if (logoCacheOffset >= logoCache.size()) {
+                jobStage = PrintJobStage::LogoComplete;
+            }
+            break;
+        }
+
+        case PrintJobStage::LogoComplete:
+            serial.println();
+            jobStage = PrintJobStage::BodyHeader;
+            break;
+
+        case PrintJobStage::BodyHeader:
+            setJustification(0);
+            setDefaultLineSpacing();
+            serial.println("Your fortune:");
+            serial.println();
+            fortuneLineIndex = 0;
+            jobStage = PrintJobStage::BodyLine;
+            break;
+
+        case PrintJobStage::BodyLine:
+            if (fortuneLineIndex < fortuneLines.size()) {
+                const String &line = fortuneLines[fortuneLineIndex++];
+                if (line.length() == 0) {
+                    serial.println();
+                } else {
+                    serial.println(line);
+                }
+            } else {
+                jobStage = PrintJobStage::Footer;
+            }
+            break;
+
+        case PrintJobStage::Footer:
+            switch (footerStep) {
+                case 0:
+                    serial.println();
+                    break;
+                case 1:
+                    serial.println("--- Death ---");
+                    break;
+                case 2:
+                    serial.println();
+                    break;
+                default:
+                    jobStage = PrintJobStage::Feed;
+                    break;
+            }
+            if (jobStage == PrintJobStage::Footer) {
+                ++footerStep;
+            }
+            break;
+
+        case PrintJobStage::Feed:
+            feedLines(3);
+            jobStage = PrintJobStage::Complete;
+            break;
+
+        case PrintJobStage::Complete:
+            LOG_INFO(TAG, "Fortune print job completed (%u lines)", static_cast<unsigned>(fortuneLines.size()));
+            resetPrintJob();
+            break;
     }
 }
