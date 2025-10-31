@@ -126,7 +126,7 @@ ESP32-C3 Expansion Board: │
 
 - **Ground is NOT specific to a power source** - multiple DC power supplies can and should share a common ground in the same circuit
 - This is standard practice for multi-supply systems (USB peripherals, Arduino shields, etc.)
-- For production perfboard, add a Schottky diode (1N5817/1N5819) between external power and 5V rail to allow simultaneous USB-C and barrel jack power
+- For production perfboard, add a Schottky diode (1N5822 minimum, or SR560 for ≥5 A headroom) between external power and 5 V rail to allow simultaneous USB‑C and barrel jack power
 
 ### Bench Supply Wiring (2025-10-29)
 
@@ -158,3 +158,26 @@ Recent printer brownouts during `ptest` were resolved by rewiring the bench supp
 - servo mounting hardware (one set for each ear): 2x silicone o-rings (6x1.9mm / 1 5/64" x 5/64"), flat brass m3 washer, m2x10 screw, brass threaded m2 heat set insert
     - the heat set insert is pushed into the polyer clay mount with a soldering iron
     - once cool, attach the servo, mounted in this order: o-ring, servo ear, o-ring, washer, screw 
+
+## Capacitive Sensor — Copper Sandwich Build
+
+Goal: robust, low‑noise finger sensor using a copper “sandwich” and shielded coax.
+
+Materials
+- Two pieces of copper foil: outer ≈3×4 cm (mouth side), inner ≈4×5 cm (inside skull)
+- Short length (~4") of shielded coax (thin microphone cable works)
+- Small strain‑relief (hot glue or tie point)
+
+Steps
+1. Prep area: Clean the skull’s upper palate inside and out.
+2. Apply foils: Stick the larger inner foil inside the skull; stick the slightly smaller outer foil on the mouth side, aligned.
+3. Drill feedthrough: Make a small hole through outer foil → plastic → inner foil.
+4. Wire at the skull:
+   - Solder the coax center conductor through the hole to the outer foil (sensor electrode).
+   - Solder the coax shield braid to the inner foil (shield plane). Do not add a separate ground wire to the inner foil.
+5. Route coax: Keep the shielded run as long as practical up to the perfboard; strain‑relieve both ends.
+6. At perfboard: Center → `GPIO4`; Shield → ground bus. This provides a single‑point ground for the inner foil via the shield.
+
+Notes
+- This arrangement pushes the electric field outward into the mouth and attenuates coupling to internal wiring.
+- If you later migrate to 4‑bit SDMMC, move the sensor to `GPIO27` and update firmware; keep the same mechanical construction.

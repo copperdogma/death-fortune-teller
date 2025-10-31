@@ -8,14 +8,12 @@ NOTE: This file is for the user to write notes to the AI for it to investigate/r
 
 - We need to remove the TwoSkulls folder once we have everything we need from there. It was just our working baseline, but we're free to rewrite 100% of it. Same with the "proof-of-concept-modules" folder.
 
-- I think the touch-to-recalibrate is too quick.. need to be touching for a full 3 seconds I think
-
 - do we NEED to be arduino compatible? why? AI says no, but it might be a bit of a migration.
 
-- SuperMini now sends Hello and ConnectedToAppleHome.. need to serial log when we get these and ACK each of them.
-  - `CMD_BOOT_HELLO` (0x0D) is emitted immediately after boot and every second until the WROVER replies with `RSP_BOOT_ACK` (0x90).
-  - `CMD_FABRIC_HELLO` (0x0E) is emitted every second after Matter commissioning completes until `RSP_FABRIC_ACK` (0x91) arrives.
+- what to do with construction.md? It's half electronics and a start on physical... just keep it all physical I think?
 
+
+ 
 - refactor main.cpp... it's huge and bloated, plus there is duplicate code in it
 
 ## Hardware To Do List

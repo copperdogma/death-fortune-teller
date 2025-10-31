@@ -1,4 +1,12 @@
 /**
+ * ============================================================================
+ * ARCHIVED EXAMPLE — not used by current build
+ * ---------------------------------------------------------------------------
+ * This header represents an older/simplified hardware mapping example. The
+ * active, supported mapping for the final build lives in docs/hardware.md and
+ * docs/perfboard-assembly.md, and the firmware pin constants in src/main.cpp.
+ * ============================================================================
+ *
  * @file death_circuit_v5.h
  * @brief Death Fortune Teller - Hardware Configuration v5.0
  * @author Death Circuit Project

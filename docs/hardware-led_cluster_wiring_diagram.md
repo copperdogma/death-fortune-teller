@@ -2,7 +2,7 @@
 
 ## Single 3-Wire Cable Solution for All Skull LEDs
 
-This shows exactly how to wire both LEDs with a single connector, keeping the servo completely separate.
+This shows exactly how to wire both LEDs with a single connector, keeping the servo completely separate. It matches the final LED connector plan in docs/perfboard-assembly.md: pin order Eye, Mouth, GND.
 
 ## ⚡ Resistor Calculation
 
@@ -36,11 +36,11 @@ Recommended: 100Ω (provides safety margin)
 ESP32-WROVER                     SKULL
 ┌────────────┐                   ┌─────────────────┐
 │            │                   │                 │
-│ Pin 32 ────┼──[PINK]───────────┼──→ Eye         │
-│ Pin 33 ────┼──[PINK]───────────┼──→ Mouth       │
+│ GPIO32 ────┼──[PINK]───────────┼──→ Eye         │
+│ GPIO33 ────┼──[PINK]───────────┼──→ Mouth       │
 │ GND    ────┼──[BLACK]──────────┼──→ Common GND  │
 │            │                   │                 │
-│ Pin 15 ────┼═══[3-PIN SERVO]═══┼──→ Jaw Motor   │
+│ GPIO23 ────┼═══[3-PIN SERVO]═══┼──→ Jaw Motor   │
 │            │   (separate)       │                 │
 └────────────┘                   └─────────────────┘
 
@@ -57,9 +57,9 @@ Female on Board Side:           Male on LED Cable:
 │ ○ ○ ○        │                │ ● ● ●        │
 │ 1 2 3        │◄───────────────┤ 1 2 3        │
 └──────────────┘                └──────────────┘
- │ │ └─ GND                      │ │ └─ GND (Black)
- │ └─── Mouth (GPIO33)           │ └─── Mouth (Pink)
- └───── Eye (GPIO32)             └───── Eye (Pink)
+ └───── Eye (GPIO32)             └───── Eye (Purple)
+  └─── Mouth (GPIO33)            └─── Mouth (Purple)
+   └─ GND                        └─ GND (Black)
 
 JST-XH: 2.54mm pitch, locking, reliable
 Perfect for permanent installation
@@ -71,9 +71,9 @@ Simple 0.1" Header:
 ┌─┬─┬─┐
 │●│●│●│ Female header on perfboard
 └─┴─┴─┘
- │ │ └─ GND
- │ └─── GPIO33 (Mouth)
  └───── GPIO32 (Eye)
+  └─── GPIO33 (Mouth)
+   └─ GND
 
 Dupont jumper wires with housing
 Easy to modify/debug
@@ -88,9 +88,9 @@ Screw Terminal (3-position):
 │ ▀ ▀ ▀               │
 └─────────────────────┘
   1 2 3
-  │ │ └─ GND
-  │ └─── Mouth
   └───── Eye
+   └─── Mouth
+   └─ GND
 
 No crimping needed
 Field-serviceable
@@ -105,12 +105,12 @@ Field-serviceable
  1 │ ● ● ● ● ● ● ● ● ● ● ● ● ● ● ● ● ● ● │ 3.3V Rail
  2 │ ● ● ● ● ● ● ● ● ● ● ● ● ● ● ● ● ● ● │ GND Rail
    │                                       │
- 3 │     From ESP32 Pins 32-33:            │
+ 3 │     From ESP32 GPIO32-33:             │
  4 │     ○ ○   [CONNECTOR]                 │
  5 │     │ │                               │
  6 │    [R][R]  ← 100Ω resistors           │
  7 │     │ │                               │
- 8 │     ○ ○ ○  [TO SKULL]                │
+ 8 │     ○ ○ ○  [TO SKULL]                 │
  9 │     E M G                             │
    └───────────────────────────────────────┘
 
@@ -155,7 +155,7 @@ ESP32 Board Area:
 ┌────────────────────────┐
 │ ESP32-WROVER           │
 │                        │
-│ Pins 32-33 ──┐         │
+│ GPIO32-33 ───┐         │
 │              ▼         │
 │         [CONNECTOR]    │
 │              │         │
@@ -171,7 +171,7 @@ ESP32 Board Area:
          └──────────┘
 
 Servo cable runs separately:
-Pin 15 ══════[SERVO WIRE]═════> Jaw Motor
+GPIO23 ══════[SERVO WIRE]═════> Jaw Motor
 ```
 
 ## 📊 Comparison: Old vs New

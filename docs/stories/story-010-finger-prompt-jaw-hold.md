@@ -38,8 +38,8 @@ Death now keeps his mouth wide open while waiting for a finger, logs each state 
 - Playback callbacks now mark that the fortune preamble has begun; the main loop waits until audio has played for at least 250 ms (or 1.5 s maximum) before calling `startFortunePrinting()`.
 - `startFortunePrinting()` tracks pending/attempted states so retries are idempotent and logging stays clean.
 - Printer code no longer calls `Serial.flush()`, preventing USB CDC writes from blocking the CPU while the host drains data.
-- Bitmap logo data is cached once at startup and streamed to the printer in 128-byte chunks, so SD card reads do not collide with audio playback during fortune delivery.
-- Fortune printing now runs as a staged job inside `update()`, interleaving logo output, body lines, and trailing feed across frames instead of blocking the main loop.
+- Bitmap logo data is cached once at startup and streamed to the printer in small chunks, so SD card reads do not collide with audio playback during fortune delivery.
+- Fortune printing now runs as a staged job inside `update()`, interleaving logo output, body lines, and trailing feed across frames instead of blocking the main loop, with UART writes throttled (≤32 bytes every ~4 ms) whenever buffer space is available.
 
 ## Testing
 - 2025-10-31 11:42 PDT — `pio run -e esp32dev` (success). Baseline build after jaw hold implementation.
@@ -47,6 +47,7 @@ Death now keeps his mouth wide open while waiting for a finger, logs each state 
 - 2025-10-31 12:32 PDT — `pio run -e esp32dev` (success). Deferred fortune printing until preamble playback confirmed.
 - 2025-10-31 12:48 PDT — `pio run -e esp32dev` (success). Added playback-duration guard (250 ms min / 1.5 s max).
 - 2025-10-31 12:55 PDT — `pio run -e esp32dev` (success). Removed blocking printer flush calls.
+- 2025-10-31 13:45 PDT — `pio run -e esp32dev` (success). Added UART pacing for staged print job to eliminate audio stutter.
 
 ## Failures & Mitigations
 - **Jaw snapped shut immediately after the prompt.** Root cause: animator forced the servo closed on silence. Added jaw hold override and logging to keep the mouth open.

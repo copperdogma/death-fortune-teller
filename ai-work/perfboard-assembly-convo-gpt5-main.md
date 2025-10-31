@@ -1,8 +1,36 @@
+# Perfboard Assembly Conversation
+
+20251029: Between me and GPT5 Thinking
+
+
+
+Okay I've progressed a ton of this and got a final prototype wired up and working 100%. time to build.
+
+This is a convo I had with ChatGPT. This is all pretty critical, so I need you to go through and verify everything seems correct in this convo. The decisions, the changes to the hardware docs, and the final assembly instructions.
+
+Feel fee to ask me any questions before you begin your analysis:
+
+
+------
+
+
+Attached is the final Hardware doc from the Death animatronic skeleton project.
+
+Generate a full step-by-step writeup on how I should go about assembling/soldering all of this on a perfboard.
+
+Before you begin, ask any questions you have about things that are unclear, competing requirements, my preferences, etc.
+
+
+
+
+
 # Hardware Documentation
 
-This document catalogs the bill of materials, power strategy, and pin assignments for the Death Fortune Teller project, combining features from TwoSkulls and three proof‑of‑concept modules. It reflects the final wiring decisions used in the working prototype slated for the perfboard build.
+This document catalogs the bill of materials and pin assignments for the Death Fortune Teller project, combining features from TwoSkulls and three proof-of-concept modules.
 
-Important: All pin assignments in code use GPIO numbers, not physical board pin numbers. The FREENOVE ESP32‑WROVER board has physical pins numbered 1–38, but code must reference the GPIO numbers.
+** NOTE: **DIODE** We'll need a diode to keep power from flowing backwards, When the ESP32 WROVER or SuperMini is plugged in to reprogram or monitor, we don't want it to backdflow and try to power the rest of the system.
+
+**Important Note**: All pin assignments in code use GPIO numbers, not physical board pin numbers. The FREENOVE ESP32-WROVER board has physical pins numbered 1-38, but code must reference the GPIO numbers.
 
 ## Table of Contents
 
@@ -11,7 +39,6 @@ Important: All pin assignments in code use GPIO numbers, not physical board pin 
 - [Pin Conflicts Analysis](#pin-conflicts-analysis)
 - [Hardware Specifications](#hardware-specifications)
 - [Power Requirements](#power-requirements)
-- [Power Input and Protection](#power-input-and-protection)
 - [ESP32-WROVER Pinout Reference](#esp32-wrover-pinout-reference)
 - [ESP32-C3 SuperMini Pinout Reference](#esp32-c3-supermini-pinout-reference)
 - [Wiring Connections](#wiring-connections)
@@ -47,24 +74,22 @@ Important: All pin assignments in code use GPIO numbers, not physical board pin 
 - **Printer Power**: 5V ≥2A supply (or 9V with regulator)
 
 ### SD Card Audio Layout
-- `/audio/welcome/` – welcome skits played after a FAR trigger
-- `/audio/finger_prompt/` – "put your finger in my mouth" prompts after NEAR
-- `/audio/finger_snap/` – snap sequence when a finger is detected
-- `/audio/no_finger/` – snap sequence when the finger timeout expires
-- `/audio/fortune_preamble/` – fortune storytelling / preamble clips
-- `/audio/goodbye/` – farewell clips after the fortune completes
-- `/audio/fortune_templates/` – future: alternate fortune flows (can be empty)
-- `/audio/fortune_told/` – future: post-fortune stingers (can be empty)
+- /audio/welcome/ – welcome skits played after a FAR trigger
+- /audio/finger_prompt/ – "put your finger in my mouth" prompts after NEAR
+- /audio/finger_snap/ – snap sequence when a finger is detected
+- /audio/no_finger/ – snap sequence when the finger timeout expires
+- /audio/fortune_preamble/ – fortune storytelling / preamble clips
+- /audio/goodbye/ – farewell clips after the fortune completes
+- /audio/fortune_templates/ – future: alternate fortune flows (can be empty)
+- /audio/fortune_told/ – future: post-fortune stingers (can be empty)
 
-At boot the firmware scans `/audio`, prints the directory tree, and warns if any required folder is empty. Hidden files such as macOS `._foo.wav` entries are ignored automatically.
+At boot the firmware scans /audio, prints the directory tree, and warns if any required folder is empty. Hidden files such as macOS ._foo.wav entries are ignored automatically.
 
 ### Power System
-- **5 V Source**: Panel‑mount 2.1 mm barrel jack (center‑positive) fed by a 5 V 5 A adapter
-- **Schottky Protection**: Series diode at the main 5 V input to prevent any back‑feed into a connected computer during USB programming
-- **5 V Branches**: Separate branches for servo and printer (each returns to the common ground bus)
-- **Bulk Capacitors**: 1000–2200 µF at the printer branch; 470–1000 µF at the servo branch
-- **3.3 V Rail**: Provided by the WROVER board regulator; also powers the ESP32‑C3 SuperMini and LEDs
-- **Power Connectors**: Dupont headers (printer uses JST at device end)
+- **5V Regulator**: For servo motor and thermal printer
+- **3.3V Regulator**: For ESP32, SD card (built-in slot), and sensors
+- **Bulk Capacitor**: 1000-2200 µF near thermal printer
+- **Power Connectors**: Appropriate connectors for power distribution
 
 ## Current Pin Assignments
 
@@ -77,7 +102,7 @@ At boot the firmware scans `/audio`, prints the directory tree, and warns if any
 
 ### SD Card Interface (SDMMC)
 - **Built-in slot**: Uses ESP32 SDMMC peripheral routed directly on the FREENOVE board (no external wiring)
-- **Mount point**: `/sdcard` via `SD_MMC.begin("/sdcard", true, false, SDMMC_FREQ_20M)` (forced 1-bit mode @ 20 MHz for stability)
+- **Mount point**: /sdcard via SD_MMC.begin("/sdcard", true, false, SDMMC_FREQ_20M) (forced 1-bit mode @ 20 MHz for stability)
 - **Note**: External SPI module is no longer used; cabling for GPIO 5/18/19/23 has been removed.
 - **Pin Mapping**: CLK=GPIO14, CMD=GPIO15, D0=GPIO2, D1=GPIO4, D2=GPIO12, D3=GPIO13 (internal pull-ups enabled in firmware)
 - **Conflict Warning**: GPIO15 (CMD) must remain unused by other peripherals; reassign any previous loads (e.g., servo control) to avoid SD timeouts.
@@ -90,19 +115,6 @@ At boot the firmware scans `/audio`, prints the directory tree, and warns if any
 
 ### Sensors
 - **GPIO 4**: Capacitive finger sensor pin
-
-SDMMC note: The built‑in MicroSD slot is used in 1‑bit mode at 20 MHz. In 1‑bit mode, only CLK, CMD, and D0 are active; D1/D2 are unused, so using GPIO 4 for the capacitive sensor is conflict‑free. See also “SD Card Interface (SDMMC)”.
-
-#### Capacitive Sensor Assembly (Copper Sandwich)
-- Outer electrode: ~3×4 cm copper foil adhered to the skull’s upper palate (mouth side).
-- Inner shield: ~4×5 cm copper foil adhered to the inside of the skull, directly behind the outer foil (slightly larger).
-- Drill a small hole through outer foil → plastic → inner foil to bring the coax center to the outer electrode.
-- Coax routing: keep the shielded section as long as practical (~4").
-- Connections:
-  - Coax center → outer foil (sensor electrode) via the hole.
-  - Coax shield → inner foil (shield plane). Do not add a separate ground wire to the inner foil.
-  - At perfboard: Coax center → GPIO4; Coax shield → GND bus (single‑point ground for the shield + inner foil).
-- Rationale: The inner foil acts as a grounded barrier that pushes the field outward into the mouth and reduces internal coupling.
 
 ### Thermal Printer
 - **UART2 (printer)**
@@ -127,10 +139,6 @@ All peripherals are now assigned to conflict-free GPIOs:
 - Thermal printer on UART2 (TX 18, RX 19)
 
 There are no GPIO conflicts in the current firmware.
-
-SDMMC mode options:
-- Final build uses SD_MMC.begin("/sdcard", /*mode1bit=*/true, /*format_if_fail=*/false, SDMMC_FREQ_20M). This keeps GPIO 4 free for the capacitive sensor and is sufficient throughput for WAV streaming.
-- Alternative (not used): 4‑bit SDMMC mode requires freeing GPIO 4 (D1) and GPIO 12 (D2) and may increase EMI near the sensor. If you need higher SD throughput later, move the sensor to another touch pin (e.g., GPIO 27) and switch mode1bit=false.
 
 ## Hardware Specifications
 
@@ -172,22 +180,6 @@ SDMMC mode options:
 - **3.3V Rail**: For ESP32, SD card, and sensors
 - **Bulk Capacitor**: 1000-2200 µF near thermal printer for power stability
 
-## Power Input and Protection
-
-Goal: allow safe USB programming while the external 5 V adapter is connected, with no risk of back‑feeding the computer.
-
-Final choice: Series Schottky diode at the main 5 V input (recommended).
-
-- Wiring: Barrel jack (+) → Schottky diode → Perfboard 5 V bus. Barrel jack (−) → Perfboard GND bus.
-- Part: 1N5822 (3 A) minimum; preferably a ≥5 A part (e.g., SR560) for headroom. Orientation: banded end toward the 5 V bus.
-- Effect: Entire system sees ~0.2–0.4 V drop under load (typ. ~0.3 V); printer and servo still operate normally at ~4.6–4.8 V. The WROVER VIN remains within spec. This placement prevents any external‑supply back‑feed to a connected computer.
-
-Alternative (not used): Diode only on the WROVER VIN branch.
-
-- Wiring: Perfboard 5 V bus → Schottky → WROVER VIN; printer/servo connect before the diode.
-- Pro: Printer/servo see a full ~5.0 V.
-- Con: Does not address back‑feed risk from the external 5 V rail into the computer via the WROVER’s USB path if the board lacks ideal reverse isolation. Since the requirement is to protect the computer, this option is not selected.
-
 ## ESP32-WROVER Pinout Reference
 
 **Note**: This table shows the FREENOVE ESP32-WROVER development board pinout. Column 1 is the physical pin number on the board, Column 2 is the GPIO name used in code.
@@ -227,8 +219,6 @@ Alternative (not used): Diode only on the WROVER VIN branch.
 - GPIO 0, 2, 12, 15 are strapping pins (affect boot mode)
 - The FREENOVE ESP32-WROVER does **not** break out GPIO20. Only GPIO21 from UART1 is exposed, so the Matter UART uses GPIO21 for TX and reassigns the RX line to another free pin (GPIO22).
 
-Power: Feed the board with the perfboard 5 V rail (after the series Schottky) into VIN/5V. The board’s 3.3 V regulator also powers the ESP32‑C3 SuperMini and LEDs (see below).
-
 ## ESP32-C3 SuperMini Pinout Reference
 
 | Pin Number | Pin Name | Functionality |
@@ -252,23 +242,20 @@ Power: Feed the board with the perfboard 5 V rail (after the series Schottky) 
 
 **Note**: ESP32-C3 DOES have GPIO20 and GPIO21 (unlike classic ESP32).
 
-Power: Power the C3 from the WROVER’s 3.3 V pin (orange wire) and GND. Current draw is small; this is more efficient than feeding 5 V into the C3’s onboard regulator.
-
 ## Wiring Connections
 
 ### Power Distribution
-1. **Barrel Jack → 5 V Bus**: Barrel (+) → Schottky diode → 5 V bus; Barrel (−) → GND bus (18–20 AWG)
-2. **Branches**: Split 5 V bus into separate servo and printer branches; place bulk caps at each branch
-3. **3.3 V Rail**: Use WROVER 3V3 to power the ESP32‑C3 and LEDs (orange = 3.3 V)
-4. **Common Ground**: All components share a single, short, thick ground bus (18–20 AWG)
+1. **5V Rail**: Connect to servo motor, thermal printer, SD card module, and voltage regulator input
+2. **3.3V Rail**: Connect to ESP32 and sensors
+3. **Common Ground**: All components share a common ground reference
 
 ### Signal Connections
 1. **LEDs**: Connect eye LED to GPIO 32 and mouth LED to GPIO 33 with 100Ω current limiting resistors
 2. **Servo**: Connect control wire to GPIO 23, power to 5V rail, ground to common ground
-3. **MicroSD**: Insert card into the ESP32‑WROVER underside slot; no external wiring required. Ensure card is seated before power‑on so SD_MMC mounts `/sdcard` (1‑bit @ 20 MHz).
-4. **UART**: Cross-connect ESP32-WROVER TX1 (GPIO21 — silkscreened "21") → ESP32-C3 RX (GPIO20), and ESP32-WROVER RX line on GPIO22 (board silkscreen "22") ← ESP32-C3 TX (GPIO21); keep grounds common. Do **not** use the WROVER pins labelled `TX`/`RX` (GPIO1/GPIO3) because they belong to the USB serial console.
-5. **Thermal Printer**: Connect UART2 (GPIO18 TX → printer RXD, GPIO19 RX ← printer TXD). For a 4 ft run, use an Ethernet cable: pair TX with GND and RX with GND (twisted pairs). Power and ground use separate conductors (20–22 AWG equivalent).
-6. **Touch Sensor**: Connect electrode to GPIO 4 via coax; shield to GND at the board end only
+3. **MicroSD**: Insert card into the ESP32-WROVER underside slot; no external wiring required. Ensure card is seated before power-on so SD_MMC mounts /sdcard.
+4. **UART**: Cross-connect ESP32-WROVER TX1 (GPIO21 — silkscreened "21") → ESP32-C3 RX (GPIO20), and ESP32-WROVER RX line on GPIO22 (board silkscreen "22") ← ESP32-C3 TX (GPIO21); keep grounds common. Do **not** use the WROVER pins labelled TX/RX (GPIO1/GPIO3) because they belong to the USB serial console.
+5. **Thermal Printer**: Connect UART pins to ESP32-WROVER
+6. **Touch Sensor**: Connect electrode to GPIO 2 or GPIO 4 (choose one)
 
 ### Important Notes
 - **Power Requirements**: Ensure 5V rail can supply ≥3A for thermal printer operation
@@ -286,7 +273,8 @@ The ESP32-WROVER has **3 hardware UART interfaces** (UART0, UART1, UART2). The f
 
 #### Final Pin Assignment (Conflict-Free)
 
-```cpp
+
+cpp
 // Pins used by firmware (see src/main.cpp)
 constexpr int EYE_LED_PIN    = 32;  // Eye LED
 constexpr int MOUTH_LED_PIN  = 33;  // Mouth LED
@@ -303,20 +291,21 @@ constexpr int MATTER_RX_PIN  = 22;  // ESP32 RX ← ESP32-C3 TX
 
 // SD_MMC slot wiring is internal to the ESP32-WROVER board:
 // CLK = GPIO14, CMD = GPIO15, D0 = GPIO2. Firmware enables 1-bit mode and pull-ups.
-```
+
 
 #### Hardware Wiring Overview
 
 - **ESP32-WROVER ↔ ESP32-C3**: Cross-connect UART1 — WROVER TX (GPIO21) → C3 RX, WROVER RX (GPIO22) ← C3 TX; common ground.
-- **Thermal Printer**: UART2 routed to GPIO18 (TX→printer RXD) and GPIO19 (RX←printer TXD); common ground only; long run via twisted pairs (Ethernet cable) at 9600 baud.
+- **Thermal Printer**: UART2 routed to GPIO18 (TX→printer RXD) and GPIO19 (RX←printer TXD); common ground only.
 - **Servo**: Control lead on GPIO23, 5V power from regulated rail, shared ground.
-- **MicroSD**: Insert card into the underside slot; no external wiring required. Ensure card is seated before boot so SD_MMC mounts `/sdcard`.
-- **LEDs / Sensors**: Eye LED GPIO32, mouth LED GPIO33 (each with 100 Ω resistor) on a single 3‑pin connector (Eye, Mouth, GND); capacitive plate on GPIO4 (coax; shield to GND at board end).
+- **MicroSD**: Insert card into the underside slot; no external wiring required. Ensure card is seated before boot so SD_MMC mounts /sdcard.
+- **LEDs / Sensors**: Eye LED GPIO32, mouth LED GPIO33 (each with 100 Ω resistor); capacitive plate on GPIO4; external sensor on GPIO27.
 - **Power**: 3.3 V rail for ESP32/sensors/SD slot, 5 V rail for servo & future printer, with bulk capacitance near high-current loads.
 
 #### Software Implementation Example
 
-```cpp
+
+cpp
 // uart_manager.h
 class UARTManager {
 public:
@@ -366,11 +355,57 @@ private:
     static constexpr int PRINTER_TX_PIN = 18;
     static constexpr int PRINTER_RX_PIN = 19;
 };
-```
 
-### Skull Switch
 
-Not used. The built‑in skull power switch is omitted for the final build to avoid current‑handling concerns on the 5 A rail.
+### Optional Master Power Switch (Using Built-In Skull Switch)
+
+The skull’s built-in battery compartment typically includes an **inline power switch**.  
+Even if the batteries are unused, you can repurpose this switch as a **master power switch** for the 5 V rail.
+
+#### Usage (switch-only; no batteries)
+
+Wire the switch **in series on the 5 V input** feeding the perfboard:
+
+1. **Isolate/ignore the battery contacts** so they don’t connect to anything.
+2. Bring the two switch leads into the enclosure and terminate them on a **2-pin header** (e.g., J_SW).
+3. Place the header **in series with the 5 V input** from your USB-C power:
+
+USB-C 5V ──> [Skull Switch] ──> Perfboard 5V rail
+USB-C GND ─────────────────────> Common GND
+
+When the switch is **OFF**, it opens the 5 V line and the entire system powers down.
+
+**Notes**
+- Switch the **high side (5 V)**, not ground.
+- Keep **common ground** shared between all supplies and boards.
+- This integrates cleanly with the existing **Power Requirements** and **Power Distribution** sections.
+
+#### Optional: add backup power from the built-in 3×AA pack (≈4.5 V)
+
+If you want the skull to run when USB-C is unplugged, you can **OR** the 3×AA pack with a **Schottky diode** to prevent back-feeding:
+
+                     +-------------------+
+                     |   Skull Switch    |
+
+USB-C 5V ────────────────+────o/ o───────────+───> Perfboard 5V rail
+|                   |
+3×AA + ──> Schottky ─────+                   |
+(e.g., 1N5822 or SR560)                      |
+|
+USB-C GND ───────────────────────────────────+───> Common GND
+3×AA −  ─────────────────────────────────────+
+
+**Details**
+- Use a **Schottky diode** (e.g., 1N5822 minimum, or SR560 for ≥5 A headroom) from **battery +** to the **switched 5 V rail** (banded end toward the rail).
+- The switch still controls system power. With USB unplugged and the switch ON, the batteries supply the rail through the diode.
+- Expect a **~0.2–0.4 V drop** across the diode; many loads tolerate this (printer/servo are on 5 V; ESP32 is on regulated 3.3 V).
+- Maintain the **bulk capacitor** near peak loads (printer/servo) as already specified.
+
+#### Safety / Integration checklist
+- ✅ Do **not** route battery + directly to the 5 V rail without a diode (prevents back-feed into USB-C and programmers).  
+- ✅ Keep **wire gauge** appropriate for 5 V rail current (AWG 20–22).  
+- ✅ Place the master switch **before** any 5 V regulators and high-current loads (servo/printer).  
+- ✅ Common ground between USB-C, batteries, and all modules.
 
 
 ## Implementation Notes
@@ -388,10 +423,8 @@ Not used. The built‑in skull power switch is omitted for the final build to av
 1. **Boot Strapping Pins**: Avoid using GPIO 0, 2, 12, 15 for outputs that could interfere with boot
 2. **Input-Only Pins**: GPIO 34-39 cannot be used for outputs
 3. **UART0**: Reserved for USB/Serial debugging, not used for peripherals
-4. **Power Sequencing**: Enable 5 V rail before initializing thermal printer
+4. **Power Sequencing**: Enable 5V rail before initializing thermal printer
 5. **Ground Loops**: Ensure single-point grounding to avoid noise
-6. **Test Points (optional)**: Add small wire loops at 5 V after the diode, 3V3, printer branch 5 V, servo branch 5 V, and GND for easy probing
-7. **Power Indicator (optional)**: Add a low-current LED + 1 kΩ to the 5 V bus after the diode for visual power-good feedback
 
 ### Power Budget
 
@@ -413,7 +446,7 @@ Not used. The built‑in skull power switch is omitted for the final build to av
 1. **SD Card Not Detected**
    - Confirm MicroSD card is fully seated in the built-in slot (underside of board)
    - Ensure card is formatted as FAT32/exFAT and not write-protected
-   - Check boot logs for `SD_MMC` mount errors (4-bit vs 1-bit fallback)
+   - Check boot logs for SD_MMC mount errors (4-bit vs 1-bit fallback)
    - Power-cycle after swapping cards; the slot is not hot-swappable during playback
 
 2. **Servo Jittering (HS-125MG)**
@@ -448,14 +481,17 @@ Not used. The built‑in skull power switch is omitted for the final build to av
    - Monitor voltage levels during peak loads
 
 7. **USB-C Not Recognized / Back-Feed Protection Triggered**
-   - **Symptom**: ESP32 doesn't appear as USB device when external power is connected
-   - **Cause**: Supplies fighting or back‑feed path to USB host
-   - **Fix (final build)**: Series Schottky at the main 5 V input prevents back‑feed; USB programming is safe with external power connected
-   - **Why this works**: The diode OR‑ing isolates the external adapter from any 5 V presented by the computer
+   - **Symptom**: ESP32 doesn't appear as USB device when barrel jack is connected
+   - **Cause**: External power (barrel jack) back-feeds into USB-C port, triggering computer's safety shutdown
+   - **Dev Board Workaround**: Disconnect barrel jack before connecting USB-C for programming
+- **Permanent Solution**: Add Schottky diode (1N5822 minimum, or SR560 for ≥5 A headroom) between external power and 5 V rail
+   - **Why ESP32 boards don't include diodes**: Cost/space optimization; many designs rely on "USB-first" power priority instead
+   - **Production Fix**: Diode cathode (banded end) toward ESP32, prevents power from flowing back into USB-C
 
 ### Debug Commands
 
-```cpp
+
+cpp
 // Test individual components
 void runHardwareTest() {
     // Test LEDs
@@ -474,7 +510,7 @@ void runHardwareTest() {
     // Test touch sensors
     testTouchSensors();
 }
-```
+
 
 ## Revision History
 
@@ -482,3 +518,58 @@ void runHardwareTest() {
 - **v2.0**: Corrected GPIO numbering (removed references to non-existent GPIO20/21 on ESP32)
 - **v2.1**: Added FREENOVE board specifics and clarified physical pin vs GPIO numbering
 - **Current (v3.0)**: Complete pin reassignment with conflict-free solution using multiple hardware UARTs
+
+You said:
+1. Power: I'm not sure... The peak load is almost 4a (2a printer, 1a servo, 1a? for rest) which is a lot for USB, but doable. We could easily isolate the printer (and servo) 5v from the rest to keep the noise away even just using one usbc plug on the perfboard. the other option is a separate usbc for the printer, but that comes with its own annoyances. What do you think?
+- And I wanted to do a ground bus. Wait... is star ground better? and why would it need t be  a "short" ground bus?
+
+2. I don't even know if we need them anymore. That was all so I could plug in the WROVER to the computer and be able to debug while it's running. But I ended up using a data-only cable so... Forget that? KISS, right?
+
+3. I just measured. Seem to idle around 3v. I'm not even sure what a divider/level-shift is or why we'd need it if it's 5v. Why is that? And would we need it if it's idling at 3v?
+
+4. Servo + printer: their own 5v branch I think. Any issue with noise between them if those two are sharing 5v?
+- polyfuse: no idea what that is
+
+5. Perfboard is from busboard.com: PR1590BB . It's just all just set of two pads across and down. That is, a single pad connecting two holes, over and over. What is this style called?
+- Connectors: Dupont except for the printer which already has JST, so we'll go with that for that one. Although I may need to go with an extension cable because the perfboard sits in the skull and the printer sits in a typewriter in front of it, which is a 4'? run. That's fine for UART, right?
+- Wire gauges: sounds good
+
+6. LED/resistors
+- yes, LEDs driven from WOVER GPIOs, exactly as  you describe
+- PWM dimming: no it's fine. When would you want a specific wiring orientation?
+
+7. Capacitive finger sensor
+- coax: correct
+- no small resistor; that's fine
+
+8. Don't worry about layout constraints. Yes, I want to re-use the skull switch as master 5v high side. LIKELY I'll just jump it for this halloween due to time constraints, but I want the dupoint male pin there for the future option
+
+9. UART: yes, final deacon good.   Cable length for printer run: four feet
+
+10. Test/bring-up style
+- absolutely yes staged with checkpoints and suggested multimeter readings!
+- I only have sharpies
+
+
+Answer these questions before proceeding, and ask any more you think of before we go.
+
+
+
+You said:
+1) Power + grounding
+- agree: one beefy USBC
+- agree: short fat ground (thick wire soldered to perfboard)
+
+4) Separate 5 V branches & polyfuses
+	•	SOUNDS GOOD: Servo & printer on separate 5 V branches: Good. They can share the same supply input—just give each its own local bulk cap and return to the ground bus separately.
+- no PTC; no time to source
+
+
+
+Clarification:
+1. Power Brick: Yes, I have one and assume just a USBc plug on the board
+2. yes, use onboard 3.3
+3. bulk caps: did you double-check the hardware.md calculations on those? We want to make sure they're 100% correct and appropriate. Call out where hardware.md was wrong if it was
+4. No fuses. KISS
+5. No indicators: usbc serial monitoring works well
+6. sure, add a pad legend
