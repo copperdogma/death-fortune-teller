@@ -1,3 +1,0 @@
-role=primary
-speaker_name=JBL Flip 5
-speaker_volume=100

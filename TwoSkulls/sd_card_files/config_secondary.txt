@@ -1,3 +1,0 @@
-role=secondary
-speaker_name=JBL Flip 6
-speaker_volume=80
