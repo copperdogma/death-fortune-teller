@@ -19,7 +19,11 @@
 #include "ota_manager.h"
 #include "remote_debug_manager.h"
 #include "logging_manager.h"
+#include "death_controller.h"
+#include "death_controller_adapters.h"
 #include "infra/log_sink.h"
+#include "infra/arduino_time_provider.h"
+#include "infra/arduino_random_source.h"
 #include "skit_selector.h"
 #include "audio_directory_selector.h"
 #include <WiFi.h>
@@ -29,6 +33,7 @@
 #include "esp_attr.h"
 #include <vector>
 #include <algorithm>
+#include <string>
 
 // Pin definitions
 const int EYE_LED_PIN = 32;    // GPIO pin for eye LED
@@ -56,6 +61,14 @@ OTAManager *otaManager = nullptr;
 RemoteDebugManager *remoteDebugManager = nullptr;
 SkitSelector *skitSelector = nullptr;
 AudioDirectorySelector *audioDirectorySelector = nullptr;
+AudioPlannerAdapter *audioPlannerAdapter = nullptr;
+FortuneServiceAdapter *fortuneServiceAdapter = nullptr;
+PrinterStatusAdapter *printerStatusAdapter = nullptr;
+ManualCalibrationAdapter *manualCalibrationAdapter = nullptr;
+DeathController *deathController = nullptr;
+
+infra::ArduinoTimeProvider g_timeProvider;
+infra::ArduinoRandomSource g_randomSource;
 
 static constexpr const char *TAG = "Main";
 static constexpr const char *WIFI_TAG = "WiFi";
@@ -70,18 +83,6 @@ static constexpr const char *LED_TAG = "LED";
 bool g_sdCardMounted = false;
 
 String fortunesJsonPath = "/printer/fortunes_littlekid.json";
-bool fortuneGeneratorLoadAttempted = false;
-bool fortuneGeneratorLoaded = false;
-String activeFortune;
-String fortuneSourceFile;
-bool fortuneGenerationAttempted = false;
-bool fortunePrintAttempted = false;
-bool fortunePrintSuccess = false;
-bool fortunePrintPending = false;
-bool fortunePrintStartRequested = false;
-unsigned long fortunePrintStartRequestTime = 0;
-static constexpr unsigned long FORTUNE_PRINT_MIN_AUDIO_PLAY_MS = 250;
-static constexpr unsigned long FORTUNE_PRINT_MAX_WAIT_MS = 1500;
 
 SDCardContent sdCardContent;
 String initializationAudioPath;
@@ -97,26 +98,8 @@ int32_t IRAM_ATTR provideAudioFramesThunk(void *context, Frame *frame, int32_t f
     return player->provideAudioFrames(frame, frameCount);
 }
 
-enum class DeathState {
-    IDLE,
-    PLAY_WELCOME,
-    WAIT_FOR_NEAR,
-    PLAY_FINGER_PROMPT,
-    MOUTH_OPEN_WAIT_FINGER,
-    FINGER_DETECTED,
-    SNAP_WITH_FINGER,
-    SNAP_NO_FINGER,
-    FORTUNE_FLOW,
-    FORTUNE_DONE,
-    COOLDOWN
-};
-
 // Function declarations
 void handleUARTCommand(UARTCommand cmd);
-void enterState(DeathState newState, const char *reason, bool forced = false);
-void updateStateMachine(unsigned long currentTime);
-void handleAudioPlaybackFinished(const String &filePath);
-bool queueRandomClipFromDir(const char *directory, const char *description);
 void validateAudioDirectories();
 void logAudioDirectoryTree(const char *path, int depth = 0);
 void playRandomSkit();
@@ -127,21 +110,8 @@ void processCLI(String cmd);
 void printHelp();
 void printSDCardInfo();
 void printFingerHelp();
-void resetFortuneFlowWork();
-bool ensureFortuneGeneratorLoaded();
-void generateAndPrintFortune();
-void generateFortuneIfNeeded();
-bool startFortunePrinting();
 void printFortuneToSerial(const String &fortune);
-void handleFingerSensorEvents(unsigned long currentTime);
-void triggerManualCalibrationSequence();
-void updateManualCalibration(unsigned long currentTime);
 void updatePrinterFaultIndicator();
-
-DeathState currentState = DeathState::IDLE;
-unsigned long stateStartTime = 0;
-unsigned long lastTriggerTime = 0;
-const unsigned long TRIGGER_DEBOUNCE_MS = 2000;
 
 unsigned long fingerStableMs = 120;
 unsigned long fingerWaitMs = 6000;
@@ -151,33 +121,7 @@ unsigned long cooldownMs = 12000;
 
 // Fortune flow state
 bool mouthOpen = false;
-unsigned long fingerWaitStart = 0;
-unsigned long snapDelayStart = 0;
-unsigned long cooldownStart = 0;
-int snapDelayMs = 0;
-bool snapDelayScheduled = false;
 bool mouthPulseActive = false;
-
-static constexpr unsigned long MANUAL_CALIBRATION_WAIT_MS = 5000;
-static constexpr unsigned long MANUAL_CALIBRATION_SETTLE_MS = 1500;
-static constexpr float MANUAL_CALIBRATION_FORCE_MULTIPLIER = 10.0f;
-static constexpr unsigned long MANUAL_CALIBRATION_HOLD_MS = 3000;
-
-bool lastFingerDetectedImmediate = false;
-bool calibrationHoldActive = false;
-unsigned long calibrationHoldStartMs = 0;
-
-enum class ManualCalibrationStage {
-    Idle,
-    PreBlink,
-    WaitBeforeCalibration,
-    Calibrating,
-    CompletionBlink
-};
-
-ManualCalibrationStage manualCalibrationStage = ManualCalibrationStage::Idle;
-unsigned long manualCalibrationStageStartMs = 0;
-unsigned long manualCalibrationCalibrateStartMs = 0;
 bool printerFaultLatched = false;
 
 static constexpr const char *AUDIO_WELCOME_DIR = "/audio/welcome";
@@ -221,25 +165,90 @@ int countWavFilesInDirectory(const char *directory) {
     return count;
 }
 
-bool queueRandomClipFromDir(const char *directory, const char *description) {
-    if (!audioPlayer) {
-        LOG_WARN(AUDIO_TAG, "AudioPlayer not initialized; cannot queue %s", description ? description : "clip");
-        return false;
+std::vector<std::string> gatherFortuneCandidates(SDCardManager *sdManager, const String &configuredPath) {
+    std::vector<std::string> result;
+    auto pushUnique = [&](const std::string &path) {
+        if (path.empty()) {
+            return;
+        }
+        if (std::find(result.begin(), result.end(), path) == result.end()) {
+            result.push_back(path);
+        }
+    };
+
+    std::vector<String> candidates;
+    if (configuredPath.length() > 0) {
+        candidates.push_back(configuredPath);
+    }
+    candidates.push_back("/fortunes");
+    candidates.push_back("/fortunes/little_kid_fortunes.json");
+    candidates.push_back("/printer/fortunes_littlekid.json");
+
+    for (const String &candidateRaw : candidates) {
+        String candidate = candidateRaw;
+        candidate.trim();
+        if (candidate.length() == 0) {
+            continue;
+        }
+
+        while (candidate.endsWith("/") && candidate.length() > 1) {
+            candidate = candidate.substring(0, candidate.length() - 1);
+        }
+
+        bool handled = false;
+        if (g_sdCardMounted && sdManager) {
+            File entry = SD_MMC.open(candidate.c_str());
+            if (entry) {
+                if (entry.isDirectory()) {
+                    std::vector<std::string> files;
+                    File child = entry.openNextFile();
+                    while (child) {
+                        if (!child.isDirectory()) {
+                            String name = child.name();
+                            if (!name.startsWith(".")) {
+                                String fullPath = name;
+                                if (!fullPath.startsWith("/")) {
+                                    fullPath = candidate + "/" + fullPath;
+                                }
+                                if (fullPath.endsWith(".json") || fullPath.endsWith(".JSON")) {
+                                    files.push_back(fullPath.c_str());
+                                }
+                            }
+                        }
+                        child.close();
+                        child = entry.openNextFile();
+                    }
+                    entry.close();
+                    for (const auto &path : files) {
+                        pushUnique(path);
+                    }
+                    handled = true;
+                } else {
+                    entry.close();
+                    if (candidate.endsWith(".json") || candidate.endsWith(".JSON")) {
+                        pushUnique(candidate.c_str());
+                        handled = true;
+                    }
+                }
+            } else {
+                if (candidate.endsWith(".json") || candidate.endsWith(".JSON")) {
+                    int slashIndex = candidate.lastIndexOf('/');
+                    String basename = (slashIndex >= 0) ? candidate.substring(slashIndex + 1) : candidate;
+                    String altPath = "/fortunes/" + basename;
+                    if (sdManager->fileExists(altPath.c_str())) {
+                        pushUnique(std::string(altPath.c_str()));
+                        handled = true;
+                    }
+                }
+            }
+        }
+
+        if (!handled) {
+            pushUnique(std::string(candidate.c_str()));
+        }
     }
 
-    if (!audioDirectorySelector) {
-        LOG_WARN(AUDIO_TAG, "Audio selector not initialized; cannot queue %s", description ? description : "clip");
-        return false;
-    }
-
-    String selected = audioDirectorySelector->selectClip(directory, description);
-    if (selected.isEmpty()) {
-        return false;
-    }
-
-    audioPlayer->playNext(selected);
-    LOG_INFO(AUDIO_TAG, "Queued audio for %s: %s", description ? description : "clip", selected.c_str());
-    return true;
+    return result;
 }
 
 void validateAudioDirectories() {
@@ -377,155 +386,77 @@ int getServoOpenPosition() {
     return maxDeg - margin;
 }
 
-bool isTriggerCommand(UARTCommand cmd) {
-    return cmd == UARTCommand::FAR_MOTION_TRIGGER || cmd == UARTCommand::NEAR_MOTION_TRIGGER;
-}
-
-bool isForcedStateCommand(UARTCommand cmd) {
-    switch (cmd) {
-        case UARTCommand::PLAY_WELCOME:
-        case UARTCommand::WAIT_FOR_NEAR:
-        case UARTCommand::PLAY_FINGER_PROMPT:
-        case UARTCommand::MOUTH_OPEN_WAIT_FINGER:
-        case UARTCommand::FINGER_DETECTED:
-        case UARTCommand::SNAP_WITH_FINGER:
-        case UARTCommand::SNAP_NO_FINGER:
-        case UARTCommand::FORTUNE_FLOW:
-        case UARTCommand::FORTUNE_DONE:
-        case UARTCommand::COOLDOWN:
-            return true;
-        default:
-            return false;
-    }
-}
-
-const char *deathStateToString(DeathState state) {
-    switch (state) {
-        case DeathState::IDLE: return "IDLE";
-        case DeathState::PLAY_WELCOME: return "PLAY_WELCOME";
-        case DeathState::WAIT_FOR_NEAR: return "WAIT_FOR_NEAR";
-        case DeathState::PLAY_FINGER_PROMPT: return "PLAY_FINGER_PROMPT";
-        case DeathState::MOUTH_OPEN_WAIT_FINGER: return "MOUTH_OPEN_WAIT_FINGER";
-        case DeathState::FINGER_DETECTED: return "FINGER_DETECTED";
-        case DeathState::SNAP_WITH_FINGER: return "SNAP_WITH_FINGER";
-        case DeathState::SNAP_NO_FINGER: return "SNAP_NO_FINGER";
-        case DeathState::FORTUNE_FLOW: return "FORTUNE_FLOW";
-        case DeathState::FORTUNE_DONE: return "FORTUNE_DONE";
-        case DeathState::COOLDOWN: return "COOLDOWN";
-        default: return "UNKNOWN";
-    }
-}
-
-DeathState stateForCommand(UARTCommand cmd) {
-    switch (cmd) {
-        case UARTCommand::PLAY_WELCOME: return DeathState::PLAY_WELCOME;
-        case UARTCommand::WAIT_FOR_NEAR: return DeathState::WAIT_FOR_NEAR;
-        case UARTCommand::PLAY_FINGER_PROMPT: return DeathState::PLAY_FINGER_PROMPT;
-        case UARTCommand::MOUTH_OPEN_WAIT_FINGER: return DeathState::MOUTH_OPEN_WAIT_FINGER;
-        case UARTCommand::FINGER_DETECTED: return DeathState::FINGER_DETECTED;
-        case UARTCommand::SNAP_WITH_FINGER: return DeathState::SNAP_WITH_FINGER;
-        case UARTCommand::SNAP_NO_FINGER: return DeathState::SNAP_NO_FINGER;
-        case UARTCommand::FORTUNE_FLOW: return DeathState::FORTUNE_FLOW;
-        case UARTCommand::FORTUNE_DONE: return DeathState::FORTUNE_DONE;
-        case UARTCommand::COOLDOWN: return DeathState::COOLDOWN;
-        default: return DeathState::IDLE;
-    }
-}
-
-bool isBusy() {
-    return currentState != DeathState::IDLE;
-}
-
-void triggerManualCalibrationSequence() {
-    if (manualCalibrationStage != ManualCalibrationStage::Idle) {
-        return;
-    }
-    LOG_INFO(LED_TAG, "Manual calibration sequence initiated");
-    manualCalibrationStage = ManualCalibrationStage::PreBlink;
-    manualCalibrationStageStartMs = millis();
-    manualCalibrationCalibrateStartMs = 0;
-    uint8_t blinkBrightness = static_cast<uint8_t>(ConfigManager::getInstance().getMouthLedBright());
-    lightController.startMouthBlinkSequence(3, 120, 120, blinkBrightness, false, "Manual calibration start");
-}
-
-void handleFingerSensorEvents(unsigned long currentTime) {
-    if (!fingerSensor) {
+static void processControllerActions(const DeathController::ControllerActions &actions) {
+    if (!deathController) {
         return;
     }
 
-    bool detected = fingerSensor->isFingerDetected();
-    float normalizedDelta = fingerSensor->getNormalizedDelta();
-    float thresholdRatio = fingerSensor->getThresholdRatio();
-    float activationThreshold = thresholdRatio * MANUAL_CALIBRATION_FORCE_MULTIPLIER;
-
-    if (detected && !lastFingerDetectedImmediate) {
-        bool restorePrevious = (currentState == DeathState::PLAY_FINGER_PROMPT ||
-                                currentState == DeathState::MOUTH_OPEN_WAIT_FINGER);
-        if (manualCalibrationStage == ManualCalibrationStage::Idle) {
-            uint8_t blinkBrightness = static_cast<uint8_t>(ConfigManager::getInstance().getMouthLedBright());
-            lightController.startMouthBlinkSequence(2, 120, 120, blinkBrightness, restorePrevious, "Finger detection feedback");
+    if (!actions.audioToQueue.empty() && audioPlayer) {
+        for (const std::string &clip : actions.audioToQueue) {
+            if (clip.empty()) {
+                continue;
+            }
+            LOG_INFO(FLOW_TAG, "Controller queuing audio: %s", clip.c_str());
+            audioPlayer->playNext(String(clip.c_str()));
         }
     }
 
-    bool strongTouch = thresholdRatio > 0.0f && normalizedDelta >= activationThreshold;
-    if (manualCalibrationStage == ManualCalibrationStage::Idle && strongTouch) {
-        if (!calibrationHoldActive) {
-            calibrationHoldActive = true;
-            calibrationHoldStartMs = currentTime;
-            LOG_INFO(LED_TAG, "Manual calibration hold started (Δnorm=%.3f%%)", normalizedDelta * 100.0f);
-        } else if (currentTime - calibrationHoldStartMs >= MANUAL_CALIBRATION_HOLD_MS) {
-            calibrationHoldActive = false;
-            LOG_INFO(LED_TAG, "Manual calibration hold satisfied (%.1fs)", MANUAL_CALIBRATION_HOLD_MS / 1000.0f);
-            triggerManualCalibrationSequence();
-        }
-    } else if (!strongTouch) {
-        calibrationHoldActive = false;
+    if (!actions.fortuneText.empty()) {
+        String fortuneText(actions.fortuneText.c_str());
+        printFortuneToSerial(fortuneText);
     }
 
-    lastFingerDetectedImmediate = detected;
-}
+    if (actions.requestMouthOpen || actions.requestMouthClose) {
+        const int servoOpen = getServoOpenPosition();
+        const int servoClosed = getServoClosedPosition();
+        if (actions.requestMouthOpen) {
+            servoController.setPosition(servoOpen);
+            mouthOpen = true;
+        } else if (actions.requestMouthClose) {
+            servoController.setPosition(servoClosed);
+            mouthOpen = false;
+        }
+    }
 
-void updateManualCalibration(unsigned long currentTime) {
-    switch (manualCalibrationStage) {
-        case ManualCalibrationStage::Idle:
-            return;
+    if (actions.requestMouthPulseEnable) {
+        lightController.setMouthPulse();
+        mouthPulseActive = true;
+    }
+    if (actions.requestMouthPulseDisable) {
+        lightController.setMouthOff();
+        mouthPulseActive = false;
+    }
 
-        case ManualCalibrationStage::PreBlink:
-            if (!lightController.isMouthBlinking()) {
-                manualCalibrationStage = ManualCalibrationStage::WaitBeforeCalibration;
-                manualCalibrationStageStartMs = currentTime;
-                lightController.setMouthBright();
-                LOG_INFO(LED_TAG, "Manual calibration: mouth LED steady while waiting to calibrate");
-                LOG_INFO(LED_TAG, "Manual calibration: waiting %lu ms before calibrate", MANUAL_CALIBRATION_WAIT_MS);
-            }
-            break;
+    if (actions.requestLedPrompt) {
+        lightController.setEyeBrightness(LightController::BRIGHTNESS_MAX);
+        lightController.setMouthBright();
+    }
+    if (actions.requestLedIdle) {
+        lightController.setEyeBrightness(LightController::BRIGHTNESS_DIM);
+        lightController.setMouthOff();
+    }
+    if (actions.requestLedFingerDetected) {
+        lightController.setEyeBrightness(LightController::BRIGHTNESS_MAX);
+        lightController.setMouthBright();
+    }
 
-        case ManualCalibrationStage::WaitBeforeCalibration:
-            if (currentTime - manualCalibrationStageStartMs >= MANUAL_CALIBRATION_WAIT_MS) {
-                if (fingerSensor) {
-                    LOG_INFO(LED_TAG, "Manual calibration: starting sensor calibration");
-                    fingerSensor->calibrate();
-                }
-                manualCalibrationCalibrateStartMs = currentTime;
-                manualCalibrationStage = ManualCalibrationStage::Calibrating;
-            }
-            break;
+    if (actions.queueFortunePrint) {
+        bool success = false;
+        if (thermalPrinter) {
+            String fortuneText(actions.fortuneText.c_str());
+            success = thermalPrinter->queueFortunePrint(fortuneText);
+        }
+        if (!success) {
+            LOG_WARN(FLOW_TAG, "Controller requested fortune print but printer unavailable or failed");
+        }
+    }
 
-        case ManualCalibrationStage::Calibrating:
-            if (currentTime - manualCalibrationCalibrateStartMs >= MANUAL_CALIBRATION_SETTLE_MS) {
-                uint8_t blinkBrightness = static_cast<uint8_t>(ConfigManager::getInstance().getMouthLedBright());
-                lightController.startMouthBlinkSequence(4, 120, 120, blinkBrightness, false, "Manual calibration finished");
-                manualCalibrationStage = ManualCalibrationStage::CompletionBlink;
-                LOG_INFO(LED_TAG, "Manual calibration: calibration complete, signalling done");
-            }
-            break;
 
-        case ManualCalibrationStage::CompletionBlink:
-            if (!lightController.isMouthBlinking()) {
-                manualCalibrationStage = ManualCalibrationStage::Idle;
-                LOG_INFO(LED_TAG, "Manual calibration sequence finished");
-            }
-            break;
+    if (actions.requestRemoteDebugPause && remoteDebugManager) {
+        remoteDebugManager->setAutoStreaming(false);
+    }
+    if (actions.requestRemoteDebugResume && remoteDebugManager) {
+        remoteDebugManager->setAutoStreaming(true);
     }
 }
 
@@ -603,6 +534,7 @@ void setup() {
     // Try to mount SD card and load config before initializing servo
     sdCardManager = new SDCardManager();
     audioDirectorySelector = new AudioDirectorySelector();
+    audioPlannerAdapter = new AudioPlannerAdapter(*audioDirectorySelector);
     bool configLoaded = false;
     g_sdCardMounted = false;
     ConfigManager &config = ConfigManager::getInstance();
@@ -677,6 +609,7 @@ void setup() {
         fortunesJsonPath = "/printer/fortunes_littlekid.json";
     }
     LOG_INFO(FLOW_TAG, "Fortune JSON path: %s", fortunesJsonPath.c_str());
+    std::vector<std::string> fortuneCandidates = gatherFortuneCandidates(sdCardManager, fortunesJsonPath);
 
     String printerLogoPath = config.getPrinterLogo();
     if (printerLogoPath.length() == 0) {
@@ -688,21 +621,28 @@ void setup() {
     LOG_INFO(AUDIO_TAG, "🎵 Initialization audio: %s", initializationAudioPath.c_str());
 
     audioPlayer = new AudioPlayer(*sdCardManager);
+    if (audioPlannerAdapter) {
+        audioPlannerAdapter->setAudioPlayer(audioPlayer);
+    }
     audioPlayer->setPlaybackStartCallback([](const String &filePath) {
         LOG_INFO(AUDIO_TAG, "▶️ Audio playback started: %s", filePath.c_str());
+        if (deathController) {
+            deathController->handleAudioStarted(std::string(filePath.c_str()));
+            processControllerActions(deathController->pendingActions());
+            deathController->clearActions();
+        }
         if (filePath.equals(initializationAudioPath)) {
             initializationQueued = false;
-        }
-        if (currentState == DeathState::FORTUNE_FLOW &&
-            fortunePrintPending &&
-            filePath.startsWith(AUDIO_FORTUNE_PREAMBLE_DIR)) {
-            LOG_INFO(FLOW_TAG, "Fortune preamble started; scheduling printer job");
-            fortunePrintStartRequested = true;
-            fortunePrintStartRequestTime = millis();
         }
     });
     audioPlayer->setPlaybackEndCallback([](const String &filePath) {
         LOG_INFO(AUDIO_TAG, "⏹ Audio playback finished: %s", filePath.c_str());
+        if (deathController) {
+            deathController->handleAudioFinished(std::string(filePath.c_str()));
+            processControllerActions(deathController->pendingActions());
+            deathController->clearActions();
+            return;
+        }
         if (filePath.equals(initializationAudioPath)) {
             initializationPlayed = true;
         }
@@ -713,7 +653,6 @@ void setup() {
         if (skitSelector && filePath.startsWith("/audio/Skit")) {
             skitSelector->updateSkitPlayCount(filePath);
         }
-        handleAudioPlaybackFinished(filePath);
     });
     audioPlayer->setAudioFramesProvidedCallback([](const String &filePath, const Frame *frames, int32_t frameCount) {
         if (skullAudioAnimator && frameCount > 0) {
@@ -743,6 +682,15 @@ void setup() {
     thermalPrinter = new ThermalPrinter(Serial2, PRINTER_TX_PIN, PRINTER_RX_PIN, config.getPrinterBaud());
     fingerSensor = new FingerSensor(CAP_SENSE_PIN);
     fortuneGenerator = new FortuneGenerator();
+    if (fortuneGenerator) {
+        fortuneServiceAdapter = new FortuneServiceAdapter(*fortuneGenerator);
+    }
+    if (thermalPrinter) {
+        printerStatusAdapter = new PrinterStatusAdapter(*thermalPrinter);
+    }
+    if (fingerSensor) {
+        manualCalibrationAdapter = new ManualCalibrationAdapter(lightController, *fingerSensor, ConfigManager::getInstance());
+    }
 
     if (thermalPrinter) {
         thermalPrinter->setLogoPath(printerLogoPath);
@@ -764,8 +712,37 @@ void setup() {
         LOG_WARN(FLOW_TAG, "Finger sensor allocation failed");
     }
 
-    if (fortuneGenerator) {
-        ensureFortuneGeneratorLoaded();
+    if (!deathController && audioPlannerAdapter && fortuneServiceAdapter) {
+        DeathController::Dependencies controllerDeps{};
+        controllerDeps.time = &g_timeProvider;
+        controllerDeps.random = &g_randomSource;
+        controllerDeps.log = infra::getLogSink();
+        controllerDeps.audioPlanner = audioPlannerAdapter;
+        controllerDeps.fortuneService = fortuneServiceAdapter;
+        controllerDeps.printerStatus = printerStatusAdapter;
+        controllerDeps.manualCalibDriver = manualCalibrationAdapter;
+        deathController = new DeathController(controllerDeps);
+
+        DeathController::ConfigSnapshot snapshot;
+        snapshot.fingerStableMs = fingerStableMs;
+        snapshot.fingerWaitMs = fingerWaitMs;
+        snapshot.snapDelayMinMs = snapDelayMinMs;
+        snapshot.snapDelayMaxMs = snapDelayMaxMs;
+        snapshot.cooldownMs = cooldownMs;
+        snapshot.welcomeDir = AUDIO_WELCOME_DIR;
+        snapshot.fingerPromptDir = AUDIO_FINGER_PROMPT_DIR;
+        snapshot.fingerSnapDir = AUDIO_FINGER_SNAP_DIR;
+        snapshot.noFingerDir = AUDIO_NO_FINGER_DIR;
+        snapshot.fortunePreambleDir = AUDIO_FORTUNE_PREAMBLE_DIR;
+        if (!fortuneCandidates.empty()) {
+            snapshot.fortuneFlowDir = fortuneCandidates.front();
+        } else {
+            snapshot.fortuneFlowDir = fortunesJsonPath.c_str();
+        }
+        snapshot.fortuneCandidates = fortuneCandidates;
+        snapshot.fortuneDoneDir = AUDIO_FORTUNE_TOLD_DIR;
+        deathController->initialize(snapshot);
+        deathController->clearActions();
     }
 
     const int servoMinDegrees = 0;
@@ -907,48 +884,26 @@ void setup() {
         LOG_WARN(AUDIO_TAG, "⚠️ Initialization audio missing: %s", initializationAudioPath.c_str());
     }
 
-    enterState(DeathState::IDLE, "Boot initialization", true);
     LOG_INFO(TAG, "🎉 Death initialized successfully");
 }
 
 void loop() {
     unsigned long currentTime = millis();
-    
+    bool controllerActive = (deathController != nullptr);
+
     // Update audio player (fills buffer, handles playback events)
     if (audioPlayer) {
         audioPlayer->update();
     }
 
-    if (fortunePrintPending && fortunePrintStartRequested && audioPlayer) {
-        unsigned long now = millis();
-        if (audioPlayer->isAudioPlaying()) {
-            String currentFile = audioPlayer->getCurrentlyPlayingFilePath();
-            if (currentFile.startsWith(AUDIO_FORTUNE_PREAMBLE_DIR)) {
-                unsigned long playbackMs = audioPlayer->getPlaybackTime();
-                unsigned long sinceRequest = now - fortunePrintStartRequestTime;
-                if (playbackMs >= FORTUNE_PRINT_MIN_AUDIO_PLAY_MS || sinceRequest >= FORTUNE_PRINT_MAX_WAIT_MS) {
-                    LOG_INFO(FLOW_TAG,
-                             "Starting fortune print (audio playing %lu ms, scheduled for %lu ms)",
-                             playbackMs,
-                             sinceRequest);
-                    startFortunePrinting();
-                }
-            } else if (now - fortunePrintStartRequestTime >= FORTUNE_PRINT_MAX_WAIT_MS) {
-                LOG_WARN(FLOW_TAG, "Fortune preamble no longer active; starting printer anyway");
-                startFortunePrinting();
-            }
-        }
-    }
-    
     // Update Bluetooth controller (processes media start, connection retry)
     if (bluetoothController) {
         bluetoothController->update();
     }
 
     if (fingerSensor) {
+        // NOTE(2025-11-05): Finger sensor currently reports no touch on hardware – likely physical wiring damage.
         fingerSensor->update();
-        unsigned long fingerEventTime = millis();
-        handleFingerSensorEvents(fingerEventTime);
     }
 
     if (thermalPrinter) {
@@ -978,14 +933,25 @@ void loop() {
         }
     }
     
-    // Check if it's time to move the jaw for breathing
-    updateManualCalibration(currentTime);
-    updateStateMachine(currentTime);
-    bool fingerStreaming = fingerSensor && fingerSensor->isStreamEnabled();
-    if (!fingerStreaming && audioPlayer && currentState == DeathState::IDLE &&
-        currentTime - lastJawMovementTime >= BREATHING_INTERVAL && !audioPlayer->isAudioPlaying()) {
-        breathingJawMovement();
-        lastJawMovementTime = currentTime;
+    // Check if it's time to move the jaw for breathing / update controller
+    if (controllerActive) {
+        DeathController::FingerReadout readout{};
+        if (fingerSensor) {
+            readout.detected = fingerSensor->isFingerDetected();
+            readout.stable = fingerSensor->hasStableTouch();
+            readout.normalizedDelta = fingerSensor->getNormalizedDelta();
+            readout.thresholdRatio = fingerSensor->getThresholdRatio();
+        }
+        deathController->update(currentTime, readout);
+        processControllerActions(deathController->pendingActions());
+        deathController->clearActions();
+        bool fingerStreaming = fingerSensor && fingerSensor->isStreamEnabled();
+        bool controllerIdle = deathController->state() == DeathController::State::Idle;
+        if (!fingerStreaming && audioPlayer && controllerIdle &&
+            currentTime - lastJawMovementTime >= BREATHING_INTERVAL && !audioPlayer->isAudioPlaying()) {
+            breathingJawMovement();
+            lastJawMovementTime = currentTime;
+        }
     }
     
     // Handle serial commands
@@ -1004,183 +970,24 @@ void loop() {
 
 void handleUARTCommand(UARTCommand cmd) {
     LOG_INFO(STATE_TAG, "Handling UART command: %s", UARTController::commandToString(cmd));
-    unsigned long currentTime = millis();
-    if (isTriggerCommand(cmd)) {
-        if (currentTime - lastTriggerTime < TRIGGER_DEBOUNCE_MS) {
-            LOG_WARN(STATE_TAG, "Trigger command debounced");
-            return;
-        }
-
-        if (cmd == UARTCommand::FAR_MOTION_TRIGGER) {
-            if (isBusy()) {
-                LOG_WARN(STATE_TAG, "Ignoring FAR trigger while busy (state=%s)", deathStateToString(currentState));
-                return;
-            }
-            enterState(DeathState::PLAY_WELCOME, "FAR trigger");
-            lastTriggerTime = currentTime;
-            return;
-        }
-
-        if (cmd == UARTCommand::NEAR_MOTION_TRIGGER) {
-            if (currentState != DeathState::WAIT_FOR_NEAR) {
-                LOG_WARN(STATE_TAG, "NEAR trigger dropped - current state %s (must be WAIT_FOR_NEAR)", deathStateToString(currentState));
-                return;
-            }
-            enterState(DeathState::PLAY_FINGER_PROMPT, "NEAR trigger");
-            lastTriggerTime = currentTime;
-            return;
-        }
-    }
-
-    if (isForcedStateCommand(cmd)) {
-        DeathState target = stateForCommand(cmd);
-        LOG_WARN(STATE_TAG, "State forcing command received: %s -> %s", UARTController::commandToString(cmd), deathStateToString(target));
-        enterState(target, "Forced via Matter command", true);
-        return;
-    }
 
     if (cmd == UARTCommand::LEGACY_PING || cmd == UARTCommand::LEGACY_SET_MODE) {
         LOG_WARN(STATE_TAG, "Legacy UART command ignored: %s", UARTController::commandToString(cmd));
         return;
     }
 
-    // Handle handshake commands (already processed in UART controller)
     if (cmd == UARTCommand::BOOT_HELLO || cmd == UARTCommand::FABRIC_HELLO) {
         LOG_INFO(STATE_TAG, "Handshake command processed: %s", UARTController::commandToString(cmd));
+    }
+
+    if (!deathController) {
+        LOG_WARN(STATE_TAG, "DeathController not initialized; command ignored");
         return;
     }
 
-    LOG_WARN(STATE_TAG, "Unhandled UART command: %s", UARTController::commandToString(cmd));
-}
-
-void resetFortuneFlowWork() {
-    activeFortune = "";
-    fortuneGenerationAttempted = false;
-    fortunePrintAttempted = false;
-    fortunePrintSuccess = false;
-    fortunePrintPending = false;
-    fortunePrintStartRequested = false;
-    fortunePrintStartRequestTime = 0;
-}
-
-bool ensureFortuneGeneratorLoaded() {
-    if (!fortuneGenerator) {
-        return false;
-    }
-
-    if (fortuneGeneratorLoaded) {
-        return true;
-    }
-
-    if (!g_sdCardMounted) {
-        if (!fortuneGeneratorLoadAttempted) {
-            LOG_WARN(FLOW_TAG, "Cannot load fortunes: SD card not mounted");
-        }
-        fortuneGeneratorLoadAttempted = true;
-        return false;
-    }
-
-    if (!sdCardManager) {
-        if (!fortuneGeneratorLoadAttempted) {
-            LOG_WARN(FLOW_TAG, "SD card manager unavailable; cannot load fortunes");
-        }
-        fortuneGeneratorLoadAttempted = true;
-        return false;
-    }
-
-    std::vector<String> candidates;
-    if (fortunesJsonPath.length() > 0) {
-        candidates.push_back(fortunesJsonPath);
-    }
-    candidates.push_back("/fortunes");
-    candidates.push_back("/fortunes/little_kid_fortunes.json");
-    candidates.push_back("/printer/fortunes_littlekid.json");
-
-    String selectedPath;
-
-    for (const auto &candidateRaw : candidates) {
-        String candidate = candidateRaw;
-        candidate.trim();
-        if (candidate.length() == 0) {
-            continue;
-        }
-
-        // Normalize path (remove trailing slash except root)
-        if (candidate.endsWith("/") && candidate.length() > 1) {
-            candidate = candidate.substring(0, candidate.length() - 1);
-        }
-
-        File entry = SD_MMC.open(candidate.c_str());
-        if (entry) {
-            if (entry.isDirectory()) {
-                std::vector<String> files;
-                File child = entry.openNextFile();
-                while (child) {
-                    if (!child.isDirectory()) {
-                        String name = child.name();
-                        if (!name.startsWith(".")) {
-                            String fullPath = name;
-                            if (!fullPath.startsWith("/")) {
-                                fullPath = candidate + "/" + fullPath;
-                            }
-                            if (fullPath.endsWith(".json") || fullPath.endsWith(".JSON")) {
-                                files.push_back(fullPath);
-                            }
-                        }
-                    }
-                    child.close();
-                    child = entry.openNextFile();
-                }
-                entry.close();
-
-                if (!files.empty()) {
-                    size_t index = files.size() == 1 ? 0 : static_cast<size_t>(random(files.size()));
-                    selectedPath = files[index];
-                    LOG_INFO(FLOW_TAG, "Fortune directory %s selected %s", candidate.c_str(), selectedPath.c_str());
-                    break;
-                } else {
-                    LOG_WARN(FLOW_TAG, "No fortune JSON files found in %s", candidate.c_str());
-                }
-            } else {
-                entry.close();
-                if (!candidate.endsWith(".json") && !candidate.endsWith(".JSON")) {
-                    LOG_WARN(FLOW_TAG, "Configured fortune file is not JSON: %s", candidate.c_str());
-                }
-                selectedPath = candidate;
-                break;
-            }
-        } else {
-            // Attempt alternate location if config path is stale
-            if (candidate.endsWith(".json") || candidate.endsWith(".JSON")) {
-                int slashIndex = candidate.lastIndexOf('/');
-                String basename = (slashIndex >= 0) ? candidate.substring(slashIndex + 1) : candidate;
-                String altPath = "/fortunes/" + basename;
-                if (sdCardManager->fileExists(altPath.c_str())) {
-                    LOG_INFO(FLOW_TAG, "Fortune file %s missing; using %s instead", candidate.c_str(), altPath.c_str());
-                    selectedPath = altPath;
-                    break;
-                }
-            }
-        }
-    }
-
-    if (selectedPath.length() == 0) {
-        if (!fortuneGeneratorLoadAttempted) {
-            LOG_WARN(FLOW_TAG, "No fortune JSON file found; falling back to default fortune");
-        }
-        fortuneGeneratorLoadAttempted = true;
-        return false;
-    }
-
-    fortuneGeneratorLoadAttempted = true;
-    fortuneGeneratorLoaded = fortuneGenerator->loadFortunes(selectedPath);
-    if (fortuneGeneratorLoaded) {
-        fortuneSourceFile = selectedPath;
-        LOG_INFO(FLOW_TAG, "Fortune templates loaded from %s", selectedPath.c_str());
-    } else {
-        LOG_ERROR(FLOW_TAG, "Failed to load fortune templates from %s", selectedPath.c_str());
-    }
-    return fortuneGeneratorLoaded;
+    deathController->handleUartCommand(cmd);
+    processControllerActions(deathController->pendingActions());
+    deathController->clearActions();
 }
 
 void printFortuneToSerial(const String &fortune) {
@@ -1202,352 +1009,6 @@ void printFortuneToSerial(const String &fortune) {
 
     Serial.println(F("================"));
     Serial.println();
-}
-
-void generateFortuneIfNeeded() {
-    if (fortuneGenerationAttempted) {
-        return;
-    }
-
-    fortuneGenerationAttempted = true;
-
-    if (!fortuneGenerator) {
-        activeFortune = "The spirits are silent...";
-        LOG_WARN(FLOW_TAG, "Fortune generator unavailable; using fallback fortune");
-    } else {
-        ensureFortuneGeneratorLoaded();
-        activeFortune = fortuneGenerator->generateFortune();
-        if (activeFortune.length() == 0) {
-            activeFortune = "The spirits are silent...";
-        }
-    }
-
-    LOG_INFO(FLOW_TAG, "Generated fortune: %s", activeFortune.c_str());
-    printFortuneToSerial(activeFortune);
-
-    fortunePrintAttempted = false;
-    fortunePrintSuccess = false;
-}
-
-bool startFortunePrinting() {
-    fortunePrintPending = false;
-    fortunePrintStartRequested = false;
-
-    if (fortunePrintAttempted) {
-        return fortunePrintSuccess;
-    }
-
-    fortunePrintAttempted = true;
-
-    if (!thermalPrinter) {
-        fortunePrintSuccess = false;
-        LOG_WARN(FLOW_TAG, "Thermal printer unavailable; fortune will not be printed");
-        return false;
-    }
-
-    if (!thermalPrinter->isReady()) {
-        fortunePrintSuccess = false;
-        LOG_WARN(FLOW_TAG, "Thermal printer not ready; skipping fortune print");
-        return false;
-    }
-
-    fortunePrintSuccess = thermalPrinter->queueFortunePrint(activeFortune);
-    if (fortunePrintSuccess) {
-        LOG_INFO(FLOW_TAG, "Thermal printer queued fortune print job");
-    } else {
-        LOG_ERROR(FLOW_TAG, "Thermal printer failed to queue fortune job");
-    }
-    return fortunePrintSuccess;
-}
-
-void generateAndPrintFortune() {
-    generateFortuneIfNeeded();
-    startFortunePrinting();
-}
-
-void enterState(DeathState newState, const char *reason, bool forced) {
-    DeathState previous = currentState;
-    const char *reasonText = (reason && reason[0]) ? reason : "no reason provided";
-
-    if (previous == newState && !forced) {
-        LOG_INFO(STATE_TAG, "State %s already active; ignoring transition request (%s)", deathStateToString(newState), reasonText);
-        return;
-    }
-
-    LOG_INFO(STATE_TAG, "Transition %s -> %s%s (%s)",
-             deathStateToString(previous),
-             deathStateToString(newState),
-             forced ? " [forced]" : "",
-             reasonText);
-
-    currentState = newState;
-    stateStartTime = millis();
-
-    snapDelayScheduled = false;
-    snapDelayMs = 0;
-    snapDelayStart = 0;
-
-    if (skullAudioAnimator) {
-        skullAudioAnimator->setJawHoldOverride(false);
-    }
-
-    const int servoClosed = getServoClosedPosition();
-    const int servoOpen = getServoOpenPosition();
-
-    switch (newState) {
-        case DeathState::IDLE:
-            resetFortuneFlowWork();
-            mouthOpen = false;
-            servoController.setPosition(servoClosed);
-            if (!lightController.isEyePatternActive()) {
-                lightController.setEyeBrightness(LightController::BRIGHTNESS_DIM);
-            }
-            lightController.setMouthOff();
-            mouthPulseActive = false;
-            fingerWaitStart = 0;
-            cooldownStart = 0;
-            break;
-
-        case DeathState::PLAY_WELCOME:
-            resetFortuneFlowWork();
-            mouthOpen = false;
-            if (!queueRandomClipFromDir(AUDIO_WELCOME_DIR, "welcome skit")) {
-                enterState(DeathState::WAIT_FOR_NEAR, "Welcome audio missing; advancing", forced);
-                return;
-            }
-            if (!lightController.isEyePatternActive()) {
-                lightController.setEyeBrightness(LightController::BRIGHTNESS_MAX);
-            }
-            lightController.setMouthOff();
-            mouthPulseActive = false;
-            break;
-
-        case DeathState::WAIT_FOR_NEAR:
-            mouthOpen = false;
-            if (!lightController.isEyePatternActive()) {
-                lightController.setEyeBrightness(LightController::BRIGHTNESS_DIM);
-            }
-            lightController.setMouthOff();
-            mouthPulseActive = false;
-            break;
-
-        case DeathState::PLAY_FINGER_PROMPT:
-            if (!queueRandomClipFromDir(AUDIO_FINGER_PROMPT_DIR, "finger prompt")) {
-                enterState(DeathState::MOUTH_OPEN_WAIT_FINGER, "Finger prompt audio missing; advancing", forced);
-                return;
-            }
-            if (!lightController.isEyePatternActive()) {
-                lightController.setEyeBrightness(LightController::BRIGHTNESS_MAX);
-            }
-            lightController.setMouthBright();
-            mouthPulseActive = false;
-            break;
-
-        case DeathState::MOUTH_OPEN_WAIT_FINGER:
-            servoController.setPosition(servoOpen);
-            mouthOpen = true;
-            if (fingerWaitMs < 1000) {
-                LOG_WARN(FLOW_TAG, "finger_wait_ms=%lu too low; defaulting to 6000 ms", fingerWaitMs);
-                fingerWaitMs = 6000;
-            }
-            fingerWaitStart = millis();
-            lightController.setMouthBright();
-            mouthPulseActive = false;
-            if (!lightController.isEyePatternActive()) {
-                lightController.setEyeBrightness(LightController::BRIGHTNESS_MAX);
-            }
-            if (skullAudioAnimator) {
-                skullAudioAnimator->setJawHoldOverride(true, servoOpen);
-            }
-            LOG_INFO(FLOW_TAG, "Jaw opened to %d deg (finger wait)", servoOpen);
-            LOG_INFO(FLOW_TAG, "Finger wait window configured for %lu ms (start=%lu)", fingerWaitMs, fingerWaitStart);
-            break;
-
-        case DeathState::FINGER_DETECTED:
-            mouthOpen = true;
-            snapDelayMs = snapDelayMinMs == snapDelayMaxMs ? snapDelayMinMs
-                                                           : static_cast<int>(random(snapDelayMinMs, snapDelayMaxMs + 1));
-            snapDelayStart = millis();
-            snapDelayScheduled = true;
-            LOG_INFO(FLOW_TAG, "Finger detected; snap delay %d ms", snapDelayMs);
-            if (skullAudioAnimator) {
-                skullAudioAnimator->setJawHoldOverride(true, servoOpen);
-            }
-            LOG_INFO(FLOW_TAG, "Jaw hold maintained at %d deg during snap delay", servoOpen);
-            break;
-
-        case DeathState::SNAP_WITH_FINGER:
-            servoController.setPosition(servoClosed);
-            mouthOpen = false;
-            lightController.setMouthOff();
-            mouthPulseActive = false;
-            LOG_INFO(FLOW_TAG, "Jaw returned to %d deg (snap with finger)", servoClosed);
-            if (!queueRandomClipFromDir(AUDIO_FINGER_SNAP_DIR, "snap with finger")) {
-                enterState(DeathState::FORTUNE_FLOW, "Snap-with-finger audio missing; skipping", forced);
-                return;
-            }
-            break;
-
-        case DeathState::SNAP_NO_FINGER:
-            servoController.setPosition(servoClosed);
-            mouthOpen = false;
-            lightController.setMouthOff();
-            mouthPulseActive = false;
-            LOG_INFO(FLOW_TAG, "Jaw returned to %d deg (snap without finger)", servoClosed);
-            if (!queueRandomClipFromDir(AUDIO_NO_FINGER_DIR, "no-finger response")) {
-                enterState(DeathState::FORTUNE_FLOW, "Snap-no-finger audio missing; skipping", forced);
-                return;
-            }
-            break;
-
-        case DeathState::FORTUNE_FLOW: {
-            servoController.setPosition(servoOpen);
-            mouthOpen = true;
-            if (!lightController.isEyePatternActive()) {
-                lightController.setEyeBrightness(LightController::BRIGHTNESS_MAX);
-            }
-            lightController.setMouthOff();
-            mouthPulseActive = false;
-            bool fortunePreambleQueued = queueRandomClipFromDir(AUDIO_FORTUNE_PREAMBLE_DIR, "fortune preamble");
-            generateFortuneIfNeeded();
-            if (fortunePreambleQueued) {
-                fortunePrintPending = true;
-                fortunePrintStartRequested = false;
-                fortunePrintStartRequestTime = 0;
-            } else {
-                startFortunePrinting();
-            }
-            if (!fortunePreambleQueued) {
-                enterState(DeathState::FORTUNE_DONE, "Fortune audio missing; advancing", forced);
-                return;
-            }
-            break;
-        }
-
-        case DeathState::FORTUNE_DONE:
-            mouthOpen = false;
-            servoController.setPosition(servoClosed);
-            lightController.setMouthOff();
-            mouthPulseActive = false;
-            LOG_INFO(FLOW_TAG, "Jaw returned to %d deg (fortune done)", servoClosed);
-            if (!queueRandomClipFromDir(AUDIO_GOODBYE_DIR, "goodbye skit")) {
-                enterState(DeathState::COOLDOWN, "Fortune done audio missing; advancing", forced);
-                return;
-            }
-            break;
-
-        case DeathState::COOLDOWN:
-            mouthOpen = false;
-            servoController.setPosition(servoClosed);
-            if (!lightController.isEyePatternActive()) {
-                lightController.setEyeBrightness(LightController::BRIGHTNESS_DIM);
-            }
-            lightController.setMouthOff();
-            mouthPulseActive = false;
-            cooldownStart = stateStartTime;
-            if (fortunePrintAttempted) {
-                LOG_INFO(FLOW_TAG, "Fortune cycle summary — printed=%s text=\"%s\"",
-                         fortunePrintSuccess ? "true" : "false",
-                         activeFortune.c_str());
-            }
-            break;
-    }
-}
-
-void updateStateMachine(unsigned long currentTime) {
-    switch (currentState) {
-        case DeathState::MOUTH_OPEN_WAIT_FINGER: {
-            if (!mouthPulseActive && currentTime - stateStartTime >= 250) {
-                lightController.setMouthPulse();
-                mouthPulseActive = true;
-            }
-
-            if (fingerSensor && fingerSensor->hasStableTouch()) {
-                enterState(DeathState::FINGER_DETECTED, "Finger stabilized");
-                return;
-            }
-
-            if (fingerWaitStart > 0) {
-                unsigned long now = millis();
-                unsigned long elapsed = now - fingerWaitStart;
-                if (elapsed >= fingerWaitMs) {
-                    LOG_INFO(FLOW_TAG, "Finger wait timeout after %lu ms (configured %lu)",
-                             elapsed, fingerWaitMs);
-                    enterState(DeathState::SNAP_NO_FINGER, "Finger wait timeout");
-                    return;
-                }
-            }
-            break;
-        }
-
-        case DeathState::FINGER_DETECTED: {
-            if (!snapDelayScheduled) {
-                snapDelayMs = snapDelayMinMs == snapDelayMaxMs ? snapDelayMinMs
-                                                               : static_cast<int>(random(snapDelayMinMs, snapDelayMaxMs + 1));
-                snapDelayStart = millis();
-                snapDelayScheduled = true;
-                LOG_INFO(FLOW_TAG, "Snap delay scheduled (late): %d ms", snapDelayMs);
-            }
-
-            if (snapDelayScheduled && snapDelayMs > 0) {
-                unsigned long now = millis();
-                if (now - snapDelayStart >= static_cast<unsigned long>(snapDelayMs)) {
-                    enterState(DeathState::SNAP_WITH_FINGER, "Snap delay elapsed");
-                    return;
-                }
-            }
-
-            if (fingerSensor && !fingerSensor->isFingerDetected()) {
-                static unsigned long lastFingerRemovedWarning = 0;
-                const unsigned long FINGER_REMOVED_WARNING_INTERVAL = 1000; // Only warn once per second
-                unsigned long now = millis();
-                if (now - lastFingerRemovedWarning >= FINGER_REMOVED_WARNING_INTERVAL) {
-                    LOG_WARN(FLOW_TAG, "Finger removed after detection; continuing countdown");
-                    lastFingerRemovedWarning = now;
-                }
-            }
-            break;
-        }
-
-        case DeathState::COOLDOWN:
-            if (currentTime - stateStartTime >= cooldownMs) {
-                enterState(DeathState::IDLE, "Cooldown elapsed");
-            }
-            break;
-
-        default:
-            break;
-    }
-}
-
-void handleAudioPlaybackFinished(const String &filePath) {
-    (void)filePath;
-
-    switch (currentState) {
-        case DeathState::PLAY_WELCOME:
-            enterState(DeathState::WAIT_FOR_NEAR, "Welcome audio finished");
-            break;
-
-        case DeathState::PLAY_FINGER_PROMPT:
-            enterState(DeathState::MOUTH_OPEN_WAIT_FINGER, "Finger prompt finished");
-            break;
-
-        case DeathState::SNAP_WITH_FINGER:
-        case DeathState::SNAP_NO_FINGER:
-            enterState(DeathState::FORTUNE_FLOW, "Snap sequence finished");
-            break;
-
-        case DeathState::FORTUNE_FLOW:
-            enterState(DeathState::FORTUNE_DONE, "Fortune flow audio finished");
-            break;
-
-        case DeathState::FORTUNE_DONE:
-            enterState(DeathState::COOLDOWN, "Fortune done sequence complete");
-            break;
-
-        default:
-            break;
-    }
 }
 
 void playRandomSkit() {

@@ -1,5 +1,19 @@
 # Changelog
 
+## [2025-11-05] - Death controller extraction and fortune flow refactor
+
+### Added
+- Host-side `DeathController` unit suite covering FAR/NEAR triggers, printer readiness, finger timeouts, manual calibration, and fortune flow regressions (`tests/unit/test_death_controller/test_main.cpp`).
+- Arduino time and random adapters plus fortune/audio/printer/manual calibration adapters that bridge hardware modules into the controller seams.
+
+### Changed
+- Replaced the legacy `DeathState` logic in `src/main.cpp` with thin wiring that delegates to `DeathController`, removing hundreds of lines of manual state handling.
+- PlatformIO build filter updated to include the new controller implementation.
+- Story 011a updated with completed task checklist, detailed work log, and hardware validation notes.
+
+### Fixed
+- Fortune printing now persists even when the fortune preamble audio is missing, ensuring the controller still queues the generated fortune for the thermal printer.
+
 ## [2025-11-05] - Logging seam rollout & controller planning
 
 ### Added
