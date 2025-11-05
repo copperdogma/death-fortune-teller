@@ -5,11 +5,21 @@
 #include <FS.h>
 #include <map>
 
+namespace infra {
+class IFileSystem;
+class ILogSink;
+enum class LogLevel : unsigned char;
+void setLogSink(ILogSink *sink);
+ILogSink *getLogSink();
+}
+
 class ConfigManager {
 public:
     static ConfigManager& getInstance();
-    
+
     bool loadConfig();
+    void setFileSystem(infra::IFileSystem *fileSystem);
+    void setLogSink(infra::ILogSink *sink);
     String getBluetoothSpeakerName() const;
     String getRole() const;
     String getValue(const String& key, const String& defaultValue = "") const;
@@ -58,13 +68,17 @@ public:
     unsigned long getMouthLedPulsePeriodMs() const;
 
 private:
-    ConfigManager() {}
+    ConfigManager();
     std::map<String, String> m_config;
     int speakerVolume;
     int m_servoMinDegrees;
     int m_servoMaxDegrees;
 
     void parseConfigLine(const String& line);
+    void log(infra::LogLevel level, const char *fmt, ...) const;
+
+    infra::IFileSystem *m_fileSystem;
+    infra::ILogSink *m_logSink;
 };
 
 #endif // CONFIG_MANAGER_H

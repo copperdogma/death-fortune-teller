@@ -1,0 +1,7 @@
+{
+  "version": 1,
+  "templates": ["Hello {{name}}!"],
+  "wordlists": {
+    "name": ["World"]
+  }
+}

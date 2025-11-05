@@ -19,6 +19,7 @@
 #include "ota_manager.h"
 #include "remote_debug_manager.h"
 #include "logging_manager.h"
+#include "infra/log_sink.h"
 #include "skit_selector.h"
 #include "audio_directory_selector.h"
 #include <WiFi.h>
@@ -561,6 +562,15 @@ void setup() {
     delay(500); // Allow serial to stabilize
 
     LoggingManager::instance().begin(&Serial);
+
+    class LoggingManagerSink : public infra::ILogSink {
+    public:
+        void log(infra::LogLevel level, const char *tag, const char *message) override {
+            LoggingManager::instance().log(static_cast<LogLevel>(level), tag ? tag : TAG, "%s", message ? message : "");
+        }
+    };
+    static LoggingManagerSink loggingSink;
+    infra::setLogSink(&loggingSink);
     LOG_INFO(TAG, "💀 Death starting…");
 
     remoteDebugManager = new RemoteDebugManager();

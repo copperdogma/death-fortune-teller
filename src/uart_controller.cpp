@@ -1,5 +1,5 @@
 #include "uart_controller.h"
-#include "logging_manager.h"
+#include "infra/log_sink.h"
 #include <cstring>
 
 static constexpr const char* TAG = "UART";
@@ -18,7 +18,8 @@ UARTController::UARTController(int rxPin, int txPin)
 void UARTController::begin() {
     Serial1.begin(UART_BAUD, SERIAL_8N1, rxPin, txPin);
     Serial1.setRxBufferSize(RX_BUFFER_SIZE);
-    LOG_INFO(TAG, "UART controller initialized (rx=%d tx=%d baud=%d)", rxPin, txPin, UART_BAUD);
+    infra::emitLog(infra::LogLevel::Info, TAG, "UART controller initialized (rx=%d tx=%d baud=%d)",
+                   rxPin, txPin, UART_BAUD);
 }
 
 void UARTController::update() {
@@ -62,7 +63,9 @@ void UARTController::update() {
             for (size_t i = 0; i < sampleLen; ++i) {
                 snprintf(sample + (i * 3), sizeof(sample) - (i * 3), "%02X ", buffer[i]);
             }
-            LOG_WARN(TAG, "UART bytes read=%u but no valid command parsed (sample: %s)", static_cast<unsigned>(length), sample);
+            infra::emitLog(infra::LogLevel::Warn, TAG,
+                           "UART bytes read=%u but no valid command parsed (sample: %s)",
+                           static_cast<unsigned>(length), sample);
         }
     }
     
@@ -82,7 +85,8 @@ void UARTController::clearLastCommand() {
 
 bool UARTController::parseFrame(uint8_t* buffer, size_t length) {
     if (length < 4) {
-        LOG_WARN(TAG, "UART frame too short (len=%u)", static_cast<unsigned>(length));
+        infra::emitLog(infra::LogLevel::Warn, TAG, "UART frame too short (len=%u)",
+                       static_cast<unsigned>(length));
         return false;
     }
     
@@ -102,9 +106,11 @@ bool UARTController::parseFrame(uint8_t* buffer, size_t length) {
                 if (calculatedCRC == crc) {
                     UARTCommand decodedCommand = commandFromByte(cmd);
                     if (decodedCommand == UARTCommand::NONE) {
-                        LOG_WARN(TAG, "UART command unknown: 0x%02X", cmd);
+                        infra::emitLog(infra::LogLevel::Warn, TAG, "UART command unknown: 0x%02X", cmd);
                     } else {
-                        LOG_INFO(TAG, "UART command received: %s (0x%02X)", commandToString(decodedCommand), cmd);
+                        infra::emitLog(infra::LogLevel::Info, TAG,
+                                       "UART command received: %s (0x%02X)",
+                                       commandToString(decodedCommand), cmd);
                         
                         // Handle handshake commands
                         if (decodedCommand == UARTCommand::BOOT_HELLO) {
@@ -118,15 +124,20 @@ bool UARTController::parseFrame(uint8_t* buffer, size_t length) {
                     lastCommand = decodedCommand;
                     return true;
                 } else {
-                    LOG_WARN(TAG, "UART CRC mismatch: received 0x%02X calculated 0x%02X", crc, calculatedCRC);
+                    infra::emitLog(infra::LogLevel::Warn, TAG,
+                                   "UART CRC mismatch: received 0x%02X calculated 0x%02X",
+                                   crc, calculatedCRC);
                 }
             } else {
-                LOG_WARN(TAG, "UART frame incomplete: len byte=%u but only %u bytes buffered", len, static_cast<unsigned>(length - i));
+                infra::emitLog(infra::LogLevel::Warn, TAG,
+                               "UART frame incomplete: len byte=%u but only %u bytes buffered",
+                               len, static_cast<unsigned>(length - i));
             }
         }
     }
     if (!startFound) {
-        LOG_WARN(TAG, "UART start byte not found in buffer (len=%u)", static_cast<unsigned>(length));
+        infra::emitLog(infra::LogLevel::Warn, TAG, "UART start byte not found in buffer (len=%u)",
+                       static_cast<unsigned>(length));
     }
     return false;
 }
@@ -196,13 +207,13 @@ const char* UARTController::commandToString(UARTCommand command) {
 void UARTController::sendBootAck() {
     sendResponse(RSP_BOOT_ACK);
     bootHandshakeComplete = true;
-    LOG_INFO(TAG, "Boot handshake acknowledged");
+    infra::emitLog(infra::LogLevel::Info, TAG, "Boot handshake acknowledged");
 }
 
 void UARTController::sendFabricAck() {
     sendResponse(RSP_FABRIC_ACK);
     fabricHandshakeComplete = true;
-    LOG_INFO(TAG, "Fabric handshake acknowledged");
+    infra::emitLog(infra::LogLevel::Info, TAG, "Fabric handshake acknowledged");
 }
 
 bool UARTController::isBootHandshakeComplete() const {
@@ -220,13 +231,13 @@ bool UARTController::parseTextCommand(const char* text, size_t length) {
     // Handle basic proximity commands
     if (strcmp(text, "NEAR") == 0) {
         lastCommand = UARTCommand::NEAR_MOTION_TRIGGER;
-        LOG_INFO(TAG, "Text command: NEAR");
+        infra::emitLog(infra::LogLevel::Info, TAG, "Text command: NEAR");
         return true;
     }
     
     if (strcmp(text, "FAR") == 0) {
         lastCommand = UARTCommand::FAR_MOTION_TRIGGER;
-        LOG_INFO(TAG, "Text command: FAR");
+        infra::emitLog(infra::LogLevel::Info, TAG, "Text command: FAR");
         return true;
     }
     
@@ -261,11 +272,12 @@ bool UARTController::parseTextCommand(const char* text, size_t length) {
         } else if (strcmp(stateName, "COOLDOWN") == 0) {
             lastCommand = UARTCommand::COOLDOWN;
         } else {
-            LOG_WARN(TAG, "Unknown state command: [%s]", stateName);
+            infra::emitLog(infra::LogLevel::Warn, TAG, "Unknown state command: [%s]", stateName);
             return false;
         }
         
-        LOG_INFO(TAG, "Text command: [%s] -> %s", stateName, commandToString(lastCommand));
+        infra::emitLog(infra::LogLevel::Info, TAG, "Text command: [%s] -> %s",
+                       stateName, commandToString(lastCommand));
         return true;
     }
     
@@ -281,5 +293,5 @@ void UARTController::sendResponse(uint8_t responseCmd) {
     frame[3] = calculateCRC8(&frame[1], 2); // CRC for length + command
     
     Serial1.write(frame, 4);
-    LOG_INFO(TAG, "Sent response: 0x%02X", responseCmd);
+    infra::emitLog(infra::LogLevel::Info, TAG, "Sent response: 0x%02X", responseCmd);
 }

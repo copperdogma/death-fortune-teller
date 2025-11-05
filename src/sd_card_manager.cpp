@@ -1,5 +1,5 @@
 #include "sd_card_manager.h"
-#include "logging_manager.h"
+#include "infra/log_sink.h"
 #include "SD_MMC.h"
 #include "sdmmc_cmd.h"
 #include <Arduino.h>
@@ -24,14 +24,15 @@ bool SDCardManager::begin() {
 
     // Use 1-bit mode (second arg = true) with a reduced clock to maximize compatibility.
     if (!SD_MMC.begin(SD_MOUNT_POINT, true, false, SD_MOUNT_FREQUENCY)) {
-        LOG_ERROR(TAG, "SD_MMC mount failed (1-bit mode, %lu Hz). Check card seating and slot.",
-                  static_cast<unsigned long>(SD_MOUNT_FREQUENCY));
+        infra::emitLog(infra::LogLevel::Error, TAG,
+                       "SD_MMC mount failed (1-bit mode, %lu Hz). Check card seating and slot.",
+                       static_cast<unsigned long>(SD_MOUNT_FREQUENCY));
         return false;
     }
 
     uint8_t cardType = SD_MMC.cardType();
     if (cardType == CARD_NONE) {
-        LOG_ERROR(TAG, "No SD card detected after mount.");
+        infra::emitLog(infra::LogLevel::Error, TAG, "No SD card detected after mount.");
         return false;
     }
 
@@ -51,10 +52,11 @@ bool SDCardManager::begin() {
     }
 
     uint64_t cardSizeMb = SD_MMC.cardSize() / (1024ULL * 1024ULL);
-    LOG_INFO(TAG, "Mounted successfully (%s, %llu MB card size, %lu Hz bus)",
-             cardTypeStr,
-             static_cast<unsigned long long>(cardSizeMb),
-             static_cast<unsigned long>(SD_MOUNT_FREQUENCY));
+    infra::emitLog(infra::LogLevel::Info, TAG,
+                   "Mounted successfully (%s, %llu MB card size, %lu Hz bus)",
+                   cardTypeStr,
+                   static_cast<unsigned long long>(cardSizeMb),
+                   static_cast<unsigned long>(SD_MOUNT_FREQUENCY));
     return true;
 }
 
@@ -69,7 +71,7 @@ SDCardContent SDCardManager::loadContent() {
 bool SDCardManager::processSkitFiles(SDCardContent& content) {
     File root = SD_MMC.open("/audio");
     if (!root || !root.isDirectory()) {
-        LOG_ERROR(TAG, "Failed to open /audio directory");
+        infra::emitLog(infra::LogLevel::Error, TAG, "Failed to open /audio directory");
         return false;
     }
 
@@ -83,7 +85,7 @@ bool SDCardManager::processSkitFiles(SDCardContent& content) {
         file = root.openNextFile();
     }
 
-    LOG_INFO(TAG, "Processing %u skits", static_cast<unsigned>(skitFiles.size()));
+    infra::emitLog(infra::LogLevel::Info, TAG, "Processing %u skits", static_cast<unsigned>(skitFiles.size()));
     for (const auto& fileName : skitFiles) {
         String baseName = fileName.substring(0, fileName.lastIndexOf('.'));
         String txtFileName = baseName + ".txt";
@@ -93,9 +95,10 @@ bool SDCardManager::processSkitFiles(SDCardContent& content) {
         if (fileExists(fullTxtPath.c_str())) {
             ParsedSkit parsedSkit = parseSkitFile(fullWavPath, fullTxtPath);
             content.skits.push_back(parsedSkit);
-            LOG_INFO(TAG, "Processed skit '%s' (%u lines)", fileName.c_str(), static_cast<unsigned>(parsedSkit.lines.size()));
+            infra::emitLog(infra::LogLevel::Info, TAG, "Processed skit '%s' (%u lines)",
+                           fileName.c_str(), static_cast<unsigned>(parsedSkit.lines.size()));
         } else {
-            LOG_WARN(TAG, "Skit '%s' missing txt file", fileName.c_str());
+            infra::emitLog(infra::LogLevel::Warn, TAG, "Skit '%s' missing txt file", fileName.c_str());
         }
         content.audioFiles.push_back(fullWavPath);
     }
@@ -111,7 +114,7 @@ ParsedSkit SDCardManager::parseSkitFile(const String& wavFile, const String& txt
 
     File file = openFile(txtFile.c_str());
     if (!file) {
-        LOG_ERROR(TAG, "Failed to open skit file: %s", txtFile.c_str());
+        infra::emitLog(infra::LogLevel::Error, TAG, "Failed to open skit file: %s", txtFile.c_str());
         return parsedSkit;
     }
 

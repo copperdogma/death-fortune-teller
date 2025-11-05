@@ -2,6 +2,7 @@
 #include "ota_manager.h"
 #include "bluetooth_controller.h"
 #include "esp_system.h"
+#include "infra/log_sink.h"
 
 extern BluetoothController *bluetoothController;
 
@@ -18,7 +19,7 @@ bool RemoteDebugManager::begin(int port) {
     m_port = port;
 
     if (WiFi.status() != WL_CONNECTED) {
-        LOG_WARN(TAG, "Cannot start telnet server (WiFi disconnected)");
+        infra::emitLog(infra::LogLevel::Warn, TAG, "Cannot start telnet server (WiFi disconnected)");
         return false;
     }
 
@@ -30,8 +31,9 @@ bool RemoteDebugManager::begin(int port) {
     m_enabled = true;
     m_lastBroadcastSequence = LoggingManager::instance().latestSequence();
 
-    LOG_INFO(TAG, "Telnet server started on %d (connect with: telnet %s %d)",
-             m_port, WiFi.localIP().toString().c_str(), m_port);
+    infra::emitLog(infra::LogLevel::Info, TAG,
+                   "Telnet server started on %d (connect with: telnet %s %d)",
+                   m_port, WiFi.localIP().toString().c_str(), m_port);
 
     return true;
 }
@@ -99,9 +101,10 @@ void RemoteDebugManager::handleClient() {
     if (!m_client || !m_client.connected()) {
         WiFiClient pending = m_server->available();
         if (pending) {
-            LOG_DEBUG(TAG, "Telnet pending from %s (connected=%d, available=%d)",
-                     pending.remoteIP().toString().c_str(),
-                     pending.connected(), pending.available());
+            infra::emitLog(infra::LogLevel::Debug, TAG,
+                           "Telnet pending from %s (connected=%d, available=%d)",
+                           pending.remoteIP().toString().c_str(),
+                           pending.connected(), pending.available());
         }
 
         if (m_client) {
@@ -113,7 +116,8 @@ void RemoteDebugManager::handleClient() {
 
         m_client = pending;
         if (m_client) {
-            LOG_INFO(TAG, "Telnet client connected from %s", m_client.remoteIP().toString().c_str());
+            infra::emitLog(infra::LogLevel::Info, TAG, "Telnet client connected from %s",
+                           m_client.remoteIP().toString().c_str());
             m_lastBroadcastSequence = LoggingManager::instance().latestSequence();
 
             if (m_connectionCallback) {

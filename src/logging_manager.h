@@ -5,6 +5,7 @@
 #include <functional>
 #include <vector>
 #include <esp_log.h>
+#include "infra/log_sink.h"
 
 class ESPLogger;
 
@@ -72,10 +73,10 @@ private:
     portMUX_TYPE m_bufferMutex;
 };
 
-#define LOG_VERBOSE(tag, fmt, ...) do { LoggingManager::instance().log(LogLevel::Verbose, tag, fmt, ##__VA_ARGS__); } while (0)
-#define LOG_DEBUG(tag, fmt, ...)   do { LoggingManager::instance().log(LogLevel::Debug, tag, fmt, ##__VA_ARGS__); } while (0)
-#define LOG_INFO(tag, fmt, ...)    do { LoggingManager::instance().log(LogLevel::Info, tag, fmt, ##__VA_ARGS__); } while (0)
-#define LOG_WARN(tag, fmt, ...)    do { LoggingManager::instance().log(LogLevel::Warn, tag, fmt, ##__VA_ARGS__); } while (0)
-#define LOG_ERROR(tag, fmt, ...)   do { LoggingManager::instance().log(LogLevel::Error, tag, fmt, ##__VA_ARGS__); } while (0)
+#define LOG_VERBOSE(tag, fmt, ...) do { infra::emitLog(infra::LogLevel::Verbose, tag, fmt, ##__VA_ARGS__); } while (0)
+#define LOG_DEBUG(tag, fmt, ...)   do { infra::emitLog(infra::LogLevel::Debug, tag, fmt, ##__VA_ARGS__); } while (0)
+#define LOG_INFO(tag, fmt, ...)    do { infra::emitLog(infra::LogLevel::Info, tag, fmt, ##__VA_ARGS__); } while (0)
+#define LOG_WARN(tag, fmt, ...)    do { infra::emitLog(infra::LogLevel::Warn, tag, fmt, ##__VA_ARGS__); } while (0)
+#define LOG_ERROR(tag, fmt, ...)   do { infra::emitLog(infra::LogLevel::Error, tag, fmt, ##__VA_ARGS__); } while (0)
 
 #endif // LOGGING_MANAGER_H

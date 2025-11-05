@@ -1,5 +1,20 @@
 # Changelog
 
+## [2025-11-05] - Logging seam rollout & controller planning
+
+### Added
+- Fake log sink helper and fixture loader updates to assert firmware warnings in host tests (`tests/support/fake_log_sink.h`, `tests/unit/test_config_manager/test_main.cpp`).
+- Story 011a outlining the upcoming Death state controller extraction (`docs/stories/story-011a-death-state-controller.md`).
+
+### Changed
+- Unified logging across ConfigManager, RemoteDebugManager, SDCardManager, UARTController, and fortune flow to use the shared `infra::emitLog` seam with a LoggingManager fallback.
+- Updated `logging_manager.h` macros to delegate to the seam so future modules inherit the behavior automatically.
+- Registered the log sink from `main.cpp` during setup, ensuring runtime logs still reach the serial console while remaining testable.
+- Moved the Arduino vs ESP-IDF framework analysis into `docs/2026-plans/` for long-term planning.
+
+### Fixed
+- Host tests now verify ConfigManager warning emissions (e.g., invalid speaker volume) using the shared logging seam.
+
 ## [2025-01-30] - Replaced smoothMove with instant positioning in servo initialization
 
 ### Fixed

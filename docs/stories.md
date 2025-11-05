@@ -28,6 +28,8 @@ Death, the Fortune Telling Skeleton
 | 008      | ESP-IDF Framework Migration              | Maybe    | To Do  | /docs/stories/story-008-esp-idf-migration.md           |
 | 009      | Access WROVER SD Card From USB-C         | Medium   | Future | /docs/stories/story-009-usb-sd-card-access.md          |
 | 010      | Finger Prompt Jaw Hold                   | High     | Done   | /docs/stories/story-010-finger-prompt-jaw-hold.md      |
+| 011      | Testability Foundations & Unit Suite     | High     | To Do  | /docs/stories/story-011-testability-foundations.md     |
+| 011a     | Death State Controller Extraction        | High     | To Do  | /docs/stories/story-011a-death-state-controller.md     |
 | 2026-001 | Detailed Fortune Flow Implementation     | Medium   | Future | /docs/stories/story-2026-001-detailed-fortune-flow.md |
 
 ## Notes

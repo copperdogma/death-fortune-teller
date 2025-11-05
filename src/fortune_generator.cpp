@@ -1,47 +1,87 @@
 #include "fortune_generator.h"
+#include "infra/filesystem.h"
+#include "infra/random_source.h"
+#include <ArduinoJson.h>
+#include <cstdarg>
+#include <cstdio>
+#ifndef UNIT_TEST
+#include "infra/sd_mmc_filesystem.h"
+#include "infra/arduino_random_source.h"
 #include "logging_manager.h"
 #include "SD_MMC.h"
-#include <ArduinoJson.h>
+#endif
+#include "infra/log_sink.h"
 
 static constexpr const char* TAG = "FortuneGenerator";
 
-FortuneGenerator::FortuneGenerator() : loaded(false) {
+FortuneGenerator::FortuneGenerator()
+    : loaded(false),
+      m_fileSystem(nullptr),
+      m_randomSource(nullptr),
+      m_logSink(nullptr) {
+}
+
+void FortuneGenerator::setFileSystem(infra::IFileSystem *fileSystem) {
+    m_fileSystem = fileSystem;
+}
+
+void FortuneGenerator::setRandomSource(infra::IRandomSource *randomSource) {
+    m_randomSource = randomSource;
+}
+
+void FortuneGenerator::setLogSink(infra::ILogSink *sink) {
+    m_logSink = sink;
+    infra::setLogSink(sink);
 }
 
 bool FortuneGenerator::loadFortunes(const String& filePath) {
-    File file = SD_MMC.open(filePath, FILE_READ);
+    infra::IFileSystem *fs = resolveFileSystem();
+    resolveLogSink();
+    if (!fs) {
+        log(infra::LogLevel::Error, "No filesystem available for fortune loading");
+        return false;
+    }
+
+    auto file = fs->open(filePath.c_str(), FILE_READ);
     if (!file) {
-        LOG_ERROR(TAG, "Failed to open fortune file: %s", filePath.c_str());
+        log(infra::LogLevel::Error, "Failed to open fortune file: %s", filePath.c_str());
         return false;
     }
+
+    String jsonString = file->readString();
+    file->close();
     
-    String jsonString = file.readString();
-    file.close();
-    
+#if defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+#endif
     DynamicJsonDocument doc(2048);
-    DeserializationError error = deserializeJson(doc, jsonString);
-    
+#if defined(__GNUC__)
+#pragma GCC diagnostic pop
+#endif
+    DeserializationError error = deserializeJson(doc, jsonString.c_str());
+
     if (error) {
-        LOG_ERROR(TAG, "Failed to parse fortune JSON: %s", error.c_str());
+        log(infra::LogLevel::Error, "Failed to parse fortune JSON: %s", error.c_str());
         return false;
     }
-    
+
     // Parse version
-    if (!doc.containsKey("version")) {
-        LOG_ERROR(TAG, "Fortune file missing version");
+    if (!doc["version"].is<int>()) {
+        log(infra::LogLevel::Error, "Fortune file missing version");
         return false;
     }
-    
+
     // Parse templates
-    if (!doc.containsKey("templates") || !doc["templates"].is<JsonArray>()) {
-        LOG_ERROR(TAG, "Fortune file missing or invalid templates");
+    if (!doc["templates"].is<JsonArray>()) {
+        log(infra::LogLevel::Error, "Fortune file missing or invalid templates");
         return false;
     }
     parseTemplates(doc["templates"]);
-    
+
     // Parse wordlists
-    if (!doc.containsKey("wordlists") || !doc["wordlists"].is<JsonObject>()) {
-        LOG_ERROR(TAG, "Fortune file missing or invalid wordlists");
+    if (!doc["wordlists"].is<JsonObject>()) {
+        log(infra::LogLevel::Error, "Fortune file missing or invalid wordlists");
         return false;
     }
     parseWordlists(doc["wordlists"]);
@@ -49,28 +89,35 @@ bool FortuneGenerator::loadFortunes(const String& filePath) {
     // Validate all templates
     for (const auto& template_obj : templates) {
         if (!validateTemplate(template_obj)) {
-            LOG_ERROR(TAG, "Invalid template: %s", template_obj.template_text.c_str());
+            log(infra::LogLevel::Error, "Invalid template: %s", template_obj.template_text.c_str());
             return false;
         }
     }
 
     loaded = true;
-    LOG_INFO(TAG, "Loaded %d fortune templates", templates.size());
+    log(infra::LogLevel::Info, "Loaded %u fortune templates", static_cast<unsigned>(templates.size()));
     return true;
 }
 
 String FortuneGenerator::generateFortune() {
+    resolveLogSink();
     if (!loaded || templates.empty()) {
-        LOG_WARN(TAG, "generateFortune called before templates loaded");
+        log(infra::LogLevel::Warn, "generateFortune called before templates loaded");
         return "The spirits are silent...";
     }
-    
+
+    infra::IRandomSource *randomSource = resolveRandomSource();
+    if (!randomSource) {
+        log(infra::LogLevel::Error, "Random source unavailable; returning fallback fortune");
+        return "The spirits are silent...";
+    }
+
     // Select random template
-    int templateIndex = random(0, templates.size());
+    int templateIndex = randomSource->nextInt(0, static_cast<int>(templates.size()));
     const FortuneTemplate &fortuneTemplate = templates[templateIndex];
 
     if (fortuneTemplate.tokens.empty()) {
-        LOG_WARN(TAG, "Template has no tokens; returning literal text");
+        log(infra::LogLevel::Warn, "Template has no tokens; returning literal text");
         return fortuneTemplate.template_text;
     }
 
@@ -103,7 +150,7 @@ String FortuneGenerator::replaceTokens(const FortuneTemplate& fortuneTemplate, c
         result += templateText.substring(index, tokenStart);
         int tokenEnd = templateText.indexOf("}}", tokenStart + 2);
         if (tokenEnd == -1) {
-            LOG_WARN(TAG, "Unterminated token in template: %s", templateText.c_str());
+            log(infra::LogLevel::Warn, "Unterminated token in template: %s", templateText.c_str());
             result += templateText.substring(tokenStart);
             break;
         }
@@ -114,7 +161,7 @@ String FortuneGenerator::replaceTokens(const FortuneTemplate& fortuneTemplate, c
         if (it != replacements.end()) {
             result += it->second;
         } else {
-            LOG_WARN(TAG, "Missing replacement for token '%s'; leaving placeholder", token.c_str());
+            log(infra::LogLevel::Warn, "Missing replacement for token '%s'; leaving placeholder", token.c_str());
             result += "{{" + token + "}}";
         }
         index = tokenEnd + 2;
@@ -124,22 +171,28 @@ String FortuneGenerator::replaceTokens(const FortuneTemplate& fortuneTemplate, c
 }
 
 String FortuneGenerator::getRandomWord(const String& category) {
+    resolveLogSink();
     if (wordlists.find(category) != wordlists.end() && !wordlists[category].empty()) {
-        int index = random(0, wordlists[category].size());
+        infra::IRandomSource *randomSource = resolveRandomSource();
+        if (!randomSource) {
+            log(infra::LogLevel::Error, "Random source unavailable when fetching token '%s'", category.c_str());
+            return wordlists[category].front();
+        }
+        int index = randomSource->nextInt(0, static_cast<int>(wordlists[category].size()));
         return wordlists[category][index];
     }
-    LOG_WARN(TAG, "Wordlist missing or empty for token '%s'", category.c_str());
+    log(infra::LogLevel::Warn, "Wordlist missing or empty for token '%s'", category.c_str());
     return "mystery"; // Fallback word
 }
 
 bool FortuneGenerator::validateTemplate(const FortuneTemplate& fortuneTemplate) {
     if (fortuneTemplate.tokens.empty()) {
-        LOG_WARN(TAG, "Template has no tokens: %s", fortuneTemplate.template_text.c_str());
+        log(infra::LogLevel::Warn, "Template has no tokens: %s", fortuneTemplate.template_text.c_str());
     }
 
     for (const auto &token : fortuneTemplate.tokens) {
         if (wordlists.find(token) == wordlists.end() || wordlists[token].empty()) {
-            LOG_WARN(TAG, "Token '%s' has no wordlist or empty wordlist", token.c_str());
+            log(infra::LogLevel::Warn, "Token '%s' has no wordlist or empty wordlist", token.c_str());
             return false;
         }
     }
@@ -156,11 +209,14 @@ void FortuneGenerator::parseWordlists(JsonObject wordlistsObj) {
         
         std::vector<String> wordList;
         for (JsonVariant word : words) {
-            wordList.push_back(word.as<String>());
+            const char *value = word.as<const char*>();
+            if (value) {
+                wordList.emplace_back(value);
+            }
         }
-        
+
         wordlists[category] = wordList;
-        LOG_INFO(TAG, "Loaded %d words for category '%s'", wordList.size(), category.c_str());
+        log(infra::LogLevel::Info, "Loaded %u words for category '%s'", static_cast<unsigned>(wordList.size()), category.c_str());
     }
 }
 
@@ -169,9 +225,12 @@ void FortuneGenerator::parseTemplates(JsonArray templatesArray) {
     
     for (JsonVariant template_var : templatesArray) {
         FortuneTemplate template_obj;
-        template_obj.template_text = template_var.as<String>();
-        template_obj.tokens = extractTokens(template_obj.template_text);
-        templates.push_back(template_obj);
+        const char *text = template_var.as<const char*>();
+        if (text) {
+            template_obj.template_text = text;
+            template_obj.tokens = extractTokens(template_obj.template_text);
+            templates.push_back(template_obj);
+        }
     }
 }
 
@@ -200,4 +259,56 @@ std::vector<String> FortuneGenerator::extractTokens(const String& templateText) 
         startPos = tokenEnd + 2;
     }
     return tokens;
+}
+
+infra::IFileSystem* FortuneGenerator::resolveFileSystem() {
+    if (m_fileSystem) {
+        return m_fileSystem;
+    }
+#ifndef UNIT_TEST
+    static infra::SDMMCFileSystem defaultFs;
+    return &defaultFs;
+#else
+    return nullptr;
+#endif
+}
+
+infra::IRandomSource* FortuneGenerator::resolveRandomSource() {
+    if (m_randomSource) {
+        return m_randomSource;
+    }
+#ifndef UNIT_TEST
+    static infra::ArduinoRandomSource defaultRandom;
+    m_randomSource = &defaultRandom;
+    return m_randomSource;
+#else
+    return nullptr;
+#endif
+}
+
+infra::ILogSink* FortuneGenerator::resolveLogSink() {
+    if (m_logSink) {
+        return m_logSink;
+    }
+    return infra::getLogSink();
+}
+
+void FortuneGenerator::log(infra::LogLevel level, const char *fmt, ...) {
+    char buffer[256];
+    va_list args;
+    va_start(args, fmt);
+    vsnprintf(buffer, sizeof(buffer), fmt, args);
+    va_end(args);
+
+    if (infra::ILogSink *sink = resolveLogSink()) {
+        sink->log(level, TAG, buffer);
+    }
+#ifndef UNIT_TEST
+    else {
+        LoggingManager::instance().log(static_cast<::LogLevel>(level), TAG, "%s", buffer);
+    }
+#else
+    (void)level;
+    (void)buffer;
+#endif
 }

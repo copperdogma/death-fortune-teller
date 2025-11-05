@@ -1,6 +1,19 @@
 #include "config_manager.h"
+#include "infra/filesystem.h"
+#include "infra/log_sink.h"
+#include <cstdarg>
+#include <cstdio>
+#ifndef UNIT_TEST
+#include "infra/sd_mmc_filesystem.h"
 #include "logging_manager.h"
 #include "SD_MMC.h"
+#endif
+
+ConfigManager::ConfigManager()
+    : m_fileSystem(nullptr),
+      m_logSink(nullptr)
+{
+}
 
 static constexpr const char* TAG = "ConfigManager";
 
@@ -10,19 +23,46 @@ ConfigManager &ConfigManager::getInstance()
     return instance;
 }
 
+void ConfigManager::setFileSystem(infra::IFileSystem *fileSystem)
+{
+    m_fileSystem = fileSystem;
+}
+
+void ConfigManager::setLogSink(infra::ILogSink *sink)
+{
+    m_logSink = sink;
+}
+
 bool ConfigManager::loadConfig()
 {
-    File configFile = SD_MMC.open("/config.txt", FILE_READ);
+    infra::IFileSystem *fs = m_fileSystem;
+#ifndef UNIT_TEST
+    infra::SDMMCFileSystem defaultFilesystem;
+    if (!fs)
+    {
+        fs = &defaultFilesystem;
+    }
+#else
+    if (!fs)
+    {
+        log(infra::LogLevel::Error, "No filesystem provided for ConfigManager under UNIT_TEST");
+        return false;
+    }
+#endif
+
+    auto configFile = fs->open("/config.txt", FILE_READ);
     if (!configFile)
     {
-        LOG_ERROR(TAG, "Failed to open config file");
+        log(infra::LogLevel::Error, "Failed to open config file");
         return false;
     }
 
-    LOG_INFO(TAG, "📄 Reading configuration file:");
-    while (configFile.available())
+    m_config.clear();
+
+    log(infra::LogLevel::Info, "📄 Reading configuration file:");
+    while (configFile->available())
     {
-        String line = configFile.readStringUntil('\n');
+        String line = configFile->readStringUntil('\n');
         line.trim();
         if (line.length() > 0 && line[0] != '#')
         {
@@ -42,18 +82,18 @@ bool ConfigManager::loadConfig()
                     loggedValue = value.length() > 0 ? "[SET]" : "[NOT SET]";
                 }
 
-                LOG_DEBUG(TAG, "  %s: %s", key.c_str(), loggedValue.c_str());
+                log(infra::LogLevel::Debug, "  %s: %s", key.c_str(), loggedValue.c_str());
             }
         }
     }
 
-    configFile.close();
+    configFile->close();
 
     // Validate speaker volume
     speakerVolume = getValue("speaker_volume", "100").toInt();
     if (speakerVolume < 0 || speakerVolume > 100)
     {
-        LOG_WARN(TAG, "Invalid speaker volume. Using default value of 100.");
+        log(infra::LogLevel::Warn, "Invalid speaker volume. Using default value of 100.");
         speakerVolume = 100;
     }
 
@@ -70,14 +110,14 @@ bool ConfigManager::loadConfig()
     int servoMax = getValue("servo_us_max", "1600").toInt();
     if (servoMin >= servoMax)
     {
-        LOG_WARN(TAG, "Invalid servo timing (min >= max). Getters will return defaults.");
+        log(infra::LogLevel::Warn, "Invalid servo timing (min >= max). Getters will return defaults.");
     }
 
     // Validate capacitive threshold
     float capThreshold = getValue("cap_threshold", "0.002").toFloat();
     if (capThreshold < 0.001f || capThreshold > 0.1f)
     {
-        LOG_WARN(TAG, "Invalid cap threshold (0.001-0.1 expected). Getters will return default.");
+        log(infra::LogLevel::Warn, "Invalid cap threshold (0.001-0.1 expected). Getters will return default.");
     }
 
     // Validate timing values
@@ -93,37 +133,37 @@ bool ConfigManager::loadConfig()
 
     if (snapDelayMin >= snapDelayMax)
     {
-        LOG_WARN(TAG, "Invalid snap delay timing (min >= max). Getters will return defaults.");
+        log(infra::LogLevel::Warn, "Invalid snap delay timing (min >= max). Getters will return defaults.");
     }
 
     if (fingerDetect < 30 || fingerDetect > 1000)
     {
-        LOG_WARN(TAG, "Finger detection debounce out of range (30-1000 ms expected). Getter will return default.");
+        log(infra::LogLevel::Warn, "Finger detection debounce out of range (30-1000 ms expected). Getter will return default.");
     }
 
     if (fingerWait < 1000)
     {
-        LOG_WARN(TAG, "Finger wait timeout too short (< 1000ms). Getters will return default.");
+        log(infra::LogLevel::Warn, "Finger wait timeout too short (< 1000ms). Getters will return default.");
     }
 
     if (cooldown < 5000)
     {
-        LOG_WARN(TAG, "Cooldown period too short (< 5000ms). Getters will return default.");
+        log(infra::LogLevel::Warn, "Cooldown period too short (< 5000ms). Getters will return default.");
     }
 
     if (mouthBright < 0 || mouthBright > 255)
     {
-        LOG_WARN(TAG, "Mouth LED bright value out of range (0-255). Getter will return default.");
+        log(infra::LogLevel::Warn, "Mouth LED bright value out of range (0-255). Getter will return default.");
     }
 
     if (mouthPulseMin < 0 || mouthPulseMin > 255 || mouthPulseMax < 0 || mouthPulseMax > 255 || mouthPulseMin > mouthPulseMax)
     {
-        LOG_WARN(TAG, "Mouth LED pulse bounds invalid. Getters will fall back to defaults.");
+        log(infra::LogLevel::Warn, "Mouth LED pulse bounds invalid. Getters will fall back to defaults.");
     }
 
     if (mouthPulsePeriod < 200 || mouthPulsePeriod > 10000)
     {
-        LOG_WARN(TAG, "Mouth LED pulse period out of range (200-10000 ms). Getter will return default.");
+        log(infra::LogLevel::Warn, "Mouth LED pulse period out of range (200-10000 ms). Getter will return default.");
     }
 
     // Validate finger tuning parameters
@@ -132,32 +172,32 @@ bool ConfigManager::loadConfig()
     if (fingerCyclesInit == 0 || fingerCyclesInit > 0xFFFF ||
         fingerCyclesMeasure == 0 || fingerCyclesMeasure > 0xFFFF)
     {
-        LOG_WARN(TAG, "Finger touch cycles invalid (must be 1-0xFFFF). Getters will use defaults.");
+        log(infra::LogLevel::Warn, "Finger touch cycles invalid (must be 1-0xFFFF). Getters will use defaults.");
     }
 
     float fingerAlpha = getValue("finger_filter_alpha", "0.3").toFloat();
     if (fingerAlpha < 0.0f || fingerAlpha > 1.0f)
     {
-        LOG_WARN(TAG, "Finger filter alpha out of range (0.0-1.0). Getter will use default.");
+        log(infra::LogLevel::Warn, "Finger filter alpha out of range (0.0-1.0). Getter will use default.");
     }
 
     float fingerDrift = getValue("finger_baseline_drift", "0.0001").toFloat();
     if (fingerDrift < 0.0f || fingerDrift > 0.1f)
     {
-        LOG_WARN(TAG, "Finger baseline drift out of range (0-0.1). Getter will use default.");
+        log(infra::LogLevel::Warn, "Finger baseline drift out of range (0-0.1). Getter will use default.");
     }
 
     int fingerMulti = getValue("finger_multisample", "32").toInt();
     if (fingerMulti <= 0 || fingerMulti > 255)
     {
-        LOG_WARN(TAG, "Finger multisample count invalid (1-255). Getter will use default.");
+        log(infra::LogLevel::Warn, "Finger multisample count invalid (1-255). Getter will use default.");
     }
 
     // Validate printer baud rate
     int printerBaud = getValue("printer_baud", "9600").toInt();
     if (printerBaud < 1200 || printerBaud > 115200)
     {
-        LOG_WARN(TAG, "Invalid printer baud rate. Getters will return default of 9600.");
+        log(infra::LogLevel::Warn, "Invalid printer baud rate. Getters will return default of 9600.");
     }
 
     return true;
@@ -174,6 +214,32 @@ void ConfigManager::parseConfigLine(const String &line)
         value.trim();
         m_config[key] = value;
     }
+}
+
+void ConfigManager::log(infra::LogLevel level, const char *fmt, ...) const
+{
+    char buffer[256]{0};
+    va_list args;
+    va_start(args, fmt);
+    vsnprintf(buffer, sizeof(buffer), fmt, args);
+    va_end(args);
+
+    if (m_logSink) {
+        m_logSink->log(level, TAG, buffer);
+        return;
+    }
+
+    if (infra::ILogSink *sink = infra::getLogSink()) {
+        sink->log(level, TAG, buffer);
+        return;
+    }
+
+#ifndef UNIT_TEST
+    LoggingManager::instance().log(static_cast<::LogLevel>(level), TAG, "%s", buffer);
+#else
+    (void)level;
+    (void)buffer;
+#endif
 }
 
 String ConfigManager::getValue(const String &key, const String &defaultValue) const
@@ -207,9 +273,9 @@ void ConfigManager::printConfig() const
 {
     for (const auto &pair : m_config)
     {
-        LOG_INFO(TAG, "%s: %s", pair.first.c_str(), pair.second.c_str());
+        log(infra::LogLevel::Info, "%s: %s", pair.first.c_str(), pair.second.c_str());
     }
-    LOG_INFO(TAG, "Speaker Volume: %d", speakerVolume);
+    log(infra::LogLevel::Info, "Speaker Volume: %d", speakerVolume);
 }
 
 String ConfigManager::getWiFiSSID() const
@@ -268,9 +334,9 @@ bool ConfigManager::getServoReverse() const
 
 float ConfigManager::getCapThreshold() const
 {
-    float value = getValue("cap_threshold", "0.1").toFloat();
+    float value = getValue("cap_threshold", "0.002").toFloat();
     if (value < 0.0f || value > 1.0f) {
-        return 0.1f;
+        return 0.002f;
     }
     return value;
 }
@@ -385,7 +451,7 @@ String ConfigManager::getPrinterLogo() const
 
 String ConfigManager::getFortunesJson() const
 {
-    return getValue("fortunes_json", "/fortunes/little_kid_fortunes.json");
+    return getValue("fortunes_json", "/printer/fortunes_littlekid.json");
 }
 
 uint8_t ConfigManager::getMouthLedBright() const
