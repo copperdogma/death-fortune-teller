@@ -3,18 +3,32 @@
 
 #include "FS.h"
 #include "sd_card_manager.h"
+#ifdef ARDUINO
 #include "BluetoothA2DPSource.h" // For Frame definition
+#else
+#include <cstdint>
+struct Frame {
+    int16_t channel1;
+    int16_t channel2;
+};
+#endif
 #include <vector>
 #include <queue>
 #include <string>
 #include <stdint.h>
 #include <Arduino.h>
-#include "esp_attr.h"
 
+#ifdef ARDUINO
+#include "esp_attr.h"
 extern "C" {
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
 }
+#else
+#ifndef IRAM_ATTR
+#define IRAM_ATTR
+#endif
+#endif
 
 // AudioPlayer class manages audio playback from SD card files
 class AudioPlayer

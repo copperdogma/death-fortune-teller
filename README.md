@@ -165,6 +165,19 @@ The project successfully integrates ESP32-A2DP library with PlatformIO:
 - **Status monitoring** - Periodic logging of connection status
 - **Audio streaming** - Real-time audio data provision to A2DP source
 
+## Modular Runtime Options
+
+`AppController` wires the core runtime modules (CLI, content selection, printer, connectivity) using lightweight seams. You can enable or disable modules per prop by defining the following build flags (e.g. in `platformio.local.ini` or via `build_flags`):
+
+- `APP_ENABLE_CLI` (default `1`) – disable to drop the serial CLI.
+- `APP_ENABLE_CONTENT_SELECTION` (default `1`) – disable audio directory + skit helpers.
+- `APP_ENABLE_PRINTER` (default `1`) – disable thermal printer support.
+- `APP_ENABLE_CONNECTIVITY` (default `1`) – master switch for Wi-Fi/OTA/RemoteDebug.
+- `APP_ENABLE_WIFI`, `APP_ENABLE_OTA`, `APP_ENABLE_REMOTE_DEBUG` – override individual connectivity modules (default follow `APP_ENABLE_CONNECTIVITY`).
+- `APP_ENABLE_BLUETOOTH` (default `1`) – disable Bluetooth A2DP wiring.
+
+Each module can also be replaced at runtime by supplying custom instances through `AppController::ModuleProviders` before calling `setup()`. This lets you plug in prop-specific implementations without touching the default Arduino-friendly wiring.
+
 ## Development Notes
 
 ### Key Achievements

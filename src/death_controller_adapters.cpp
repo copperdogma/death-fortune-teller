@@ -1,5 +1,7 @@
 #include "death_controller_adapters.h"
 
+#ifdef ARDUINO
+
 #include "audio_directory_selector.h"
 #include "audio_player.h"
 #include "fortune_generator.h"
@@ -118,3 +120,5 @@ void ManualCalibrationAdapter::startCompletionBlink() {
 bool ManualCalibrationAdapter::isBlinking() const {
     return m_lights.isMouthBlinking();
 }
+
+#endif  // ARDUINO

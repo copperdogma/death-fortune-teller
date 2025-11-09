@@ -5,6 +5,8 @@
 #include <WiFi.h>
 #include "logging_manager.h"
 
+class BluetoothController;
+
 class RemoteDebugManager {
 public:
     RemoteDebugManager();
@@ -24,6 +26,7 @@ public:
     void setDisconnectionCallback(std::function<void()> callback);
     void setAutoStreaming(bool enabled);
     bool isAutoStreaming() const;
+    void setBluetoothController(BluetoothController* controller);
     
 private:
     WiFiServer* m_server;
@@ -32,6 +35,7 @@ private:
     int m_port;
     bool m_autoStreaming;
     uint32_t m_lastBroadcastSequence;
+    BluetoothController* m_bluetooth;
     
     std::function<void()> m_connectionCallback;
     std::function<void()> m_disconnectionCallback;

@@ -1,13 +1,56 @@
 #include "audio_directory_selector.h"
+#ifdef UNIT_TEST
+#include "logging_stub.h"
+#else
 #include "logging_manager.h"
+#endif
 #include <algorithm>
 #include <cmath>
 #include <numeric>
+#include <cstdlib>
+
+#ifndef UNIT_TEST
 #include "SD_MMC.h"
+#endif
 
 static constexpr const char *TAG = "AudioDirSel";
 
-AudioDirectorySelector::AudioDirectorySelector() = default;
+namespace {
+class DefaultRandomSource : public infra::IRandomSource {
+public:
+    int nextInt(int minInclusive, int maxExclusive) override {
+        if (maxExclusive <= minInclusive) {
+            return minInclusive;
+        }
+        long span = static_cast<long>(maxExclusive - minInclusive);
+#ifdef UNIT_TEST
+        long value = span > 0 ? std::rand() % span : 0;
+#else
+        long value = random(span);
+#endif
+        if (value < 0) value = 0;
+        return static_cast<int>(minInclusive + value);
+    }
+};
+
+DefaultRandomSource g_defaultRandom;
+
+unsigned long defaultNowFn() {
+    return millis();
+}
+}  // namespace
+
+AudioDirectorySelector::AudioDirectorySelector()
+    : AudioDirectorySelector(Dependencies{}) {}
+
+AudioDirectorySelector::AudioDirectorySelector(const Dependencies &deps)
+    : m_enumerator(deps.enumerator),
+      m_nowFn(deps.nowFn),
+      m_random(deps.randomSource ? deps.randomSource : &g_defaultRandom) {
+    if (!m_nowFn) {
+        m_nowFn = []() -> unsigned long { return millis(); };
+    }
+}
 
 String AudioDirectorySelector::selectClip(const char *directory, const char *description) {
     if (!directory || directory[0] == '\0') {
@@ -29,7 +72,7 @@ String AudioDirectorySelector::selectClip(const char *directory, const char *des
         return "";
     }
 
-    unsigned long now = millis();
+    unsigned long now = m_nowFn ? m_nowFn() : defaultNowFn();
 
     std::vector<size_t> order(state.clips.size());
     std::iota(order.begin(), order.end(), 0);
@@ -65,7 +108,7 @@ String AudioDirectorySelector::selectClip(const char *directory, const char *des
 
     size_t choiceIdx = 0;
     if (pool.size() > 1) {
-        choiceIdx = static_cast<size_t>(random(static_cast<long>(pool.size())));
+        choiceIdx = static_cast<size_t>(m_random->nextInt(0, static_cast<int>(pool.size())));
         if (choiceIdx >= pool.size()) {
             choiceIdx = 0;
         }
@@ -113,7 +156,7 @@ AudioDirectorySelector::CategoryState *AudioDirectorySelector::findCategory(cons
         return nullptr;
     }
     for (auto &category : m_categories) {
-        if (category.directory.equals(directory)) {
+        if (category.directory == directory) {
             return &category;
         }
     }
@@ -121,42 +164,56 @@ AudioDirectorySelector::CategoryState *AudioDirectorySelector::findCategory(cons
 }
 
 void AudioDirectorySelector::refreshCategoryClips(CategoryState &state, const char *description) {
-    File dir = SD_MMC.open(state.directory.c_str());
-    if (!dir || !dir.isDirectory()) {
-        LOG_WARN(TAG, "Directory missing or invalid: %s%s%s",
-                 state.directory.c_str(),
-                 description ? " (" : "",
-                 description ? description : "");
-        state.clips.clear();
-        state.lastPlayedPath = "";
-        if (dir) {
-            dir.close();
-        }
-        return;
+    std::vector<String> discovered;
+    bool enumerated = false;
+
+    if (m_enumerator) {
+        enumerated = m_enumerator->listWavFiles(state.directory, discovered);
     }
 
-    std::vector<String> discovered;
-    File entry = dir.openNextFile();
-    while (entry) {
-        if (!entry.isDirectory()) {
-            String name = entry.name();
-            name.trim();
-            if (!name.startsWith(".")) {
-                size_t sizeBytes = entry.size();
-                if (sizeBytes > 0 && (name.endsWith(".wav") || name.endsWith(".WAV"))) {
-                    String fullPath = state.directory;
-                    if (!fullPath.endsWith("/")) {
-                        fullPath += '/';
+    if (!enumerated) {
+#ifdef UNIT_TEST
+        state.clips.clear();
+        state.lastPlayedPath = "";
+        return;
+#else
+        File dir = SD_MMC.open(state.directory.c_str());
+        if (!dir || !dir.isDirectory()) {
+            LOG_WARN(TAG, "Directory missing or invalid: %s%s%s",
+                     state.directory.c_str(),
+                     description ? " (" : "",
+                     description ? description : "");
+            state.clips.clear();
+            state.lastPlayedPath = "";
+            if (dir) {
+                dir.close();
+            }
+            return;
+        }
+
+        File entry = dir.openNextFile();
+        while (entry) {
+            if (!entry.isDirectory()) {
+                String name = entry.name();
+                name.trim();
+                if (!name.startsWith(".")) {
+                    size_t sizeBytes = entry.size();
+                    if (sizeBytes > 0 && (name.endsWith(".wav") || name.endsWith(".WAV"))) {
+                        String fullPath = state.directory;
+                        if (!fullPath.endsWith("/")) {
+                            fullPath += '/';
+                        }
+                        fullPath += name;
+                        discovered.push_back(fullPath);
                     }
-                    fullPath += name;
-                    discovered.push_back(fullPath);
                 }
             }
+            entry.close();
+            entry = dir.openNextFile();
         }
-        entry.close();
-        entry = dir.openNextFile();
+        dir.close();
+#endif
     }
-    dir.close();
 
     std::vector<ClipStats> updated;
     updated.reserve(discovered.size());

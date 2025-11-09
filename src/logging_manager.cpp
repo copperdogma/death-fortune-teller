@@ -1,4 +1,7 @@
 #include "logging_manager.h"
+
+#ifdef ARDUINO
+
 #include <ESPLogger.h>
 
 static constexpr const char* TAG = "LoggingManager";
@@ -260,3 +263,5 @@ esp_log_level_t LoggingManager::toEspLevel(LogLevel level) {
         default:                return ESP_LOG_INFO;
     }
 }
+
+#endif  // ARDUINO

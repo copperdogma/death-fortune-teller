@@ -33,7 +33,7 @@ Death, the Fortune Telling Skeleton
 | 2026-001 | Detailed Fortune Flow Implementation     | Medium   | Future | /docs/stories/story-2026-001-detailed-fortune-flow.md |
 | 012      | Runtime Modularity & Coverage Roadmap    | High     | Reverted | /docs/stories/story-012-runtime-modularity-and-coverage.md |
 | 013      | Runtime Diagnostics Coverage & CLI Service | High   | Reverted  | /docs/stories/story-013-runtime-diagnostics-and-coverage.md |
-| 014      | Modular Runtime Foundation (Pluggable Components) | High | To Do | /docs/stories/story-014-modular-runtime-foundation.md |
+| 014      | Modular Runtime Foundation (Pluggable Components) | High | In Review | /docs/stories/story-014-modular-runtime-foundation.md |
 
 ## Notes
 - Story IDs map to future files in `/docs/stories/`; create each file as work begins.

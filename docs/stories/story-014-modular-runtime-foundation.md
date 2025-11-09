@@ -1,6 +1,6 @@
 # Story: Modular Runtime Foundation (Pluggable Components)
 
-Status: To Do
+Status: In Review
 
 ---
 
@@ -30,11 +30,11 @@ Recent refactors (Stories 012 and 013) pushed the project toward a highly abstra
 - README/CONTRIBUTING gains a short section describing how to include/exclude modules per prop.
 
 ## Tasks
-- [ ] Define the “minimal seams” for pluggable modules (CLI, Content Selection, Printer, Connectivity), avoiding heavy adapter layers.
-- [ ] Trim `AppController` to use those seams with light, direct wiring (Arduino-first).
-- [ ] Keep and polish: `CliCommandRouter`, `CliService`, `AudioDirectorySelector`, `SkitSelector`, `CircularAudioBuffer` and their unit tests.
-- [ ] Provide simple compile-time toggles for optional modules (e.g., connectivity).
-- [ ] Update docs with the module map and usage examples.
+- [x] Define the “minimal seams” for pluggable modules (CLI, Content Selection, Printer, Connectivity), avoiding heavy adapter layers.
+- [x] Trim `AppController` to use those seams with light, direct wiring (Arduino-first).
+- [x] Keep and polish: `CliCommandRouter`, `CliService`, `AudioDirectorySelector`, `SkitSelector`, `CircularAudioBuffer` and their unit tests.
+- [x] Provide simple compile-time toggles for optional modules (e.g., connectivity).
+- [x] Update docs with the module map and usage examples.
 
 ## Saved Work (from Stories 012/013) — Where to Find It
 To prevent rework, the following items are preserved for reference and cherry‑picking. See: `docs/saved-work/014-keepers/KEEPERS.md` and the archive script `scripts/collect_keepers.sh`.
@@ -58,4 +58,9 @@ Note: Heavier runtime DI/adapters/services added during 012/013 are intentionall
 - Result: Success
 - Notes: Captured scope/criteria; listed keepers. Created plan to archive selected files and story snapshots prior to revert.
 - Next: Archive keepers and story snapshots via `scripts/collect_keepers.sh`; then proceed with revert discussion.
+
+### 20251109-0930 — Implemented modular runtime foundation
+- Result: Success
+- Notes: Restored keeper modules/tests, introduced lightweight `AppController` seams with compile-time toggles, rewired main entrypoint, and documented module options in README.
+- Next: Await hardware verification of new runtime wiring and decide on follow-up host orchestrations if needed.
 

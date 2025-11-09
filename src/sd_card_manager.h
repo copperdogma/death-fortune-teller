@@ -1,7 +1,11 @@
 #ifndef SD_CARD_MANAGER_H
 #define SD_CARD_MANAGER_H
 
+#ifdef ARDUINO
 #include "FS.h"
+#else
+class File {};
+#endif
 #include <vector>
 #include "parsed_skit.h"
 

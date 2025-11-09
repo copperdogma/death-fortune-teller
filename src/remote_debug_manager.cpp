@@ -4,8 +4,6 @@
 #include "esp_system.h"
 #include "infra/log_sink.h"
 
-extern BluetoothController *bluetoothController;
-
 static constexpr const char* TAG = "RemoteDebug";
 
 RemoteDebugManager::RemoteDebugManager()
@@ -95,6 +93,10 @@ void RemoteDebugManager::setAutoStreaming(bool enabled) {
 
 bool RemoteDebugManager::isAutoStreaming() const {
     return m_autoStreaming;
+}
+
+void RemoteDebugManager::setBluetoothController(BluetoothController* controller) {
+    m_bluetooth = controller;
 }
 
 void RemoteDebugManager::handleClient() {
@@ -210,7 +212,7 @@ void RemoteDebugManager::processCommand(const String& command) {
             m_client.println("🛜 Usage: stream on|off");
         }
     } else if (command.equalsIgnoreCase("bluetooth") || command.startsWith("bluetooth ")) {
-        if (!bluetoothController) {
+        if (!m_bluetooth) {
             m_client.println("🛜 Bluetooth controller unavailable");
             return;
         }
@@ -218,13 +220,13 @@ void RemoteDebugManager::processCommand(const String& command) {
         arg.trim();
         if (arg.length() == 0 || arg.equalsIgnoreCase("status")) {
             m_client.printf("🛜 Bluetooth: %s, Connection: %s\n",
-                            bluetoothController->isManuallyDisabled() ? "disabled" : "enabled",
-                            bluetoothController->isA2dpConnected() ? "connected" : "disconnected");
+                            m_bluetooth->isManuallyDisabled() ? "disabled" : "enabled",
+                            m_bluetooth->isA2dpConnected() ? "connected" : "disconnected");
         } else if (arg.equalsIgnoreCase("off") || arg.equalsIgnoreCase("disable")) {
-            bool changed = bluetoothController->manualDisable();
+            bool changed = m_bluetooth->manualDisable();
             m_client.println(changed ? "🛜 Bluetooth manually disabled" : "🛜 Bluetooth already disabled or unavailable");
         } else if (arg.equalsIgnoreCase("on") || arg.equalsIgnoreCase("enable")) {
-            bool changed = bluetoothController->manualEnable();
+            bool changed = m_bluetooth->manualEnable();
             m_client.println(changed ? "🛜 Bluetooth enabled" : "🛜 Bluetooth already enabled or unavailable");
         } else {
             m_client.println("🛜 Usage: bluetooth [status|on|off]");

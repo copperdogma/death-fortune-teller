@@ -1,15 +1,48 @@
 #include "skit_selector.h"
+#ifdef UNIT_TEST
+#include "logging_stub.h"
+#else
 #include "logging_manager.h"
+#endif
 #include <algorithm>
 #include <cmath>
 #include <Arduino.h>
+#include <cstdlib>
 
 static constexpr const char* TAG = "SkitSelector";
 
+namespace {
+class DefaultSkitRandom : public infra::IRandomSource {
+public:
+    int nextInt(int minInclusive, int maxExclusive) override {
+        if (maxExclusive <= minInclusive) {
+            return minInclusive;
+        }
+        long span = static_cast<long>(maxExclusive - minInclusive);
+#ifdef UNIT_TEST
+        long value = span > 0 ? std::rand() % span : 0;
+#else
+        long value = random(span);
+#endif
+        if (value < 0) value = 0;
+        return static_cast<int>(minInclusive + value);
+    }
+};
+
+DefaultSkitRandom g_defaultSkitRandom;
+}
+
 // Constructor: Initializes the SkitSelector with a list of parsed skits
-SkitSelector::SkitSelector(const std::vector<ParsedSkit> &skits)
-    : m_lastPlayedSkitName("") // Initialize to an empty string
+SkitSelector::SkitSelector(const std::vector<ParsedSkit> &skits,
+                           infra::IRandomSource *randomSource,
+                           std::function<unsigned long()> nowFn)
+    : m_lastPlayedSkitName(""), // Initialize to an empty string
+      m_random(randomSource ? randomSource : &g_defaultSkitRandom),
+      m_nowFn(nowFn)
 {
+    if (!m_nowFn) {
+        m_nowFn = []() -> unsigned long { return millis(); };
+    }
     for (const auto &skit : skits)
     {
         m_skitStats.push_back({skit, 0, 0});
@@ -27,7 +60,7 @@ ParsedSkit SkitSelector::selectNextSkit()
         return ParsedSkit();
     }
 
-    unsigned long currentTime = millis();
+    unsigned long currentTime = m_nowFn();
     sortSkitsByWeight();
 
     // Define the maximum size of the selection pool
@@ -66,7 +99,7 @@ ParsedSkit SkitSelector::selectNextSkit()
     }
     else
     {
-        int randomIdx = random(availableSkits.size());
+        int randomIdx = m_random->nextInt(0, static_cast<int>(availableSkits.size()));
         // Find the index of the selected skit in m_skitStats
         selectedIndex = std::distance(
             m_skitStats.begin(),
@@ -96,7 +129,7 @@ void SkitSelector::updateSkitPlayCount(const String &skitName)
     if (it != m_skitStats.end())
     {
         it->playCount++;
-        it->lastPlayedTime = millis();
+        it->lastPlayedTime = m_nowFn();
         m_lastPlayedSkitName = it->skit.audioFile; // Ensure consistency
         LOG_DEBUG(TAG, "Updated play count for skit: %s (count: %d)", 
                   skitName.c_str(), it->playCount);
@@ -116,12 +149,10 @@ double SkitSelector::calculateSkitWeight(const SkitStats &stats, unsigned long c
 // Sorts the skits by their calculated weights in descending order
 void SkitSelector::sortSkitsByWeight()
 {
-    unsigned long currentTime = millis();
+    unsigned long currentTime = m_nowFn();
     std::sort(m_skitStats.begin(), m_skitStats.end(),
               [this, currentTime](const SkitStats &a, const SkitStats &b) -> bool
               {
                   return calculateSkitWeight(a, currentTime) > calculateSkitWeight(b, currentTime);
               });
 }
-
-

@@ -4,7 +4,14 @@
 #include <Arduino.h>
 #include <functional>
 #include <vector>
+
+#ifdef ARDUINO
 #include <esp_log.h>
+#else
+#include <cstdarg>
+using esp_log_level_t = int;
+#endif
+
 #include "infra/log_sink.h"
 
 class ESPLogger;
@@ -16,6 +23,8 @@ enum class LogLevel : uint8_t {
     Warn,
     Error
 };
+
+#ifdef ARDUINO
 
 struct LogEntry {
     uint32_t timestamp;
@@ -72,6 +81,45 @@ private:
 
     portMUX_TYPE m_bufferMutex;
 };
+
+#else  // !ARDUINO
+
+struct LogEntry {
+    uint32_t timestamp = 0;
+    LogLevel level = LogLevel::Info;
+    String message;
+    uint32_t sequence = 0;
+};
+
+class LoggingManager {
+public:
+    static LoggingManager& instance() {
+        static LoggingManager s_instance;
+        return s_instance;
+    }
+
+    void begin(HardwareSerial*, size_t = 0, size_t = 0) {}
+    void setSdLogger(ESPLogger*) {}
+    void enableSerialForwarding(bool) {}
+
+    void registerListener(const std::function<void(const LogEntry&)>&) {}
+
+    void getEntriesSince(uint32_t, std::vector<LogEntry>&) const {}
+    void getStartupEntries(std::vector<LogEntry>&) const {}
+    uint32_t latestSequence() const { return 0; }
+    size_t entryCount() const { return 0; }
+    size_t bufferCapacity() const { return 0; }
+    size_t startupCount() const { return 0; }
+
+    void log(LogLevel, const char*, const char*, ...) {}
+
+    static int vprintfHook(const char*, va_list) { return 0; }
+
+private:
+    LoggingManager() = default;
+};
+
+#endif  // ARDUINO
 
 #define LOG_VERBOSE(tag, fmt, ...) do { infra::emitLog(infra::LogLevel::Verbose, tag, fmt, ##__VA_ARGS__); } while (0)
 #define LOG_DEBUG(tag, fmt, ...)   do { infra::emitLog(infra::LogLevel::Debug, tag, fmt, ##__VA_ARGS__); } while (0)

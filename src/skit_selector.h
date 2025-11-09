@@ -3,7 +3,9 @@
 
 #include <vector>
 #include <string>
+#include <functional>
 #include "parsed_skit.h"
+#include "infra/random_source.h"
 
 // SkitSelector class manages the selection and playback of skits
 // It uses a weighted random selection algorithm to ensure variety and fairness in skit playback
@@ -11,7 +13,9 @@ class SkitSelector
 {
 public:
     // Constructor: Initializes the SkitSelector with a list of parsed skits
-    SkitSelector(const std::vector<ParsedSkit> &skits);
+    SkitSelector(const std::vector<ParsedSkit> &skits,
+                 infra::IRandomSource *randomSource = nullptr,
+                 std::function<unsigned long()> nowFn = nullptr);
 
     // Selects the next skit to be played based on weighted random selection
     // Returns: A ParsedSkit object representing the selected skit
@@ -36,6 +40,9 @@ private:
     // Stores the name of the last played skit
     String m_lastPlayedSkitName;
 
+    infra::IRandomSource *m_random;
+    std::function<unsigned long()> m_nowFn;
+
     // Calculates the weight of a skit based on its play count and last played time
     // This weight is used to prioritize skits that haven't been played recently or frequently
     // Params:
@@ -49,5 +56,4 @@ private:
 };
 
 #endif // SKIT_SELECTOR_H
-
 

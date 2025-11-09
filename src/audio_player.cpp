@@ -21,6 +21,8 @@
 #include "audio_player.h"
 #include "logging_manager.h"
 
+#ifdef ARDUINO
+
 static constexpr const char* TAG = "AudioPlayer";
 #include "sd_card_manager.h"
 
@@ -421,3 +423,5 @@ void AudioPlayer::handlePendingEvents()
         }
     }
 }
+
+#endif  // ARDUINO
