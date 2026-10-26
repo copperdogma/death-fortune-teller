@@ -37,6 +37,7 @@ Death, the Fortune Telling Skeleton
 
 | 015 | 2026 Single-WROVER Death Rebuild | High | In Review | /docs/stories/story-015-single-wrover-2026-rebuild.md |
 | 016 | Demo Matter Start, Waiting and Dead Stop | High | Done | /docs/stories/story-016-demo-matter-start-waiting-stop.md |
+| 018 | Retained Fault Reports and Rolling SD Logs | High | In Review | /docs/stories/story-018-retained-fault-logs.md |
 
 ## Notes
 - Story IDs map to future files in `/docs/stories/`; create each file as work begins.

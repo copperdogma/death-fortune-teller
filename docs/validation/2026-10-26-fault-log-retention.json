@@ -1,0 +1,56 @@
+{
+  "firmware_sha256": "72a5e8f915d9cb05797637b838d3abbd3c84eaeba9960d3fa3b8366bae53a856",
+  "status": "implemented and flashed; human acceptance pending",
+  "limits": {
+    "ram_recent_lines": 32,
+    "line_bytes": 192,
+    "report_bytes_max": 7168,
+    "sd_slots": 8,
+    "sd_staging_files": 1,
+    "retry_seconds": 60,
+    "compact_flash_text_bytes": 1024
+  },
+  "automated": {
+    "general_host_suites": "PASS",
+    "fault_core_archive_sanitizers": "PASS",
+    "fault_runtime_retry_NVS_reboot_concurrency_sanitizers": "PASS",
+    "death_flow_assets_fortune_sanitizers": "PASS",
+    "native_build": "PASS"
+  },
+  "device": {
+    "labelled_fault_slot0_export": "PASS",
+    "internal_flash_commit": "PASS",
+    "post_export_acknowledged_reboot": "PASS",
+    "slot1_after_reboot_export": "PASS",
+    "welcome_frames": 540540,
+    "welcome_pcm_fnv1a": "9f4f6cb1",
+    "welcome_underruns": 0,
+    "speaker_reconnect_attempts_after_reboot": 3,
+    "real_user_cutoff": {
+      "report_id": "b83bceb300000002",
+      "asset": "/audio/welcome/welcome2.wav",
+      "delivered_frames": 228608,
+      "underruns": 0,
+      "cause": "SD read CRC error 0x109; card status 0x900",
+      "initial_export_errno": 5,
+      "retained_in_RAM": true,
+      "NVS_result": "ESP_OK",
+      "scheduled_retry": "saved and readback-verified slot2",
+      "archive_path": "/sdcard/diagnostics/fault-2.log",
+      "pending_after_retry": false
+    }
+  },
+  "limits_of_evidence": [
+    "No panic core dumps enabled",
+    "Intermittent SD read fault remains unresolved",
+    "No human listening or full-flow acceptance inferred from frame/hash checks"
+  ],
+  "final_state": {
+    "show": "Waiting",
+    "jaw": "normal breathing",
+    "speaker_connected": true,
+    "stream_ready": true,
+    "pending_fault": false,
+    "committed": false
+  }
+}

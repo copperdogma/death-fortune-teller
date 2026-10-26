@@ -26,6 +26,7 @@
 #include "skull_audio.h"
 #include "skull_catalog.h"
 #include "death_show.h"
+#include "death_fault_log.h"
 #include "death_printer.h"
 #include "death_fortune.h"
 
@@ -173,6 +174,7 @@ void matter_event(const chip::DeviceLayer::ChipDeviceEvent *event, intptr_t) {
 }
 
 void status() {
+    skull::faultlog::status();
     const auto radio = skull::radio::stats();
     const auto audio = skull::audio::stats();
     const auto actuators = skull::actuators::stats();
@@ -197,6 +199,10 @@ void status() {
              static_cast<unsigned long>(audio.underruns), static_cast<unsigned long>(audio.stack_high_water),
              audio.cancel_waiting, assets ? static_cast<unsigned>(assets->count) : 0,
              heap_window);
+    const auto interruption = skull::death::last_interruption();
+    ESP_LOGI(tag, "LAST_INTERRUPTION count=%lu uptime_ms=%lld reason=%s phase=%s asset=%s (retained until reboot)",
+             static_cast<unsigned long>(interruption.count), static_cast<long long>(interruption.uptime_us / 1000),
+             interruption.reason, interruption.phase, interruption.asset);
     ESP_LOGI(tag, "STATUS sd=%d speaker=%d peer=%d tone_frames=%lu triggers=%lu callbacks=%lu bytes=%lu cb_max_us=%lu dropped=%lu internal=%u min_internal=%u largest=%u psram=%u stream=%d fault=%d",
              skull::storage::mounted(), skull::radio::speaker_connected(), skull::radio::peer_ready(),
              static_cast<unsigned long>(tone_frames.load()), static_cast<unsigned long>(triggers.load()),
@@ -269,7 +275,7 @@ void diagnostic_task(void *) {
         skull::radio::Config config{card_config.speaker_name, "", true};
         ESP_ERROR_CHECK(skull::radio::start(config));
     }
-    ESP_LOGI(tag, "Death ready. Commands: status, asset /audio/<file>.wav, heap-start, heap-stop, printer-health, print-test, tone, start, stop, waiting, cancel, jaw-test, retry, pairing, reboot, factory-reset CONFIRM. Matter controls: Start, Dead Stop, Waiting.");
+    ESP_LOGI(tag, "Death ready. Commands: status, fault-log, fault-test, asset /audio/<file>.wav, heap-start, heap-stop, printer-health, print-test, tone, start, stop, waiting, cancel, jaw-test, retry, pairing, reboot, factory-reset CONFIRM. Matter controls: Start, Dead Stop, Waiting.");
     char line[256]{};
     size_t used = 0;
     bool overflow = false;
@@ -285,12 +291,19 @@ void diagnostic_task(void *) {
             (skull::startup::playing() || tone_active || skull::death::busy() || skull::audio::busy());
         skull::actuators::tick(startup_animation.rms ? startup_animation.rms : show_animation.rms,
                               startup_animation.speaking || show_animation.speaking, audio_active, close_jaw_requested.exchange(false) ? 0 : skull::death::jaw_override());
+        skull::faultlog::poll(
+            !skull::death::busy() && skull::audio::quiescent() && !skull::startup::busy() &&
+            !skull::printer::busy() && tone_frames.load() == 0,
+            skull::storage::mounted());
         char character;
         if (uart_read_bytes(UART_NUM_0, &character, 1, pdMS_TO_TICKS(20)) == 1) {
             if (character == '\r' || character == '\n') {
                 if (overflow) { used = 0; overflow = false; continue; }
                 line[used] = '\0';
                 if (!std::strcmp(line, "status")) status();
+                else if (!std::strcmp(line, "fault-log")) skull::faultlog::dump();
+                else if (!std::strcmp(line, "fault-test") && !skull::death::busy() && skull::audio::quiescent() &&
+                         !skull::startup::busy() && !skull::printer::busy() && tone_frames.load() == 0) skull::faultlog::test_fault();
                 else if (!std::strncmp(line, "asset ", 6) && !skull::death::busy()) inspect_asset(line + 6);
                 else if (!std::strcmp(line, "heap-start") && !heap_window) {
                     heap_window = heap_caps_monitor_local_minimum_free_size_start() == ESP_OK;
@@ -384,13 +397,17 @@ void diagnostic_task(void *) {
 
 extern "C" void app_main() {
     ESP_LOGI(tag, "Death single-WROVER firmware (onboard SD, A2DP, Matter, printer)");
+    ESP_LOGI(tag, "Boot reset_reason=%d (esp_reset_reason_t)", static_cast<int>(esp_reset_reason()));
     ESP_ERROR_CHECK(skull::actuators::init_lights());
     ESP_ERROR_CHECK(nvs_flash_init()); // Never erase fabric/NVS automatically.
+    skull::faultlog::init();
+    ESP_LOGI(tag, "Boot reset_reason=%d (fault logger active)", static_cast<int>(esp_reset_reason()));
     ESP_LOGI(tag, "PSRAM initialized=%d size=%u", esp_psram_is_initialized(), static_cast<unsigned>(esp_psram_get_size()));
     // Configure PWM only after validated SD calibration is available. During
     // card errors leave servo outputs uninitialized rather than guess limits.
     esp_err_t sd = skull::storage::mount_and_read_config(card_config);
     while (sd != ESP_OK) {
+        skull::faultlog::poll(true, false);
         const unsigned failure_blinks = skull::storage::mounted() ? 5 : 3;
         ESP_LOGW(tag, "Boot storage/config retry: %s; %u eye flashes", esp_err_to_name(sd), failure_blinks);
         skull::actuators::diagnostic(failure_blinks, true);

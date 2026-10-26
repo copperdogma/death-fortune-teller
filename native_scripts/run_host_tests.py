@@ -26,6 +26,8 @@ def main():
         ("config", ["skull_config"], None),
         ("secondary", [], None),
         ("actuators", ["skull_actuators"], "actuator_stubs"),
+        ("fault_log", ["death_fault_archive"], None),
+        ("fault_runtime", [], "fault_log_stubs"),
         ("audio", ["skull_audio", "skull_wave"], "audio_stubs"),
         ("startup", ["skull_startup", "skull_wave"], "startup_stubs"),
         ("show", ["skull_show", "skull_catalog", "skull_wave"], "show_stubs"),
@@ -43,6 +45,8 @@ def main():
             ]
             if stubs:
                 args += [f"-Inative_scripts/tests/{stubs}"]
+            if name == "fault_runtime":
+                args += ["-pthread"]
             if name == "audio":
                 args += ["-pthread", f'-DSKULL_AUDIO_SD_ROOT="{temporary / "audio-fixtures"}"']
             if name == "startup":

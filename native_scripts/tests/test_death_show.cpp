@@ -114,17 +114,26 @@ int main(){
     // Automatic errors retain Start through cleanup and the full cooldown.
     // Link loss does not print or replay the discarded fortune.
     mock::setup();mock::preamble();mock::speaker=false;mock::tick();mock::is("cancelling");
+    assert(!std::strcmp(skull::death::last_interruption().reason,"speaker stream unavailable"));
+    assert(!std::strcmp(skull::death::last_interruption().phase,"fortune-preamble"));
+    const auto interruption=skull::death::last_interruption();
     assert(mock::prints==0);mock::reject_start();mock::tick();mock::is("cooldown");mock::reject_start();
     mock::tick(100000);mock::is("waiting");assert(!skull::death::trigger());
     mock::speaker=true;mock::tick();assert(skull::death::trigger());
+    // Later successful playback must not overwrite the retained failure clue.
+    mock::tick();mock::start();mock::finish();
+    assert(skull::death::last_interruption().count==1);
+    assert(skull::death::last_interruption().uptime_us==interruption.uptime_us);
     // Preparation timeout also waits a full cooldown after cleanup completes.
     mock::setup();mock::welcome();mock::tick(5000000);mock::is("cancelling");mock::reject_start();
+    assert(!std::strcmp(skull::death::last_interruption().reason,"audio prebuffer timeout"));
     mock::tick();mock::is("cooldown");mock::tick(99999);mock::reject_start();
     mock::tick(1);mock::is("waiting");assert(skull::death::trigger());
     // Failed next-clip preparation and active SD errors use the same cooldown.
     mock::setup();mock::welcome();mock::start();mock::prepare_ok=false;mock::finish();mock::is("cancelling");
     assert(mock::prints==0);mock::reject_start();mock::tick();mock::is("cooldown");mock::reject_start();
     mock::setup();mock::welcome();mock::error=true;mock::tick();mock::is("cancelling");mock::reject_start();
+    assert(!std::strcmp(skull::death::last_interruption().reason,"audio read/worker failure"));
     mock::tick();mock::is("cooldown");mock::reject_start();
     // A printer timeout cannot reopen Start early either.
     mock::setup();mock::print_wait();mock::tick(60000000);mock::is("cancelling");mock::reject_start();
@@ -138,6 +147,7 @@ int main(){
     // A Stop arriving during error detection must not be overwritten by abort.
     mock::setup();mock::welcome();mock::error=mock::cancel_in_error=true;mock::tick();
     mock::is("cancelling");assert(skull::death::mode()==skull::death::Mode::waiting);
+    assert(!std::strcmp(skull::death::last_interruption().reason,"Dead Stop"));
     mock::tick();mock::is("waiting");assert(!skull::death::trigger());
     // Explicit Stop during error cooldown returns Waiting without its delay.
     mock::setup();mock::welcome();mock::error=true;mock::tick();mock::tick();mock::is("cooldown");mock::stop();

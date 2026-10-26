@@ -28,16 +28,26 @@ std::atomic<Mode> published_mode{Mode::waiting};
 int64_t entered=0,prepare_deadline=0,print_at=0;
 bool print_attempted=false,initialized=false,cancel_to_waiting=false;
 std::string fortune;
+Interruption interruption;
+const catalog::Asset *current_asset=nullptr;
 int64_t now(){return esp_timer_get_time();}
 void enter(State next){
     state=next;entered=now();playback=Playback::none;print_at=0;
     published_mode.store(next==State::waiting||(next==State::cancelling&&cancel_to_waiting) ? Mode::waiting : Mode::start);
     ESP_LOGI(tag,"State=%s",state_name());
 }
-void abort(bool explicit_stop=false){
+void abort(const char *reason,bool explicit_stop=false){
     // Do not lose an explicit Stop that arrived while detecting an error.
     const unsigned pending=commands.exchange(0);
     cancel_to_waiting=explicit_stop||pending==stop_request;
+    ++interruption.count;
+    interruption.uptime_us=now();
+    interruption.reason=cancel_to_waiting?"Dead Stop":reason;
+    interruption.phase=state_name();
+    interruption.asset=current_asset?current_asset->path:"none";
+    ESP_LOGW(tag,"Interrupted count=%lu reason=%s phase=%s asset=%s uptime_ms=%lld",
+             static_cast<unsigned long>(interruption.count),interruption.reason,interruption.phase,
+             interruption.asset,static_cast<long long>(interruption.uptime_us/1000));
     audio::cancel();printer::cancel();
     enter(State::cancelling);
 }
@@ -59,8 +69,11 @@ const catalog::Asset *pick(const char *directory){
     return &asset;
 }
 bool begin(const catalog::Asset *asset){
+    current_asset=asset;
     if(!asset)return false;
-    if(!audio::quiescent()||!audio::prepare(asset)){abort();return false;}
+    ESP_LOGI(tag,"Preparing asset=%s expected_frames=%lu",asset->path,
+             static_cast<unsigned long>(asset->wave.data_bytes/4));
+    if(!audio::quiescent()||!audio::prepare(asset)){abort("audio prepare rejected");return false;}
     playback=Playback::preparing;prepare_deadline=now()+5000000;return true;
 }
 void print_once(){
@@ -92,6 +105,7 @@ void advance(){
 void init(catalog::Catalog *content,const Config &settings){
     assets=content;config=settings;
     initialized=false;cancel_to_waiting=false;commands.store(0);enter(State::waiting);
+    interruption=Interruption{};current_asset=nullptr;
     const char *source=config.fortunes_path;
     bool loaded=fortune::load(source);
     if(!loaded){source="/sdcard/fortunes/little_kid_fortunes.json";loaded=fortune::load(source);}
@@ -116,6 +130,7 @@ bool local(const char *path){
     return false;
 }
 bool busy(){const unsigned command=commands.load();return state!=State::waiting||command==start_request||command==stop_request;}
+Interruption last_interruption(){return interruption;}
 int jaw_override(){
     if(state==State::cancelling||state==State::cooldown||state==State::print_wait)return 0;
     return -1;
@@ -131,7 +146,7 @@ const char *state_name(){
 void tick(bool initialization_finished,bool startup_active){
     const int64_t time=now();
     const unsigned command=commands.exchange(0);
-    if(command==stop_request)abort(true);
+    if(command==stop_request)abort("Dead Stop",true);
     if(state==State::cancelling){
         // Explicit Stop returns Home to Waiting immediately. Automatic errors
         // retain Start through cleanup and the normal cooldown, preventing a
@@ -141,17 +156,17 @@ void tick(bool initialization_finished,bool startup_active){
     }
     initialized=initialization_finished&&!startup_active;
     if(!initialized)return;
-    if(state!=State::waiting&&state!=State::cooldown&&!radio::stream_ready()){abort();return;}
+    if(state!=State::waiting&&state!=State::cooldown&&!radio::stream_ready()){abort("speaker stream unavailable");return;}
     if(command==start_request&&state==State::waiting&&radio::stream_ready()&&audio::quiescent())
         stage(State::welcome,"/audio/welcome");
     if(playback!=Playback::none){
-        if(audio::error()){abort();return;}
+        if(audio::error()){abort("audio read/worker failure");return;}
         if(playback==Playback::preparing){
             if(audio::ready()){
-                if(!audio::start()){abort();return;}
+                if(!audio::start()){abort("prepared audio start rejected");return;}
                 playback=Playback::playing;
                 if(state==State::preamble)print_at=time+250000;
-            }else if(time>=prepare_deadline){abort();return;}
+            }else if(time>=prepare_deadline){abort("audio prebuffer timeout");return;}
         }
         if(state==State::preamble&&print_at&&time>=print_at)print_once();
         if(playback==Playback::playing&&audio::complete()&&audio::quiescent()){
@@ -162,7 +177,7 @@ void tick(bool initialization_finished,bool startup_active){
         case State::welcome:case State::preamble:case State::done:advance();break;
         case State::print_wait:
             if(!printer::busy())stage(State::done,"/audio/fortune_told");
-            else if(time-entered>=60000000){ESP_LOGW(tag,"Print transport timeout");abort();}
+            else if(time-entered>=60000000){ESP_LOGW(tag,"Print transport timeout");abort("printer transport timeout");}
             break;
         case State::cooldown:if(time-entered>=int64_t(config.cooldown_ms)*1000)enter(State::waiting);break;
         default:break;

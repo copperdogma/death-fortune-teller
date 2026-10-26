@@ -21,6 +21,15 @@ void tick(bool initialization_finished,bool startup_active);
 bool local(const char *path);
 bool busy();
 const char *state_name();
+// Control-task snapshot, retained across later shows until reboot/init. No SD writes.
+struct Interruption {
+    uint32_t count=0;
+    int64_t uptime_us=0;
+    const char *reason="none";
+    const char *phase="none";
+    const char *asset="none";
+};
+Interruption last_interruption();
 // -1 audio/breathing, 0 closed; caller applies calibrated pulse limits.
 int jaw_override();
 }

@@ -7,8 +7,8 @@ ESP-Matter1.5.0, one retained BTDM/Bluedroid host, PSRAM PCM producer, onboard S
 and guarded LEDC updates. The source project is unchanged. See
 [provenance](../docs/research/2026-10-25-native-base.md).
 
-Death owns its own Matter accessory, two momentary On/Off endpoints (far welcome,
-near fortune), A2DP speaker, capacitive input, jaw/lights and printer. The new
+Death owns its own Matter accessory with Start, Dead Stop and Waiting endpoints,
+A2DP speaker, jaw/lights and printer. Touch input is retired. The new
 application does not initialize a C3 UART or the TwoSkulls show/peer discovery.
 The original Arduino `src/` and PlatformIO configuration remain rollback/reference;
 `pio run` builds that historical firmware, not this replacement.
@@ -177,3 +177,41 @@ reference window, also recording card R1 status responses. These references are
 specific to the supplied initialized.wav. `sd-clock 400|4000|10000|20000` changes
 the host clock while idle for diagnostics and resets to20MHz on reboot. Lower
 clocks and single-sector reads have not fixed the differing bytes. No card writes.
+
+
+## Retained fault reports (Story018)
+
+The logger retains32 selected diagnostic lines in a bounded PSRAM ring. A first
+error freezes a report (maximum7168bytes); text formatting and persistence happen
+outside the log hook. Further errors while a report is pending are coalesced;
+the count appears in serial status. CHIP/WiFi/provisioning logs and the card's
+configuration-summary line are excluded. Regular serial output continues.
+
+When the full show, audio worker/file, startup, tone and printer are quiescent,
+the owner attempts to save a compact report (roughly1KiB) in the separate
+`death_fault` NVS namespace, reserving free entries for Matter/system state.
+No NVS erase/reinitialization is attempted on failure. Unacknowledged compact
+reports are restored on reboot. A crash before persistence or loss of power can
+still lose unsaved RAM history; this is not a panic core-dump facility.
+
+SD reports rotate through `/sdcard/diagnostics/fault-0.log` through `fault-7.log`.
+A single `pending.tmp` is written, flushed/synced/closed and read back before an
+old slot is replaced. These nine known paths have a combined payload cap below
+64KiB (filesystem cluster overhead is additional). Other files are not removed.
+Failure keeps the frozen RAM/flash report and retries on a60second cadence,
+only while idle. The logger never remounts a live card or retries audio reads.
+Flash retention/acknowledgement attempts are also rate limited. If internal flash
+is unavailable but SD export succeeds, the report can still be acknowledged in
+RAM. SD success requires the write and verification, not merely the mounted flag.
+
+Serial commands:
+
+- `status`: includes pending report ID, coalesced errors, retry counts and errors.
+- `fault-log`: dumps the pending report from RAM, even if SD export fails.
+- `fault-test`: idle-only labelled synthetic error through the production logger;
+  it does not corrupt the card or inject an audio failure.
+
+Host suites exercise capture/filtering, frozen snapshots, concurrent messages,
+retry cadence, NVS failure/reboot/acknowledgement, rotation and filesystem failure
+paths. Hardware export and audible/full-flow acceptance are recorded separately
+in `docs/stories/story-018-retained-fault-logs.md`.
