@@ -1,0 +1,39 @@
+{
+  "at": "2026-10-25T14:53:05.029445-06:00",
+  "port": "/dev/cu.usbserial-10",
+  "chip": "ESP32-D0WD-V3 rev3.1",
+  "mac": "04:83:08:76:99:98",
+  "flash_bytes": 4194304,
+  "backup": "firmware/build/validation/death-first-flash-20261025/original-full-4MiB.bin",
+  "backup_sha256": "c0164dddd8d30a64b27ef6aab154b12bddb9fc5c578ede0a18549562af9a6471",
+  "backup_verified_against_board": true,
+  "migration": "Arduino OTA to native factory layout",
+  "new_nvs_initialized": {
+    "offset": "0x10000",
+    "size": "0x10000"
+  },
+  "written_offsets": {
+    "bootloader": "0x1000",
+    "partition_table": "0xc000",
+    "application": "0x30000"
+  },
+  "application_sha256": "a7edf0adf0a3009e2a24f22c0ce48e5b6d7bc3e3915437ebab3ac64056b775c7",
+  "upload_verified": true,
+  "boot_capture": "firmware/build/validation/death-first-flash-20261025/first-boot.log",
+  "observed": {
+    "booted": true,
+    "psram_detected_bytes": 8388608,
+    "psram_mapped_bytes": 4194304,
+    "matter_far_endpoint": 1,
+    "matter_near_endpoint": 2,
+    "printer_uart_ready": true,
+    "sd_mounted": true,
+    "sd_crc_read_error": "0x109",
+    "startup_audio_loaded": false,
+    "catalog_assets": 7,
+    "speaker_connected": false,
+    "touch_calibrated": false,
+    "touch_raw": 0
+  },
+  "hardware_acceptance": "Pending; SD/audio issue and touch need diagnosis; no fortune/printer job triggered"
+}

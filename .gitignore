@@ -9,3 +9,10 @@ __pycache__/
 *.tmp
 *.log
 platformio.local.ini
+
+# Native ESP-IDF generated outputs (source and dependency lock are tracked)
+firmware/build*/
+firmware/managed_components/
+firmware/sdkconfig
+firmware/sdkconfig.old
+build/

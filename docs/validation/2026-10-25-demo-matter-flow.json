@@ -1,0 +1,72 @@
+{
+  "status": "PASS \u2014 human-reaccepted after printer revision",
+  "image_sha256": "dcd95e25495b048f6912969224b3e6c511eab2a119d850596c8f8eb422126beb",
+  "native_build": "PASS",
+  "host_sanitizers": "PASS",
+  "death_flow_asset_fortune_tests": "PASS",
+  "flash": "Application only0x30000, esptool digest verified",
+  "nvs_preserved": true,
+  "endpoints": {
+    "1": "Start",
+    "2": "Dead Stop",
+    "3": "Waiting"
+  },
+  "boot": "Waiting; JBL first-attempt reconnect; startup complete",
+  "home": "Three controls identified; Start renamed; Home Start and final Dead Stop confirmed by Cam",
+  "local_stop_test": {
+    "start": "accepted",
+    "repeat_during_welcome": "ignored",
+    "waiting_report_ms_after_stop": 20,
+    "internal_cleanup_ms_after_stop": 80,
+    "printer_jobs": 0
+  },
+  "full_flow": {
+    "result": "PASS",
+    "start_ms": 123632,
+    "preamble_ms": 136292,
+    "print_queued_ms": 136692,
+    "print_wait_ms": 153382,
+    "goodbye_ms": 158092,
+    "cooldown_ms": 179732,
+    "waiting_ms": 191742,
+    "cooldown_duration_ms": 12010,
+    "sd_crc_errors": 0
+  },
+  "printer": {
+    "logo": "Original pirate384x353 verifiedbitmap embeddedinflash",
+    "human": "Printed perfectly!",
+    "jobs_completed": 2,
+    "failed": 0,
+    "cancelled": 0,
+    "transport": "UART1RX512/TX0;9600baud;complete56-byteGSv0rowpackets",
+    "sd_reads_for_logo": false
+  },
+  "audio_folder_rebuild": "Deferred by user; no additional SD writes",
+  "committed": false,
+  "failure_behavior": "Automaticfailurecleanup->normalcooldown;explicitDeadStop->Waitingimmediately",
+  "final_state": "Waiting, as confirmed by Cam",
+  "home_stop_test": {
+    "human_confirmation": "Yes, stopped and Waiting is On",
+    "result": "PASS",
+    "callback_timestamp": "Not captured after bounded serial session ended"
+  },
+  "story_016": "Done",
+  "installed_image_sha256": "c9f3c3861fa65c841d50e94f1e250aa3573bf12fcf21e85b570ca925ea14d24c",
+  "post_acceptance_update": {
+    "change": "Threeextra blanklines afterDeathsignature",
+    "host_tests": "PASS",
+    "native_build": "PASS",
+    "flash_digest": "PASS",
+    "boot": "Waiting, speakerconnected, startupcomplete",
+    "full_demo_bench_evidence_image": "dcd95e25495b048f6912969224b3e6c511eab2a119d850596c8f8eb422126beb"
+  },
+  "post_regression_printing": {
+    "physical_checks": "Twoacceptedcleanjobswithoutprinterpowerreset; lastcontainsrealfortune",
+    "logo_row_processing_gap_ms": 50,
+    "text_mode": "NormalfontA12x24,30dotspacing,left",
+    "footer_feed_dots": 150,
+    "fortune_fallback": "Exactverified727-bytecardtemplateembedded; hardwareexercised",
+    "print_wait_guard_ms": 60000,
+    "final_idle_status": "0x12"
+  }
+}

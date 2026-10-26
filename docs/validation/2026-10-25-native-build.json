@@ -1,0 +1,43 @@
+{
+  "verified_at": "2026-10-25T14:46:00.272439-06:00",
+  "target": "esp32",
+  "idf": "5.5.4",
+  "matter": "1.5.0",
+  "base_commit": "57ff5cc98ece823ba5b1c64cead6428c33d1240a",
+  "commands": [
+    "idf.py -C firmware build size",
+    "python3 native_scripts/run_host_tests.py",
+    "python3 native_scripts/run_death_tests.py --idf-path /Users/cam/esp/esp-idf-v5.5.4"
+  ],
+  "result": "PASS",
+  "hardware_tested": false,
+  "committed": false,
+  "artifacts": [
+    {
+      "path": "firmware/build/death_wrover.bin",
+      "bytes": 2118912,
+      "sha256": "a7edf0adf0a3009e2a24f22c0ce48e5b6d7bc3e3915437ebab3ac64056b775c7"
+    },
+    {
+      "path": "firmware/build/bootloader/bootloader.bin",
+      "bytes": 26160,
+      "sha256": "fcc0b7f26ddd4761eb1182e4fd4321fbe4c387427fbb5ff77115a96e9c6db5dc"
+    },
+    {
+      "path": "firmware/build/partition_table/partition-table.bin",
+      "bytes": 3072,
+      "sha256": "fb4a9607ad65ce674144a9e34ac27cd4755b99e6a4bf932189bb9b624c97adc3"
+    }
+  ],
+  "app_partition_bytes": 3997696,
+  "host_validation": {
+    "python_tests": 8,
+    "inherited_and_printer_cpp_suites": 9,
+    "death_cpp_suites": 4,
+    "sanitizers": [
+      "AddressSanitizer",
+      "UndefinedBehaviorSanitizer"
+    ],
+    "actual_death_wavs_accepted": 9
+  }
+}

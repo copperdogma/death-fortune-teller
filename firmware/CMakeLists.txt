@@ -1,0 +1,8 @@
+cmake_minimum_required(VERSION 3.16)
+set(PROJECT_VER "0.2.0-death")
+include($ENV{IDF_PATH}/tools/cmake/project.cmake)
+project(death_wrover)
+include(cmake/matter_bluedroid_patch.cmake)
+idf_build_set_property(CXX_COMPILE_OPTIONS "-std=gnu++17;-Os;-DCHIP_HAVE_CONFIG_H;-Wno-overloaded-virtual" APPEND)
+idf_build_set_property(C_COMPILE_OPTIONS "-Os" APPEND)
+include(cmake/sbc_encoder_optimization.cmake)

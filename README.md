@@ -2,6 +2,28 @@
 
 An animatronic skeleton that tells fortunes, built with ESP32 and PlatformIO.
 
+## 2026 single-WROVER rebuild
+
+The new active implementation is [native ESP-IDF firmware](firmware/README.md),
+based on the newer TwoSkulls single-WROVER code. The WROVER handles Matter and
+A2DP itself; the C3 Super Mini is retired from this runtime. Death’s fortune flow,
+SD content, calibrated jaw control and a rewritten paced text printer are
+integrated. See [Story015](docs/stories/story-015-single-wrover-2026-rebuild.md)
+for implementation/verification status and the remaining physical bench checks.
+The demo controls are **Start**, **Waiting** and **Dead Stop**; see
+[Story016](docs/stories/story-016-demo-matter-start-waiting-stop.md). Start runs
+the whole fortune sequence and cooldown automatically; Dead Stop cancels back
+to Waiting. The separate Box of Death can turn Start On through a Home automation.
+
+Build the replacement with `idf.py -C firmware build` after activating ESP-IDF5.5.4.
+The Arduino/PlatformIO instructions below describe the retained historical
+firmware. They do not build the replacement. The native partition layout requires
+a deliberate backed-up first migration; see the native README before flashing.
+
+---
+
+## Historical Arduino implementation
+
 > **🔗 Related Project**: [Death Matter Controller](https://github.com/copperdogma/death-matter-controller) - ESP32-C3 Matter controller for Apple Home integration
 
 ## Project Overview

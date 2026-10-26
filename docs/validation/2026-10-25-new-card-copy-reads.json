@@ -1,0 +1,49 @@
+{
+  "source": "/Volumes/H-DEATH/audio/initialized-readtest-20261025.wav",
+  "read_only": true,
+  "macos_fd_cache_disabled": true,
+  "passes": [
+    {
+      "file_bytes": 425778,
+      "file_sha256": "f5b6edd542b78ca14a9f442f7366d515edef75b0344bdb327fe1f29fdd277ba0",
+      "pcm_bytes": 425700,
+      "pcm_sha256": "ad3b82e735f25ac9bb63661710c40d84af72053ba26c2ca5b3b4021de3bcd871",
+      "pcm_fnv1a": "d6d8b5d5",
+      "frames": 106425,
+      "nonzero_samples": 212578,
+      "peak": 19538
+    },
+    {
+      "file_bytes": 425778,
+      "file_sha256": "f5b6edd542b78ca14a9f442f7366d515edef75b0344bdb327fe1f29fdd277ba0",
+      "pcm_bytes": 425700,
+      "pcm_sha256": "ad3b82e735f25ac9bb63661710c40d84af72053ba26c2ca5b3b4021de3bcd871",
+      "pcm_fnv1a": "d6d8b5d5",
+      "frames": 106425,
+      "nonzero_samples": 212578,
+      "peak": 19538
+    },
+    {
+      "file_bytes": 425778,
+      "file_sha256": "f5b6edd542b78ca14a9f442f7366d515edef75b0344bdb327fe1f29fdd277ba0",
+      "pcm_bytes": 425700,
+      "pcm_sha256": "ad3b82e735f25ac9bb63661710c40d84af72053ba26c2ca5b3b4021de3bcd871",
+      "pcm_fnv1a": "d6d8b5d5",
+      "frames": 106425,
+      "nonzero_samples": 212578,
+      "peak": 19538
+    }
+  ],
+  "stable_file_reads": true,
+  "reference": {
+    "file_bytes": 425778,
+    "file_sha256": "f5b6edd542b78ca14a9f442f7366d515edef75b0344bdb327fe1f29fdd277ba0",
+    "pcm_bytes": 425700,
+    "pcm_sha256": "ad3b82e735f25ac9bb63661710c40d84af72053ba26c2ca5b3b4021de3bcd871",
+    "pcm_fnv1a": "d6d8b5d5",
+    "frames": 106425,
+    "nonzero_samples": 212578,
+    "peak": 19538
+  },
+  "matches_reference": true
+}

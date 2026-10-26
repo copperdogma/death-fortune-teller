@@ -1,0 +1,67 @@
+{
+  "status": "In Review; raw audio integrity/static and unattended reconnect unresolved",
+  "latest_image_sha256": "611390fef6c731c293f862b8716b9bc37f3a30f80fbbadd522c6680b74e77282",
+  "build": "PASS",
+  "host_sanitizers": "PASS",
+  "home_commissioning": "Confirmed",
+  "home_command_receipt": "Near endpoint2 confirmed",
+  "touch_removed": true,
+  "sd_card_mode": "SDSC APPSD 960MB; restored qualified TwoSkulls20MHz",
+  "short_stream": {
+    "frames": 106425,
+    "underruns": 0,
+    "human": "Clean"
+  },
+  "long_stream": {
+    "frames": 540540,
+    "underruns": 0,
+    "read_us": 4813346,
+    "process_us": 1810810,
+    "human": "Better but still some static"
+  },
+  "raw_repeatability": {
+    "bytes": 425700,
+    "startup_staging_fnv": "1044401d",
+    "startup_psram_fnv": "1044401d",
+    "direct_probe_fnv": [
+      "c9c22729",
+      "47fae215"
+    ],
+    "result": "Hashes differ; not resolved"
+  },
+  "next": "Compare original and new identical clip hashes/playback on device",
+  "nvs_preserved": true,
+  "card_written": true,
+  "committed": false,
+  "stream_path": "Qualified8-block/8192PSRAM stdio with gain/hash diagnostics",
+  "raw_driver_probe": {
+    "filesystem_bypassed": true,
+    "r1_read": "00000900",
+    "r1_status": "00000900",
+    "transport_errors": 0,
+    "command_errors": 0,
+    "reference_match": false
+  },
+  "legacy_sd_only_control": {
+    "sdk": "Arduino2.0.17 / ESP-IDF4.4.7",
+    "radios_actuators_off": true,
+    "full_reads": 8,
+    "reference_matches": 0,
+    "native_settings_backup_verified": true,
+    "restoration": "Verified native prefix digest and native app restored; boot loaded saved speaker and reconnected"
+  },
+  "computer_card_reads": {
+    "passes": 3,
+    "byte_identical_to_repository": true,
+    "pcm_fnv1a": "d6d8b5d5"
+  },
+  "latest_native_image_sha256": "611390fef6c731c293f862b8716b9bc37f3a30f80fbbadd522c6680b74e77282",
+  "current_board_mode": "Native baseline restored; waiting for card return and power-on",
+  "spi_probe": {
+    "mount_after_power_cycle": false,
+    "result": "Inconclusive: no CMD0 response; no quality comparison possible",
+    "nvs_unchanged_digest_verified": true,
+    "native_application_restored": true
+  },
+  "card_write_scope": "User-approved single new diagnostic audio file;47 existing user files backed up and verified unchanged"
+}

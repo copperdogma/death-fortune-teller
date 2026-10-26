@@ -1,0 +1,82 @@
+{
+  "repository": "https://github.com/copperdogma/TwoSkulls",
+  "commit": "57ff5cc98ece823ba5b1c64cead6428c33d1240a",
+  "files": [
+    {
+      "path": "main/skull_radio.cpp",
+      "sha256": "f1ff7395b6304fe8a936fb718f4435cac797a2104db1602b89c62f3d96be6005",
+      "identical_to_twoskulls": true
+    },
+    {
+      "path": "main/skull_radio.h",
+      "sha256": "a517edfe294838a0712ec3f15b26e5c8797f4b5ad4a84d46008148a3856546c5",
+      "identical_to_twoskulls": true
+    },
+    {
+      "path": "main/skull_audio.cpp",
+      "sha256": "9d13f0b7dc1100f115039720008f4b022b364d2d81df1e6bce7b74328066224a",
+      "identical_to_twoskulls": false,
+      "base_sha256": "33bef37bb9f54d7b64f41448b6c5ee3d20a844f9c15b46de4016d763f32759d4",
+      "adaptation": "Restored qualified8-block FIFO and8192-byte retained PSRAM stdio path. Only diagnostic gain API and raw PCM hash added; bounded yields/provider ownership unchanged."
+    },
+    {
+      "path": "main/skull_audio.h",
+      "sha256": "389dc3b798fb43d8a24a44aaf1a81545341c52592665eeee6ef5dec2e62446ac",
+      "identical_to_twoskulls": false,
+      "base_sha256": "44df9395f76e330c47146f92dcf9685ad9d9aac6af9cf3e676d43e83cce25889",
+      "adaptation": "Diagnostic gain control and raw PCM FNV telemetry declarations."
+    },
+    {
+      "path": "main/skull_wave.cpp",
+      "sha256": "e55d7287d5d475e84208d2af617d17361188a768902665d846502d82898aeb26",
+      "identical_to_twoskulls": true
+    },
+    {
+      "path": "main/skull_wave.h",
+      "sha256": "976fec58b9f89ae99d93cd5136601a36665e2328739d79c0c7c6b97273245af8",
+      "identical_to_twoskulls": true
+    },
+    {
+      "path": "main/skull_secondary.cpp",
+      "sha256": "c1dc4841a82ec499d204c946e8d43c5e52d65c979dd3853e9e0711691ecba303",
+      "identical_to_twoskulls": true
+    },
+    {
+      "path": "main/skull_secondary.h",
+      "sha256": "85540bcaca1367ba9348dd902fba877c7f410db6dbb2ba15d0dc34407d1fc67c",
+      "identical_to_twoskulls": true
+    },
+    {
+      "path": "main/skull_secondary_protocol.h",
+      "sha256": "a41b1efaf6295fab5d67f3a9c96779b2d1195887365d48e866708d2723564d9e",
+      "identical_to_twoskulls": true
+    },
+    {
+      "path": "cmake/matter_bluedroid_patch.cmake",
+      "sha256": "e2dee0e4247ceccdd7c05d453c36b9bf0bd9848d544a5f532c4c28215a91d46b",
+      "identical_to_twoskulls": true
+    },
+    {
+      "path": "cmake/sbc_encoder_optimization.cmake",
+      "sha256": "6f6837e5a1a6ebd54ebf7a2276935891a70f7faadf67cde35af9abf9a44cfcc0",
+      "identical_to_twoskulls": true
+    },
+    {
+      "path": "partitions.csv",
+      "sha256": "e8e61002aabf33135ca8e2352f64e7517752501bc3583cd6f65384657d83699a",
+      "identical_to_twoskulls": true
+    },
+    {
+      "path": "main/idf_component.yml",
+      "sha256": "f67d65c8be5fcf01a6d316b04f2a8e4dd27579971f1a928fc21bd580791b430f",
+      "identical_to_twoskulls": true
+    },
+    {
+      "path": "dependencies.lock",
+      "sha256": "ea68c62294aa6278c3b459bfbc3a5d00c1492c41e6446e4e455733b72ae892e2",
+      "identical_to_twoskulls": true
+    }
+  ],
+  "qualified_base_image_sha256": "0cf0961ed9fdaa414b867ca3258a358eff1464f29c5ef5f0a2a5f4a1879644d9",
+  "qualified_base_evidence": "TwoSkulls docs/validation/2026-10-15-code-qualification.md; retained catalogue-release summary and flashed-image ELF checked in 2026-10-25 audit."
+}

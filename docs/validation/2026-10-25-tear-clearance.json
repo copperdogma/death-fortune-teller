@@ -1,0 +1,12 @@
+{
+  "requested_extra_blank_lines": 3,
+  "previous_blank_lines_after_signature": 2,
+  "new_blank_lines_after_signature": 5,
+  "host_tests": "PASS",
+  "native_build": "PASS",
+  "built_image_sha256": "d1e351d9b162d8f333a720fbbfdc01c098de01987bb375b4bf1a66eeb588ce78",
+  "flash": "PASS: application0x30000,esptooldigestverified",
+  "installed_image_sha256": "d1e351d9b162d8f333a720fbbfdc01c098de01987bb375b4bf1a66eeb588ce78",
+  "boot": "PASS: Waiting, savedJBLfirst-attemptconnection, startupcomplete",
+  "physical_clearance": "ThreeextraLFverifiedinhostoutput; nextphysicalprintnottriggered"
+}

@@ -1,0 +1,17 @@
+{
+  "backup_verified": true,
+  "existing_user_files_verified_unchanged_after_copy": 47,
+  "skipped_os_bookkeeping_dirs": [
+    ".Spotlight-V100",
+    ".Trashes",
+    ".fseventsd"
+  ],
+  "new_card_file": "audio/initialized-readtest-20261025.wav",
+  "bytes": 425778,
+  "file_sha256": "f5b6edd542b78ca14a9f442f7366d515edef75b0344bdb327fe1f29fdd277ba0",
+  "pcm_fnv1a": "d6d8b5d5",
+  "uncached_read_passes": 3,
+  "all_match_repository": true,
+  "safe_unmount": "H-DEATH disk4s1 succeeded",
+  "device_comparison": "Pending card returned to Death"
+}

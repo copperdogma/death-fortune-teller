@@ -1,0 +1,36 @@
+{
+  "status": "PASS \u2014 repeat print, real fortune and physical layout accepted by Cam",
+  "failure_photo": "IMG_1345.HEIC userprovided",
+  "layout_photo": "IMG_1347.HEIC userprovided",
+  "power": "Userconfirmed5V5Asharedsupplywiththreebulkcaps; projectdocsreviewed",
+  "dtr": "Explicitlyunconnectedindocumentedharness",
+  "old_failure_host_uart": "Twojobsreportedsent,0failed; physicalcorruptionnotdetected",
+  "pacing_experiment": {
+    "row_gap_ms": 50,
+    "first_image": "Humanreportedclean",
+    "first_layout": "Humanreportedcompressedfooter/missingfeed",
+    "status_before": "0x12",
+    "status_after": "0x12"
+  },
+  "layout_candidate": {
+    "image_sha256": "bbd62490f07e3a5652e3460713332ed47e7e469496bdbf7b6e48a7eeb1841f27",
+    "text_mode": "FontA12x24normal,size1,left,30dotlineSpacing",
+    "blank_line_feed": "ESCJ30+100msprocessing",
+    "footer_blank_lines": 5,
+    "footer_feed_dots": 150,
+    "host_tests": "PASS",
+    "native_build": "PASS",
+    "physical_result": "Humanacceptednormalfontandtearspace"
+  },
+  "installed_image_sha256": "c9f3c3861fa65c841d50e94f1e250aa3573bf12fcf21e85b570ca925ea14d24c",
+  "real_fortune_repeat": {
+    "template_source": "Embedded verified727-bytecardJSON; SDfirstpolicyretained",
+    "human": "Yes, everything looks right",
+    "printer_reset_between_accepted_prints": false,
+    "host_sent": 1,
+    "host_failed": 0,
+    "idle_error_status": "0x12",
+    "final_state": "Waiting, speakerconnected, printeridle"
+  },
+  "cause": "Unproven; processingpacingandexplicitlayoutaretestedmitigations"
+}
