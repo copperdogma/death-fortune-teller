@@ -87,6 +87,16 @@ std::string generate() {
         result+=replacements[key]; cursor=end+2;
         if(result.size()>1024)return "The spirits are silent...";
     }
+    // Legacy card prose joins sentences as "trousers.Seek" and "clown.On".
+    // Repair lower-case word endings followed by a capitalized sentence.
+    // Leave authored whitespace, decimals, initials and ellipses unchanged.
+    for(size_t i=1;i+1<result.size();++i) {
+        if(result[i]=='.'&&result[i-1]>='a'&&result[i-1]<='z'&&
+           result[i+1]>='A'&&result[i+1]<='Z') {
+            if(result.size()>=1024)return "The spirits are silent...";
+            result.insert(i+1,1,' ');++i;
+        }
+    }
     return result.size()<=1024?result:"The spirits are silent...";
 }
 }

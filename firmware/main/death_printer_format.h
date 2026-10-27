@@ -19,7 +19,7 @@ public:
         if (phase_ == 2 && (text_[pos_] != '\0' || trailing_empty_)) return body_line(line, capacity, length);
         if (phase_ < 3) phase_ = 3;
         if (phase_ == 3) { phase_ = 4; return copy_literal("", line, capacity, length); }
-        if (phase_ == 4) { phase_ = 5; return copy_literal("--- Death ---", line, capacity, length); }
+        if (phase_ == 4) { phase_ = 5; return copy_literal("-- Death, the Fortune-Teller", line, capacity, length); }
         // Two existing blank lines plus three extra lines for tear-off clearance.
         if (phase_ >= 5 && phase_ < 10) { ++phase_; return copy_literal("", line, capacity, length); }
         return false;

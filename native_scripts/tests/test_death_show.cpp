@@ -72,8 +72,8 @@ int main(){
     assert(mock::fortune_paths[1]=="/sdcard/fortunes/little_kid_fortunes.json");
     // One Start runs the entire sequence without Near/touch/timeout gates.
     mock::setup();mock::is("waiting");assert(skull::death::mode()==skull::death::Mode::waiting);
-    mock::welcome();mock::reject_start();mock::start();mock::reject_start();mock::finish();mock::is("fortune-preamble");
-    mock::reject_start();mock::start();mock::tick(250000);assert(mock::prints==1);mock::reject_start();
+    mock::welcome();mock::reject_start();mock::start();mock::tick(1000000);assert(mock::prints==0);mock::reject_start();mock::finish();mock::is("fortune-preamble");
+    mock::reject_start();mock::start();mock::tick(249999);assert(mock::prints==0);mock::tick(1);assert(mock::prints==1);mock::reject_start();
     mock::tick(1000000);assert(mock::prints==1);mock::finish();mock::is("print-wait");mock::reject_start();
     mock::tick();mock::is("print-wait");mock::printing=false;mock::tick();mock::is("fortune-done");mock::reject_start();
     mock::start();mock::finish();mock::is("cooldown");mock::reject_start();
@@ -155,6 +155,9 @@ int main(){
     // Missing clips skip bounded stages while still printing only one fortune.
     mock::setup(false);assert(skull::death::trigger());mock::tick();mock::is("fortune-preamble");assert(mock::prints==1);
     mock::tick();mock::is("print-wait");mock::printing=false;mock::tick();mock::tick();mock::is("cooldown");
+    // A print finished during the preamble must not cut speech short or print twice.
+    mock::setup();mock::printing_phase();mock::printing=false;mock::tick();mock::is("fortune-preamble");
+    mock::finish();mock::is("print-wait");mock::tick();mock::is("fortune-done");assert(mock::prints==1);
     // Rejected printer enqueue is not automatically duplicated.
     mock::setup(false);mock::print_ok=false;assert(skull::death::trigger());mock::tick();
     mock::tick();mock::tick();mock::tick();assert(mock::prints==1);

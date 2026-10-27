@@ -132,7 +132,8 @@ bool print_logo(uint32_t epoch) {
 }
 
 bool print_job(const char *text, uint32_t epoch) {
-    static constexpr uint8_t init[] = {0x1B, '@'};
+    // Center the narrow raster; text_mode restores left alignment afterward.
+    static constexpr uint8_t init[] = {0x1B, '@', 0x1B, 'a', 1};
     if (!write_bytes(init, sizeof(init), epoch) || !print_logo(epoch)) return false;
     // Reassert text layout after raster printing without clearing printer buffers.
     static constexpr uint8_t text_mode[] = {

@@ -40,7 +40,7 @@ int uart_write_bytes(uart_port_t, const void *bytes, size_t length) {
     ++fake_uart::writes; fake_uart::entered_write = true; fake_uart::changed.notify_all();
     fake_uart::changed.wait(lock, [] { return !fake_uart::block_write && fake_uart::writes != fake_uart::block_write_at; });
     const auto *data = static_cast<const uint8_t *>(bytes);
-    fake_uart::last_write_logo = length == 56 && data[0] == 0x1d && data[1] == 0x76;
+    fake_uart::last_write_logo = length == skull::printer::detail::logo::packet_bytes && data[0] == 0x1d && data[1] == 0x76;
     fake_uart::last_write_feed = length == 3 && data[0] == 0x1b && data[1] == 'J';
     fake_uart::transmitted.append(static_cast<const char *>(bytes), length);
     return static_cast<int>(length);
@@ -73,34 +73,34 @@ static std::vector<std::string> formatted(const char *text) {
 
 static void formatter_cases() {
     assert((formatted("hello world\nnext") == std::vector<std::string>{
-        "Your fortune:", "", "hello world", "next", "", "--- Death ---", "", "", "", "", ""}));
+        "Your fortune:", "", "hello world", "next", "", "-- Death, the Fortune-Teller", "", "", "", "", ""}));
     assert((formatted("first\n\nthird\n") == std::vector<std::string>{
-        "Your fortune:", "", "first", "", "third", "", "", "--- Death ---", "", "", "", "", ""}));
+        "Your fortune:", "", "first", "", "third", "", "", "-- Death, the Fortune-Teller", "", "", "", "", ""}));
     assert((formatted("hello world this is a deliberately long fortune") == std::vector<std::string>{
-        "Your fortune:", "", "hello world this is a", "deliberately long fortune", "", "--- Death ---", "", "", "", "", ""}));
+        "Your fortune:", "", "hello world this is a", "deliberately long fortune", "", "-- Death, the Fortune-Teller", "", "", "", "", ""}));
     const std::string long_word(35, 'x');
     assert((formatted(long_word.c_str()) == std::vector<std::string>{
-        "Your fortune:", "", std::string(32, 'x'), "xxx", "", "--- Death ---", "", "", "", "", ""}));
+        "Your fortune:", "", std::string(32, 'x'), "xxx", "", "-- Death, the Fortune-Teller", "", "", "", "", ""}));
     const char controls[] = {'A', '\x1b', '[', '3', '1', 'm', '\x7f', ' ', char(0xc3), char(0xa9), 0};
     assert((formatted(controls) == std::vector<std::string>{
-        "Your fortune:", "", "A?[31m? ??", "", "--- Death ---", "", "", "", "", ""}));
+        "Your fortune:", "", "A?[31m? ??", "", "-- Death, the Fortune-Teller", "", "", "", "", ""}));
 }
 
 static void logo_cases() {
     using namespace skull::printer::detail::logo;
-    assert(width_bytes == 48 && height == 353 && packet_bytes == 56);
+    assert(width_bytes == 24 && height == 177 && packet_bytes == 32);
     uint8_t packet[packet_bytes];
     uint32_t hash = 2166136261u;
     for (unsigned row = 0; row < height; ++row) {
         assert(row_packet(row, packet));
-        const uint8_t expected[] = {0x1d,0x76,0x30,0x00,48,0,1,0};
+        const uint8_t expected[] = {0x1d,0x76,0x30,0x00,24,0,1,0};
         assert(std::memcmp(packet, expected, sizeof(expected)) == 0);
         assert(std::memcmp(packet + 8, pixels + row * width_bytes, width_bytes) == 0);
         for (unsigned i = 8; i < packet_bytes; ++i) hash = (hash ^ packet[i]) * 16777619u;
     }
     assert(!row_packet(height, packet));
-    // Fixed checksum of exact top-down BMP pixels, including all zero bytes.
-    assert(hash == 0xf85311c2u);
+    // Fixed checksum of half-size top-down logo pixels, including all zero bytes.
+    assert(hash == 0xa45dd837u);
 }
 
 static void worker_cases() {
@@ -164,23 +164,23 @@ static void worker_cases() {
         const std::string mode("\x1b!\0\x1d!\0\x1bM\0\x1b" "2\x1b" "a\0",14);
         const std::string feed("\x1bJ\x1e",3);
         const std::string expected = mode + feed + "Your fortune:\n" + feed +
-            "hello world\nnext\n" + feed + "--- Death ---\n" + feed+feed+feed+feed+feed;
+            "hello world\nnext\n" + feed + "-- Death, the Fortune-Teller\n" + feed+feed+feed+feed+feed;
         using namespace skull::printer::detail::logo;
-        assert(fake_uart::transmitted.size() > 2 + height * packet_bytes);
-        assert(fake_uart::transmitted.substr(0,2) == std::string("\x1b@",2));
+        assert(fake_uart::transmitted.size() > 5 + height * packet_bytes);
+        assert(fake_uart::transmitted.substr(0,5) == std::string("\x1b@\x1b" "a\x01",5));
         uint8_t packet[packet_bytes];
         for (unsigned row = 0; row < height; ++row) {
             assert(row_packet(row, packet));
-            assert(std::memcmp(fake_uart::transmitted.data() + 2 + row * packet_bytes, packet, packet_bytes) == 0);
+            assert(std::memcmp(fake_uart::transmitted.data() + 5 + row * packet_bytes, packet, packet_bytes) == 0);
         }
-        assert(fake_uart::transmitted.substr(2 + height * packet_bytes) == expected);
+        assert(fake_uart::transmitted.substr(5 + height * packet_bytes) == expected);
         assert(fake_uart::drains == fake_uart::writes);
         assert(fake_uart::max_drain_timeout >= 100);
     }
 
     { std::lock_guard<std::mutex> lock(gap_mutex); assert(logo_gaps == detail::logo::height); assert(feed_gaps == 16); }
 
-    // Cancel during a raster row: the current56-byte packet completes, but
+    // Cancel during a raster row: the current32-byte packet completes, but
     // no partial GS v0 payload or fortune text remains for the following job.
     size_t logo_start;
     unsigned held_write;
@@ -201,11 +201,11 @@ static void worker_cases() {
     {
         std::lock_guard<std::mutex> lock(fake_uart::mutex);
         using namespace skull::printer::detail::logo;
-        assert(fake_uart::transmitted.size() - logo_start == 2 + 4 * packet_bytes);
+        assert(fake_uart::transmitted.size() - logo_start == 5 + 4 * packet_bytes);
         uint8_t packet[packet_bytes];
         for (unsigned row = 0; row < 4; ++row) {
             assert(row_packet(row, packet));
-            assert(std::memcmp(fake_uart::transmitted.data() + logo_start + 2 + row * packet_bytes, packet, packet_bytes) == 0);
+            assert(std::memcmp(fake_uart::transmitted.data() + logo_start + 5 + row * packet_bytes, packet, packet_bytes) == 0);
         }
         assert(fake_uart::transmitted.find("must not print cancelled text", logo_start) == std::string::npos);
     }
@@ -235,7 +235,7 @@ static void worker_cases() {
     {
         std::lock_guard<std::mutex> lock(fake_uart::mutex);
         assert(fake_uart::writes == writes_at_gap);
-        assert(fake_uart::transmitted.size() - logo_start == 2 + 3 * detail::logo::packet_bytes);
+        assert(fake_uart::transmitted.size() - logo_start == 5 + 3 * detail::logo::packet_bytes);
         assert(fake_uart::transmitted.find("must not print after gap cancellation", logo_start) == std::string::npos);
     }
 
@@ -264,7 +264,7 @@ static void worker_cases() {
         std::lock_guard<std::mutex> lock(fake_uart::mutex);
         assert(fake_uart::writes == writes_at_gap);
         assert(fake_uart::transmitted.find("Your fortune:", logo_start) == std::string::npos);
-        assert(fake_uart::transmitted.size()-logo_start == 2+detail::logo::height*detail::logo::packet_bytes+14+3);
+        assert(fake_uart::transmitted.size()-logo_start == 5+detail::logo::height*detail::logo::packet_bytes+14+3);
     }
     { std::lock_guard<std::mutex> lock(gap_mutex); assert(feed_gaps == gaps_at_cancel); }
 

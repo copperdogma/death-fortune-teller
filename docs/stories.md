@@ -41,6 +41,10 @@ Death, the Fortune Telling Skeleton
 | 018 | Retained Fault Reports and Rolling SD Logs | High | In Review | /docs/stories/story-018-retained-fault-logs.md |
 | 019 | Reliable SD Playback on Replacement Card | Critical | In Progress | /docs/stories/story-019-reliable-sd-playback.md |
 
+| 020 | Smaller Logo and Print Timing | Medium | Done | /docs/stories/story-020-smaller-logo-earlier-print.md |
+
+| 021 | Fortune Sentence Spacing | Medium | Done | /docs/stories/story-021-fortune-sentence-spacing.md |
+
 ## Notes
 - Story IDs map to future files in `/docs/stories/`; create each file as work begins.
 - Update priorities and statuses as planning evolves and milestones complete.

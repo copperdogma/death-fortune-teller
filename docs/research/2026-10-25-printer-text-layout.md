@@ -29,3 +29,7 @@ The existing50ms receiver-processing gap after every logo row is unchanged. Font
 Production printer tests pass with AddressSanitizer/UndefinedBehaviorSanitizer and warnings-as-errors. Tests preserve the exact353 binary raster packets, check the complete14-byte text-normalization sequence and physical-feed/text order, retain logical formatter expectations, count the processing quanta, and cancel in the first physical-feed quantum to prove no second quantum or following text is emitted. Prior mid-raster and receiver-gap cancellation checks remain.
 
 No hardware test or flash was performed by this task. Physical signature appearance, blank-space dimensions and repeat-print consistency still require confirmation on the actual printer.
+
+## 2026-10-26 — Center the smaller raster only
+
+For Story020, the owner accepted the half-size logo and requested centering. The supplied manual p22 defines ESC a1 as middle alignment for all line data. Apply it after the initial ESC@ and before the177 one-row GS v0 packets; keep the existing ESC a0 before text. This preserves the accepted bitmap bytes and avoids padded raster columns increasing serial time. Exact command ordering is covered by the production printer host test; Cam subsequently confirmed the centered logo and signature look great, with excellent printing and perfect timing (Story020). Signature becomes the requested27-character `-- Death, the Fortune-Teller`, within32 columns.
