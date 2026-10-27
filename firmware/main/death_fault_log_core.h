@@ -66,7 +66,7 @@ inline bool select_line(const char *source,char *out,size_t capacity,bool &fault
     out[n]=0;
     if(std::strstr(out,"Card config ")||std::strstr(out,"password=")||std::strstr(out,"passphrase=")||
        std::strstr(out,"setup_code=")||std::strstr(out,"ssid="))return false;
-    const char *tags[]={") death:",") skull_sd:",") skull_radio:",") skull_startup:",") skull_actuators:",") sdmmc_cmd:",") diskio_sdmmc:",") death_printer:",") printer:"};
+    const char *tags[]={") death:",") skull_sd:",") skull_radio:",") skull_startup:",") skull_actuators:",") sdmmc_cmd:",") sdmmc_req:",") sdspi_host:",") spi_master:",") diskio_sdmmc:",") death_printer:",") printer:"};
     bool selected=false;for(const char *tag:tags)if(std::strstr(out,tag)){selected=true;break;}
     fault=n>2&&out[0]=='E'&&out[1]==' ';
     // Show failures also have a warning with an explicit reason. User Stop is

@@ -35,6 +35,9 @@ int64_t breath_started = -1;
 double smoothed_amplitude = 0;
 int previous_jaw = 0;
 uint32_t last_jaw_duty = 0;
+uint32_t programmed_jaw_duty = 0;
+JawMode selected_jaw_mode = JawMode::normal;
+bool jaw_pulses_stopped = false;
 uint32_t last_eye_duty[2] = {dim, dim};
 Stats telemetry = {};
 int64_t pending_since[3] = {-1, -1, -1};
@@ -53,6 +56,26 @@ uint32_t jaw_duty(int degrees)
     if (reverse_direction) bounded = 180 - bounded;
     const uint32_t pulse_us = minimum_us + bounded * (maximum_us - minimum_us) / 180;
     return (pulse_us * 65536U + 10000U) / 20000U;
+}
+
+// Retain every calibrated integer-angle pulse exactly, but avoid whole-degree
+// stair steps during slow gestures. Interpolate between those proven points;
+// the final quantization is only the hardware's 16-bit PWM resolution.
+uint32_t gesture_duty(double degrees)
+{
+    const double bounded = std::clamp(degrees, 3.0, static_cast<double>(jaw_max - 3));
+    const int lower = static_cast<int>(bounded);
+    const double fraction = bounded - lower;
+    return static_cast<uint32_t>(jaw_duty(lower) * (1.0 - fraction) +
+                                 jaw_duty(lower + 1) * fraction + 0.5);
+}
+
+double gesture_angle(int64_t elapsed, int64_t duration)
+{
+    const double t = std::clamp(static_cast<double>(elapsed) / duration, 0.0, 1.0);
+    // Smoothstep starts/stops with zero requested velocity while retaining the
+    // existing duration, midpoint and endpoints. Speech keeps its own smoothing.
+    return 30.0 * t * t * (3.0 - 2.0 * t);
 }
 
 esp_err_t configure_timer(ledc_timer_t timer, ledc_timer_bit_t bits, uint32_t hz)
@@ -178,6 +201,7 @@ esp_err_t init()
     last_jaw_duty = jaw_duty(0);
     error = configure_channel(23, jaw_channel, LEDC_TIMER_0, last_jaw_duty);
     if (checked(error, "jaw channel init") != ESP_OK) return error;
+    programmed_jaw_duty = last_jaw_duty;
     previous_jaw = 0;
     smoothed_amplitude = 0;
     last_tick = -1;
@@ -191,7 +215,7 @@ esp_err_t init()
 
 void test()
 {
-    if (!ready) return;
+    if (!ready || selected_jaw_mode != JawMode::normal) return;
     check_pending = true;
     check_started = -1;
     breath_started = -1;
@@ -210,6 +234,38 @@ void diagnostic(unsigned count, bool repeat)
 }
 
 Stats stats() { return telemetry; }
+uint32_t commanded_jaw_duty() { return programmed_jaw_duty; }
+
+JawMode jaw_mode() { return selected_jaw_mode; }
+const char *jaw_mode_name()
+{
+    switch (selected_jaw_mode) {
+        case JawMode::normal: return "normal";
+        case JawMode::hold: return "hold";
+        case JawMode::off: return "off";
+    }
+    return "unknown";
+}
+
+esp_err_t set_jaw_mode(JawMode selected)
+{
+    if (!ready) return ESP_ERR_INVALID_STATE;
+    if (selected != JawMode::normal && selected != JawMode::hold && selected != JawMode::off)
+        return ESP_ERR_INVALID_ARG;
+    selected_jaw_mode = selected;
+    check_pending = false;
+    check_started = -1;
+    breath_started = -1;
+    last_breath_started = esp_timer_get_time();
+    smoothed_amplitude = 0;
+    previous_jaw = 0;
+    // Off -> normal/hold must restore the output even if the requested closed
+    // position equals the last pulse emitted before ledc_stop().
+    last_jaw_duty = 0;
+    ESP_LOGI(tag, "Jaw diagnostic mode=%s; automatic motion %s", jaw_mode_name(),
+             selected == JawMode::normal ? "enabled" : "disabled");
+    return ESP_OK;
+}
 
 void tick(uint16_t rms, bool speaking, bool audio_busy, int jaw_override)
 {
@@ -220,12 +276,25 @@ void tick(uint16_t rms, bool speaking, bool audio_busy, int jaw_override)
     for (int channel = ready ? 0 : 1; channel < 3; ++channel) {
         update_pending(static_cast<ledc_channel_t>(channel), now);
     }
-    if (ready) {
+    if (ready && selected_jaw_mode == JawMode::off) {
+        // Keep the eye channels running. Do not replace off with a close pulse
+        // for speech, tests, or Dead Stop: the elastic return closes the jaw.
+        if (!jaw_pulses_stopped && !update_pending(jaw_channel, now)) {
+            if (checked(ledc_stop(mode, jaw_channel, 0), "stop jaw pulses") != ESP_OK) return;
+            jaw_pulses_stopped = true;
+            programmed_jaw_duty = 0;
+            last_jaw_duty = 0;
+        }
+    } else if (ready) {
         // Start the idle cadence at the first control tick, after potentially long
         // Matter initialization, so boot never jumps into an overdue breath.
         if (last_breath_started < 0) last_breath_started = now;
         int jaw = 0;
-        if (jaw_override >= 0) {
+        double fractional_jaw = -1;
+        if (selected_jaw_mode == JawMode::hold) {
+            // A fixed calibrated closed target, independent of all animations.
+            jaw = 0;
+        } else if (jaw_override >= 0) {
             jaw = std::clamp(jaw_override, 0, jaw_max);
             check_pending = false;
             breath_started = -1;
@@ -254,9 +323,9 @@ void tick(uint16_t rms, bool speaking, bool audio_busy, int jaw_override)
                 }
                 const int64_t elapsed = now - check_started;
                 if (elapsed < check_half_us) {
-                    jaw = static_cast<int>(30 * elapsed / check_half_us);
+                    fractional_jaw = gesture_angle(elapsed, check_half_us);
                 } else if (elapsed < 2 * check_half_us) {
-                    jaw = static_cast<int>(30 * (2 * check_half_us - elapsed) / check_half_us);
+                    fractional_jaw = gesture_angle(2 * check_half_us - elapsed, check_half_us);
                 } else {
                     check_pending = false;
                     ESP_LOGI(tag, "Gentle jaw check complete; jaw closed");
@@ -272,24 +341,28 @@ void tick(uint16_t rms, bool speaking, bool audio_busy, int jaw_override)
                 if (breath_started >= 0) {
                     const int64_t elapsed = now - breath_started;
                     if (elapsed < breathing_movement_us) {
-                        jaw = static_cast<int>(30 * elapsed / breathing_movement_us);
+                        fractional_jaw = gesture_angle(elapsed, breathing_movement_us);
                     } else if (elapsed < breathing_movement_us + breathing_hold_us) {
                         jaw = 30;
                     } else if (elapsed < 2 * breathing_movement_us + breathing_hold_us) {
-                        jaw = static_cast<int>(30 * (2 * breathing_movement_us + breathing_hold_us - elapsed)
-                                               / breathing_movement_us);
+                        fractional_jaw = gesture_angle(2 * breathing_movement_us + breathing_hold_us - elapsed,
+                                                       breathing_movement_us);
                     } else {
                         breath_started = -1;
                     }
                 }
             }
         }
-        previous_jaw = jaw;
-        const uint32_t duty = jaw_duty(jaw);
+        previous_jaw = fractional_jaw >= 0 ? static_cast<int>(fractional_jaw) : jaw;
+        const uint32_t duty = fractional_jaw >= 0 ? gesture_duty(fractional_jaw) : jaw_duty(jaw);
         if (duty != last_jaw_duty) {
             const auto result = write_duty(jaw_channel, duty);
             if (result == WriteResult::failed) return;
-            if (result == WriteResult::applied) last_jaw_duty = duty;
+            if (result == WriteResult::applied) {
+                last_jaw_duty = duty;
+                programmed_jaw_duty = duty;
+                jaw_pulses_stopped = false;
+            }
         }
     }
     uint32_t eye_duty = speaking ? bright : dim;

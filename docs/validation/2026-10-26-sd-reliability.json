@@ -1,0 +1,216 @@
+{
+  "status": "investigating; no verified fix",
+  "checkpoint_pushed": "83497e781543a2198da8fe52aa8896f744b42118",
+  "replacement_card": "H-DEATH",
+  "clock_comparison_same_boot_normal_jaw": [
+    {
+      "khz": 20000,
+      "asset": "welcome2.wav",
+      "result": "CRC failure",
+      "delivered_frames": 142592
+    },
+    {
+      "khz": 10000,
+      "asset": "welcome2.wav",
+      "result": "initial read CRC failure"
+    },
+    {
+      "khz": 4000,
+      "asset": "welcome2.wav",
+      "result": "PASS",
+      "frames": 540540,
+      "fnv1a": "9f4f6cb1",
+      "underruns": 0
+    },
+    {
+      "khz": 4000,
+      "asset": "welcome2.wav",
+      "result": "PASS",
+      "frames": 540540,
+      "fnv1a": "9f4f6cb1",
+      "underruns": 0
+    },
+    {
+      "khz": 20000,
+      "asset": "welcome2.wav",
+      "result": "CRC failure",
+      "delivered_frames": 88704
+    },
+    {
+      "khz": 4000,
+      "asset": "fortune_4_typewriter.wav",
+      "result": "initial read CRC failure"
+    }
+  ],
+  "direct_internal_DMA_20MHz_speaker_disconnected": [
+    {
+      "path": "/audio/fortune_preamble/fortune_4_typewriter.wav",
+      "ok": true,
+      "bytes": 3797364,
+      "fnv1a": "b828da54",
+      "golden_match": true
+    },
+    {
+      "path": "/audio/welcome/welcome2.wav",
+      "ok": true,
+      "bytes": 2162160,
+      "fnv1a": "9f4f6cb1",
+      "golden_match": true
+    },
+    {
+      "path": "/audio/goodbye/goodbye_2.wav",
+      "ok": true,
+      "bytes": 3548784,
+      "fnv1a": "487245a5",
+      "golden_match": true
+    },
+    {
+      "path": "/audio/finger_prompt/finger_prompt_2.wav",
+      "ok": true,
+      "bytes": 2385876,
+      "fnv1a": "32aec16d",
+      "golden_match": true
+    },
+    {
+      "path": "/audio/finger_snap/got_finger_2.wav",
+      "ok": true,
+      "bytes": 1484260,
+      "fnv1a": "3461f0c1",
+      "golden_match": true
+    },
+    {
+      "path": "/audio/fortune_preamble/fortune_2_typewriter.wav",
+      "ok": true,
+      "bytes": 2985348,
+      "fnv1a": "db38260b",
+      "golden_match": true
+    },
+    {
+      "path": "/audio/fortune_preamble/fortune_3_typewriter.wav",
+      "ok": true,
+      "bytes": 3692596,
+      "fnv1a": "102fc78c",
+      "golden_match": true
+    },
+    {
+      "path": "/audio/fortune_preamble/fortune_4_typewriter.wav",
+      "ok": true,
+      "bytes": 3797364,
+      "fnv1a": "b828da54",
+      "golden_match": true
+    },
+    {
+      "path": "/audio/goodbye/goodbye_2.wav",
+      "ok": true,
+      "bytes": 3548784,
+      "fnv1a": "487245a5",
+      "golden_match": true
+    },
+    {
+      "path": "/audio/initialized.wav",
+      "ok": true,
+      "bytes": 425700,
+      "fnv1a": "d6d8b5d5",
+      "golden_match": true
+    },
+    {
+      "path": "/audio/no_finger/no_finger_2.wav",
+      "ok": true,
+      "bytes": 1382236,
+      "fnv1a": "4bc24375",
+      "golden_match": true
+    },
+    {
+      "path": "/audio/welcome/welcome2.wav",
+      "ok": true,
+      "bytes": 2162160,
+      "fnv1a": "9f4f6cb1",
+      "golden_match": true
+    }
+  ],
+  "interpretation": "Intermittent SD data CRC/end-bit fault remains unresolved. Current error records are masked MINTSTS, not full raw RINTSTS; FIFO status is not established. Lower clock and continuous clock failed. Healthy DMM idle/load values do not establish dynamic signal integrity.",
+  "PSRAM_stdio_20MHz_no_speaker_stream": [
+    {
+      "asset": "fortune_4_typewriter.wav",
+      "bytes": 3797364,
+      "fnv1a": "b828da54",
+      "golden_match": true
+    },
+    {
+      "asset": "welcome2.wav",
+      "bytes": 2162160,
+      "fnv1a": "9f4f6cb1",
+      "golden_match": true
+    },
+    {
+      "asset": "goodbye_2.wav",
+      "bytes": 3548784,
+      "fnv1a": "487245a5",
+      "golden_match": true
+    }
+  ],
+  "current_image_sha256": "cdb34ad60b57d334021bce410009ba4288a22091e4b75a626b98dbc2da728672",
+  "powered_speaker_trials": {
+    "stdio_and_dma_fortune4": "PASS b828da54 at20MHz",
+    "settled_off_fortune4": "PASS949341frames/b828da54/zero underruns",
+    "normal_fortune4": "PASS949341frames/b828da54/zero underruns",
+    "normal_welcome": "PASS540540frames/9f4f6cb1/zero underruns",
+    "human_Home_full_flow": "PASS once; accepted played perfectly",
+    "subsequent_Start": "dataCRC+end-bit error raw0x8080 duringWelcome",
+    "continuous_clock_20MHz": "FAIL dataCRC0x80 after68352frames",
+    "normal_clock_warm_stdio_and_DMA_audits": "both FAIL dataCRC0x80"
+  },
+  "owner_power_measurements": {
+    "board_3v3_idle_and_breathing": 3.291,
+    "board_3v3_successful_playback_display": 3.291,
+    "board_5v_vin_idle": 4.68,
+    "board_5v_vin_audio_display": 4.65,
+    "printer_power": "UNPLUGGED throughout these SD tests per owner",
+    "limits": "DMM display values; short transients unmeasured; no powered-printer rail/load acceptance",
+    "GPIO2_DAT0_idle": 3.285,
+    "GPIO15_CMD_idle": 3.285,
+    "corrected_readings": "Owner confirmed 3V3 3.291 V; earlier 3.91 V was a typo. Earlier contradictory GPIO readings superseded."
+  },
+  "SPI_comparison": {
+    "image_sha256": "58d88e5ea47433fd17e6cffe3d94736919fc2bdf2621e7043cb6c27f87d7f4d6",
+    "cold_power_cycle": "owner confirmed",
+    "result": "mount timeout 0x107; no files read/written",
+    "limitation": "Actual socket DAT3/CS routing to GPIO13 unverified; inconclusive protocol comparison",
+    "restoration": "Exact de1a3b32 native app restored; mounted and verified initialized PCM d6d8b5d5 on reset",
+    "workspace_transport": "DEATH_SD_SPI_TRANSPORT=OFF"
+  },
+  "register_capture": {
+    "build": "PASS native20MHz SPI OFF original sdkconfig",
+    "flash": "app-only digest verified",
+    "generator_tests": "4 PASS; all5pinnedinputs mutations refused",
+    "first_good_CMD17": {
+      "arg": 0,
+      "length": 512,
+      "start_raw": 0,
+      "completion_raw": 0,
+      "completion_dma": 0,
+      "card_bytes": 512,
+      "bus_bytes": 512
+    },
+    "startup_pcm": "d6d8b5d5 verified",
+    "Welcome_DMA_audit": "PASS2162160bytes/9f4f6cb1",
+    "failure_capture": "not yet reproduced on this image",
+    "fortune4_stdio_audit": "PASS3797364bytes/b828da54",
+    "speaker": "reconnected after user pairing button; owner heard complete startup",
+    "Welcome_playback_normal_jaw": {
+      "frames": 540540,
+      "fnv1a": "9f4f6cb1",
+      "underruns": 0,
+      "minimum_worker_stack_bytes": 2332
+    },
+    "serial_full_flow": "PASS Welcome ->fortune4 b828da54/949341frames ->unpowered-printer UART completion ->Goodbye487245a5/887196frames ->cooldown ->Waiting; zero underruns, no new data error",
+    "human_Home_flow": {
+      "owner_feedback": "Completed; all sounding perfect so far",
+      "fortune": "746337frames/db38260b",
+      "Goodbye": "887196frames/487245a5",
+      "underruns": 0,
+      "new_data_errors": 0,
+      "interpretation": "Passing diagnostic run; intermittent root cause unresolved; printer unpowered"
+    }
+  }
+}

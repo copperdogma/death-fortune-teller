@@ -19,6 +19,8 @@ std::vector<ledc_channel_config_t> channels;
 std::array<uint32_t, 3> duty = {};
 unsigned updates = 0;
 unsigned resets = 0;
+unsigned jaw_stops = 0;
+bool jaw_output_enabled = true;
 std::array<unsigned, 3> sets = {};
 std::array<unsigned, 3> channel_updates = {};
 void tick_after(int64_t us, uint16_t rms = 0, bool speaking = false, bool audio_busy = false)
@@ -84,12 +86,23 @@ esp_err_t ledc_update_duty(ledc_mode_t mode, ledc_channel_t channel)
     assert(!actuator_test_ledc.channel_group[mode].channel[channel].conf1.duty_start);
     ++channel_updates[channel];
     ++updates;
+    if (channel == LEDC_CHANNEL_0) jaw_output_enabled = true;
+    return ESP_OK;
+}
+esp_err_t ledc_stop(ledc_mode_t mode, ledc_channel_t channel, uint32_t idle_level)
+{
+    assert(mode == LEDC_LOW_SPEED_MODE && channel == LEDC_CHANNEL_0 && idle_level == 0);
+    assert(!actuator_test_ledc.channel_group[mode].channel[channel].conf1.duty_start);
+    ++jaw_stops;
+    jaw_output_enabled = false;
     return ESP_OK;
 }
 
 int main()
 {
     using namespace skull::actuators;
+    assert(jaw_mode() == JawMode::normal);
+    assert(set_jaw_mode(JawMode::off) == ESP_ERR_INVALID_STATE);
     actuator_test_ledc.channel_group[LEDC_LOW_SPEED_MODE].channel[0].conf1.duty_start = 1;
     assert(init_lights() == ESP_OK);
     assert(init_lights() == ESP_OK && resets == 1);
@@ -144,7 +157,8 @@ int main()
     tick_after(19999);
     assert(updates == peak_updates && duty[0] == jaw_duty(30));
     tick_after(1);
-    assert(duty[0] < jaw_duty(30) && duty[0] > jaw_duty(0));
+    // Ease-out may round the first tiny departure back to the peak PWM tick.
+    assert(duty[0] <= jaw_duty(30) && duty[0] > jaw_duty(0));
     tick_after(580000);
     assert(duty[0] == jaw_duty(0)); // Exactly 1.2 seconds from first tick.
     expect_eyes(100); // Delayed tick completes the one-shot without replaying.
@@ -381,5 +395,117 @@ int main()
     skull::actuators::tick(0, false, true, 0);
     const unsigned reversed = ((900U + 177U * 1300U / 180U) * 65536U + 10000U) / 20000U;
     assert(duty[0] == reversed); // Reverse preserves ServoESP32 180-angle semantics.
+    // Fixed closed hold suppresses checks, speech and explicit open overrides.
+    assert(set_jaw_mode(JawMode::hold) == ESP_OK);
+    test();
+    now_us += 20000;
+    skull::actuators::tick(65535, true, true, 80);
+    assert(duty[0] == reversed && jaw_output_enabled);
+    expect_eyes(255);
+    tick_after(10000000);
+    assert(duty[0] == reversed); // Overdue breathing cannot escape hold.
+    expect_eyes(100);
+
+    // Off waits for an in-flight hardware update, then stops exactly once.
+    assert(set_jaw_mode(JawMode::off) == ESP_OK);
+    hw.channel[0].conf1.duty_start = 1;
+    tick_after(20000, 65535, true);
+    assert(jaw_stops == 0 && jaw_output_enabled);
+    assert(commanded_jaw_duty() == duty[0]);
+    expect_eyes(255);
+    hw.channel[0].conf1.duty_start = 0;
+    tick_after(20000);
+    assert(jaw_stops == 1 && !jaw_output_enabled);
+    assert(commanded_jaw_duty() == 0);
+    expect_eyes(100);
+    const auto off_sets = sets[0];
+    test();
+    now_us += 20000;
+    skull::actuators::tick(65535, true, true, 0); // Dead Stop's close request.
+    assert(jaw_stops == 1 && sets[0] == off_sets && !jaw_output_enabled);
+    expect_eyes(255);
+    tick_after(10000000);
+    assert(jaw_stops == 1 && sets[0] == off_sets && !jaw_output_enabled);
+
+    // Resume restores pulses even when the desired closed duty is unchanged.
+    // A pending update must defer restoration without falsely filling cache.
+    assert(set_jaw_mode(JawMode::hold) == ESP_OK);
+    hw.channel[0].conf1.duty_start = 1;
+    tick_after(20000);
+    assert(sets[0] == off_sets && !jaw_output_enabled);
+    assert(commanded_jaw_duty() == 0); // Pending resume is not a programmed pulse.
+    hw.channel[0].conf1.duty_start = 0;
+    tick_after(20000);
+    assert(sets[0] == off_sets + 1 && duty[0] == reversed && jaw_output_enabled);
+    assert(commanded_jaw_duty() == reversed);
+    assert(set_jaw_mode(JawMode::off) == ESP_OK);
+    tick_after(20000);
+    assert(jaw_stops == 2 && !jaw_output_enabled);
+    assert(set_jaw_mode(JawMode::normal) == ESP_OK);
+    tick_after(20000);
+    assert(jaw_output_enabled && duty[0] == reversed);
+    const int64_t resumed = now_us;
+    tick_at(resumed + 2000000);
+    assert(duty[0] == reversed); // Neither old check nor old breath is replayed.
+    tick_at(resumed + 8000000);
+    tick_after(1000000);
+    assert(duty[0] < reversed); // Normal breathing resumes on a fresh cadence.
+
+    // Sample every physical PWM frame using the verified card calibration.
+    // Motion stays monotonic and bounded, but intermediate pulses need not land
+    // on the old whole-degree stair steps. Exact calibrated endpoints survive.
+    assert(configure(1750, 2100, true) == ESP_OK);
+    const auto calibrated = [](int degrees) {
+        const unsigned angle = 180 - std::clamp(degrees, 3, 77);
+        return ((1750U + angle * 350U / 180U) * 65536U + 10000U) / 20000U;
+    };
+    assert(set_jaw_mode(JawMode::normal) == ESP_OK);
+    tick_after(20000);
+    tick_after(7000000);
+    uint32_t previous = duty[0];
+    assert(previous == calibrated(0));
+    unsigned fractional_samples = 0;
+    unsigned sub_degree_steps = 0;
+    for (int frame = 1; frame <= 100; ++frame) {
+        tick_after(20000);
+        const uint32_t actual = duty[0];
+        assert(actual <= previous && actual >= calibrated(30));
+        if (actual < previous && previous - actual < 6) ++sub_degree_steps;
+        bool whole_degree = false;
+        for (int angle = 0; angle <= 30; ++angle)
+            if (actual == calibrated(angle)) whole_degree = true;
+        if (!whole_degree) ++fractional_samples;
+        previous = actual;
+    }
+    assert(duty[0] == calibrated(30));
+    assert(fractional_samples > 30 && sub_degree_steps > 30);
+    for (int frame = 0; frame < 5; ++frame) {
+        tick_after(20000);
+        assert(duty[0] == calibrated(30)); // Existing 100 ms hold unchanged.
+    }
+    for (int frame = 1; frame <= 100; ++frame) {
+        tick_after(20000);
+        assert(duty[0] >= previous && duty[0] <= calibrated(0));
+        previous = duty[0];
+    }
+    assert(duty[0] == calibrated(0));
+
+    // Gentle boot/manual check uses the same fractional/eased trajectory while
+    // preserving its 600 ms halves and calibrated 30-degree peak.
+    test();
+    tick_after(20000);
+    previous = duty[0];
+    for (int frame = 1; frame <= 30; ++frame) {
+        tick_after(20000);
+        assert(duty[0] <= previous && duty[0] >= calibrated(30));
+        previous = duty[0];
+    }
+    assert(duty[0] == calibrated(30));
+    for (int frame = 1; frame <= 30; ++frame) {
+        tick_after(20000);
+        assert(duty[0] >= previous && duty[0] <= calibrated(0));
+        previous = duty[0];
+    }
+    assert(duty[0] == calibrated(0));
     std::puts("Actuator command tests passed");
 }

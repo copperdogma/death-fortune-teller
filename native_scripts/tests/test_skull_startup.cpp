@@ -7,7 +7,44 @@
 #include <cstdlib>
 #include <cstring>
 #include <climits>
+#include <fstream>
+#include <string>
 #include <vector>
+
+namespace {
+void write_le16(std::ofstream &file, uint16_t value) {
+    const char bytes[] = {static_cast<char>(value), static_cast<char>(value >> 8)};
+    file.write(bytes, sizeof(bytes));
+}
+
+void write_le32(std::ofstream &file, uint32_t value) {
+    const char bytes[] = {static_cast<char>(value), static_cast<char>(value >> 8),
+                          static_cast<char>(value >> 16), static_cast<char>(value >> 24)};
+    file.write(bytes, sizeof(bytes));
+}
+
+void write_silent_wav(const std::string &path, uint32_t pcm_bytes) {
+    std::ofstream file(path, std::ios::binary);
+    assert(file);
+    file.write("RIFF", 4); write_le32(file, pcm_bytes + 36); file.write("WAVEfmt ", 8);
+    write_le32(file, 16); write_le16(file, 1); write_le16(file, 2);
+    write_le32(file, 44100); write_le32(file, 176400); write_le16(file, 4); write_le16(file, 16);
+    file.write("data", 4); write_le32(file, pcm_bytes);
+    const char silence[4096]{};
+    for (uint32_t written = 0; written < pcm_bytes;) {
+        const uint32_t count = std::min<uint32_t>(sizeof(silence), pcm_bytes - written);
+        file.write(silence, count);
+        written += count;
+    }
+    assert(file);
+}
+
+uint32_t hash_zero_bytes(size_t count) {
+    uint32_t hash = 2166136261u;
+    while (count--) hash *= 16777619u;
+    return hash;
+}
+}
 
 int main(int argc, char **argv) {
     assert(argc == 3);
@@ -33,6 +70,34 @@ int main(int argc, char **argv) {
         assert(skull::startup::probe_window());
         assert(skull::startup::probe_window(true));
         assert(skull::startup::probe_file(true).hash == first.hash);
+        const auto arbitrary = skull::startup::probe_asset_file(fixture);
+        assert(arbitrary.ok && arbitrary.bytes == first.bytes && arbitrary.hash == first.hash);
+        const auto stdio = skull::startup::probe_asset_stdio(fixture);
+        assert(stdio.ok && stdio.bytes == first.bytes && stdio.hash == first.hash &&
+               stdio.nonzero_samples == first.nonzero_samples && stdio.peak == first.peak);
+        startup_test_fail_at = startup_test_allocations.load() + 1;
+        const auto stdio_buffer_failure = skull::startup::probe_asset_stdio(fixture);
+        assert(!stdio_buffer_failure.ok && stdio_buffer_failure.bytes == 0);
+        startup_test_fail_at = startup_test_allocations.load() + 2;
+        const auto pcm_buffer_failure = skull::startup::probe_asset_stdio(fixture);
+        assert(!pcm_buffer_failure.ok && pcm_buffer_failure.bytes == 0);
+        startup_test_fail_at = 0;
+        const std::string large_fixture = std::string(fixture) + ".large.wav";
+        constexpr uint32_t large_pcm_bytes = 1024 * 1024 + 4;
+        write_silent_wav(large_fixture, large_pcm_bytes);
+        const auto large = skull::startup::probe_asset_file(large_fixture.c_str());
+        assert(large.ok && large.bytes == large_pcm_bytes && large.hash == hash_zero_bytes(large_pcm_bytes));
+        assert(large.nonzero_samples == 0 && large.peak == 0);
+        const auto large_stdio = skull::startup::probe_asset_stdio(large_fixture.c_str());
+        assert(large_stdio.ok && large_stdio.bytes == large_pcm_bytes &&
+               large_stdio.hash == hash_zero_bytes(large_pcm_bytes) &&
+               large_stdio.nonzero_samples == 0 && large_stdio.peak == 0);
+        const std::string oversized_fixture = std::string(fixture) + ".oversized.wav";
+        write_silent_wav(oversized_fixture, 8 * 1024 * 1024 + 4);
+        const auto oversized = skull::startup::probe_asset_file(oversized_fixture.c_str());
+        assert(!oversized.ok && oversized.bytes == 0 && oversized.hash == 0);
+        const auto oversized_stdio = skull::startup::probe_asset_stdio(oversized_fixture.c_str());
+        assert(!oversized_stdio.ok && oversized_stdio.bytes == 0 && oversized_stdio.hash == 0);
         uint32_t expected_hash = 2166136261u;
         uint32_t nonzero = 0;
         uint16_t peak = 0;

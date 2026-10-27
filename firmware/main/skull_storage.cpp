@@ -5,10 +5,14 @@
 #include <dirent.h>
 #include "driver/gpio.h"
 #include "driver/sdmmc_host.h"
+#ifdef DEATH_SD_SPI_TRANSPORT
+#include "driver/spi_master.h"
+#include "driver/sdspi_host.h"
+#endif
 #include "esp_log.h"
 #include "esp_vfs_fat.h"
 #include "sdmmc_cmd.h"
-#ifdef ESP_PLATFORM
+#if defined(ESP_PLATFORM) && !defined(DEATH_SD_SPI_TRANSPORT)
 #include "ff.h"
 #include "diskio_sdmmc.h"
 #include "esp_heap_caps.h"
@@ -24,7 +28,7 @@ namespace {
 constexpr char tag[] = "skull_sd";
 bool is_mounted = false;
 sdmmc_card_t *mounted_card = nullptr;
-#ifdef ESP_PLATFORM
+#if defined(ESP_PLATFORM) && !defined(DEATH_SD_SPI_TRANSPORT)
 esp_err_t (*original_transaction)(int, sdmmc_command_t *) = nullptr;
 uint32_t probe_r1_read = 0, probe_r1_status = 0;
 unsigned probe_reads = 0, probe_statuses = 0, probe_transport_errors = 0, probe_command_errors = 0;
@@ -42,8 +46,19 @@ esp_err_t record_transaction(int slot, sdmmc_command_t *command) {
 }
 
 bool mounted() { return is_mounted; }
+bool spi_mode() {
+#ifdef DEATH_SD_SPI_TRANSPORT
+    return true;
+#else
+    return false;
+#endif
+}
 bool probe_raw_reference() {
 #ifdef ESP_PLATFORM
+#ifdef DEATH_SD_SPI_TRANSPORT
+    // This diagnostic wraps the native SDMMC host transaction callback.
+    return false;
+#else
     if (!is_mounted || !mounted_card || mounted_card->csd.sector_size != 512) return false;
     const unsigned drive = ff_diskio_get_pdrv_card(mounted_card);
     if (drive >= FF_VOLUMES) return false;
@@ -108,6 +123,7 @@ bool probe_raw_reference() {
     original_transaction = nullptr;
     heap_caps_free(data);
     return exact;
+#endif
 #else
     return false;
 #endif
@@ -116,13 +132,72 @@ bool probe_raw_reference() {
 esp_err_t unmount_for_retry() {
     if (!is_mounted) return ESP_OK;
     const esp_err_t result = esp_vfs_fat_sdcard_unmount(SKULL_STORAGE_ROOT, mounted_card);
-    if (result == ESP_OK) { is_mounted = false; mounted_card = nullptr; }
+    if (result == ESP_OK) {
+        is_mounted = false;
+        mounted_card = nullptr;
+#ifdef DEATH_SD_SPI_TRANSPORT
+        const esp_err_t bus_result = spi_bus_free(SDSPI_DEFAULT_HOST);
+        if (bus_result != ESP_OK) return bus_result;
+#endif
+    }
     return result;
+}
+
+esp_err_t set_card_clock(unsigned khz,unsigned &actual_khz) {
+    actual_khz=0;
+    if(!is_mounted||!mounted_card)return ESP_FAIL;
+#ifdef DEATH_SD_SPI_TRANSPORT
+    (void)khz;
+    return ESP_ERR_NOT_SUPPORTED;
+#else
+    if(khz!=4000&&khz!=10000&&khz!=20000)return ESP_ERR_INVALID_ARG;
+    const esp_err_t result=sdmmc_host_set_card_clk(mounted_card->host.slot,khz);
+    if(result!=ESP_OK)return result;
+    int actual=0;
+    const esp_err_t measured=sdmmc_host_get_real_freq(mounted_card->host.slot,&actual);
+    if(measured==ESP_OK&&actual>0)actual_khz=static_cast<unsigned>(actual);
+    ESP_LOGI(tag,"SDCLK requested_khz=%u actual_khz=%u result=%s",khz,actual_khz,esp_err_to_name(measured));
+    return measured;
+#endif
 }
 
 esp_err_t mount_and_read_config(Config &config) {
     config = Config{};
     if (!is_mounted) {
+#ifdef DEATH_SD_SPI_TRANSPORT
+        sdmmc_host_t host = SDSPI_HOST_DEFAULT();
+        host.max_freq_khz = 8000;
+        // Keep SD SPI CRC enabled; ESP-IDF's SPI card init sends CMD59.
+        spi_bus_config_t bus{};
+        bus.mosi_io_num = GPIO_NUM_15;
+        bus.miso_io_num = GPIO_NUM_2;
+        bus.sclk_io_num = GPIO_NUM_14;
+        bus.quadwp_io_num = GPIO_NUM_NC;
+        bus.quadhd_io_num = GPIO_NUM_NC;
+        bus.max_transfer_sz = 4096;
+        esp_err_t result = spi_bus_initialize(SDSPI_DEFAULT_HOST, &bus, SDSPI_DEFAULT_DMA);
+        if (result != ESP_OK) {
+            ESP_LOGE(tag, "Onboard SDSPI bus init failed: %s", esp_err_to_name(result));
+            return result;
+        }
+        sdspi_device_config_t slot = SDSPI_DEVICE_CONFIG_DEFAULT();
+        slot.host_id = SDSPI_DEFAULT_HOST;
+        slot.gpio_cs = GPIO_NUM_13;
+        esp_vfs_fat_sdmmc_mount_config_t mount{};
+        mount.format_if_mount_failed = false;
+        mount.max_files = 5;
+        mount.allocation_unit_size = 16 * 1024;
+        result = esp_vfs_fat_sdspi_mount(SKULL_STORAGE_ROOT, &host, &slot, &mount, &mounted_card);
+        if (result != ESP_OK) {
+            ESP_LOGE(tag, "Onboard SDSPI transport comparison at 8MHz failed: %s (no format)", esp_err_to_name(result));
+            spi_bus_free(SDSPI_DEFAULT_HOST);
+            return result;
+        }
+        is_mounted = true;
+        sdmmc_card_print_info(stdout, mounted_card);
+        ESP_LOGI(tag, "Onboard SDSPI mounted at 8MHz, pins SCLK=14 MOSI=15 MISO=2 CS=13; CRC enabled, capacity=%llu MB",
+                 static_cast<unsigned long long>(mounted_card->csd.capacity) * mounted_card->csd.sector_size / (1024 * 1024));
+#else
         sdmmc_host_t host = SDMMC_HOST_DEFAULT();
         // Controlled comparison: exact qualified TwoSkulls SD clock.
         host.max_freq_khz = SDMMC_FREQ_DEFAULT;
@@ -144,6 +219,7 @@ esp_err_t mount_and_read_config(Config &config) {
         sdmmc_card_print_info(stdout, mounted_card);
         ESP_LOGI(tag, "Onboard SDMMC mounted, capacity=%llu MB",
                  static_cast<unsigned long long>(mounted_card->csd.capacity) * mounted_card->csd.sector_size / (1024 * 1024));
+#endif
     }
     FILE *file = std::fopen(SKULL_STORAGE_ROOT "/config/config.txt", "r");
     if (!file) file = std::fopen(SKULL_STORAGE_ROOT "/config.txt", "r");

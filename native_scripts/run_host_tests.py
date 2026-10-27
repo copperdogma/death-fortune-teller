@@ -26,12 +26,14 @@ def main():
         ("config", ["skull_config"], None),
         ("secondary", [], None),
         ("actuators", ["skull_actuators"], "actuator_stubs"),
+        ("pwm_probe", [], None),
         ("fault_log", ["death_fault_archive"], None),
         ("fault_runtime", [], "fault_log_stubs"),
         ("audio", ["skull_audio", "skull_wave"], "audio_stubs"),
         ("startup", ["skull_startup", "skull_wave"], "startup_stubs"),
         ("show", ["skull_show", "skull_catalog", "skull_wave"], "show_stubs"),
         ("storage", ["skull_storage", "skull_config"], "storage_stubs"),
+        ("storage_spi", ["skull_storage", "skull_config"], "storage_spi_stubs"),
         ("printer", ["death_printer"], "printer_stubs"),
     ]
     with tempfile.TemporaryDirectory(prefix="death-host-") as directory:
@@ -53,6 +55,9 @@ def main():
                 args += [f'-DSKULL_STARTUP_PATH="{temporary / "initialized.wav"}"']
             if name == "storage":
                 args += [f'-DSKULL_STORAGE_ROOT="{temporary / "storage-fixtures"}"']
+            if name == "storage_spi":
+                args += ["-Inative_scripts/tests/storage_stubs", "-DESP_PLATFORM", "-DDEATH_SD_SPI_TRANSPORT=1",
+                         f'-DSKULL_STORAGE_ROOT="{temporary / "storage-spi-fixtures"}"']
             args += [f"native_scripts/tests/test_skull_{name}.cpp"]
             args += [f"firmware/main/{source}.cpp" for source in sources]
             run(args + ["-o", str(executable)])

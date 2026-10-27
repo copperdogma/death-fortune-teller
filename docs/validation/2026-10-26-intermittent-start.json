@@ -1,0 +1,56 @@
+{
+  "date": "2026-10-26",
+  "firmware_sha256": "5b2d61fb7a498f5c80552c5415aff7e997e6ecd725c33fc777e2f2407db83f11",
+  "card": "replacement H-DEATH",
+  "source": "private serial capture story017-intermittent-start-20261026.log",
+  "home_start": {
+    "accepted_uptime_ms": 978890,
+    "welcome_uptime_ms": 978910,
+    "sd_error_uptime_ms": 986180,
+    "sd_error": "ESP_ERR_INVALID_CRC (0x109)",
+    "card_status": "0x900",
+    "cancelling_uptime_ms": 986220,
+    "waiting_uptime_ms": 998250,
+    "delivered_frames": 314752,
+    "underruns": 0,
+    "bluetooth_stream_remained_ready": true,
+    "dead_stop_received": false
+  },
+  "local_welcome_comparisons": [
+    {
+      "jaw": "normal",
+      "start_ms": 1056040,
+      "result": "CRC failure during initial read",
+      "error_ms": 1056060
+    },
+    {
+      "jaw": "off",
+      "start_ms": 1091700,
+      "result": "complete",
+      "frames": 540540,
+      "pcm_fnv1a": "9f4f6cb1",
+      "underruns": 0
+    },
+    {
+      "jaw": "normal",
+      "start_ms": 1133890,
+      "result": "CRC failure during playback",
+      "error_ms": 1137690,
+      "delivered_frames": 162304
+    },
+    {
+      "jaw": "off",
+      "start_ms": 1172640,
+      "result": "CRC failure during initial read",
+      "error_ms": 1172660
+    }
+  ],
+  "conclusion": "Captured cutoff caused by SD read failure; jaw motion not required. Underlying card/socket/power/signal/controller cause unresolved.",
+  "final_state": {
+    "jaw": "normal",
+    "restored_ms": 1216280,
+    "show": "waiting",
+    "radio_fault": false,
+    "flashed": false
+  }
+}

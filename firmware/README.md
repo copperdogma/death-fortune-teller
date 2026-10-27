@@ -44,9 +44,9 @@ ServoESP32's original0–180° mapping and3° margin inside Death's0–80° trav
 1400–1600us pulse range, not another prop's full-range calibration.
 
 - SD: onboard1-bit SDMMC, CLK14/CMD15/D0=2,20MHz matching qualified TwoSkulls.
-  Earlier20/10MHz CRC failures led to a40MHz experiment; the controlled return
-  to20MHz now boots/streams without CRC in bounded tests, but read integrity
-  and residual audible static remain under investigation. No format or asset writes.
+  Clean original recordings on the replacement card resolved the repeating clicks.
+  Intermittent SD CRC/read errors still abort playback; see Story017 and the
+  2026-10-26 intermittent-start validation report. No format or asset writes.
 - Jaw signal23, eye LED32, mouth LED33.
 - Printer: UART1 TX18 to printer RX, RX19 from printer TX,9600baud8N1.
 - Remove the C3 Super Mini and its GPIO21/22 UART connections from the new build.
@@ -111,6 +111,14 @@ part of this firmware.
 - `waiting`: report the current state without triggering anything.
 - `stop` (or `cancel`): Dead Stop, including startup/tone and jaw closure.
 - `play /audio/<path>.wav`, `asset /audio/<path>.wav`, `tone`, `jaw-test`.
+- `jaw-pwm`: idle-only, eight-second passive GPIO23 pulse capture using MCPWM
+  hardware timestamps. It leaves LEDC and jaw mode running. Compare hold and
+  normal breathing; reported capture gaps are not proof of missing output pulses.
+- `jaw-mode normal|hold|off`: idle/quiescent-only servo isolation. `hold` keeps
+  the calibrated closed pulse; `off` stops jaw pulses and relies on the elastic
+  return to close it. Both suppress breathing, speech movement and jaw tests
+  until `normal` is explicitly selected (or reboot). Eyes and audio still work.
+  Dead Stop retains the selected diagnostic mode. Normal is the boot default.
 - `gain 0..100`: diagnostic gain for future streamed files, accepted only idle;
   does not change the card, NVS or the already-preloaded startup clip.
 - `retry`: bounded remembered-speaker reconnect/discovery episode.
@@ -215,3 +223,36 @@ Host suites exercise capture/filtering, frozen snapshots, concurrent messages,
 retry cadence, NVS failure/reboot/acknowledgement, rotation and filesystem failure
 paths. Hardware export and audible/full-flow acceptance are recorded separately
 in `docs/stories/story-018-retained-fault-logs.md`.
+
+
+## In-progress SD transport comparison (Story019)
+
+All current SD diagnostics target the FREENOVE WROVER board's built-in microSD
+socket. There is no external card-reader module in this setup. Historical
+Arduino files under the repository's top-level `src/` and archived `SD.h`
+examples are not compiled by this native ESP-IDF build.
+
+The active board is restored to native SDMMC at 20 MHz, and the workspace build
+uses `DEATH_SD_SPI_TRANSPORT=OFF`. The SPI comparison timed out during cold
+initialization. Its assumed socket DAT3/CS connection to GPIO13 was unverified,
+so this is an inconclusive diagnostic, not a usable transport or a fix.
+The optional SPI backend defaults OFF; an existing build cache can retain it.
+The ignored `firmware/build/sdkconfig.spi-test` targets the verified revision3.1
+board (minimum revision3); original `firmware/sdkconfig` is preserved. SPI uses
+CLK14/MOSI15/MISO2/assumed CS13 at 8 MHz, with SDK CMD59/data CRC checking.
+Do not repeat SPI testing until actual socket CS routing is verified. No files
+were formatted or replaced. Card protocol changes may require full power removal.
+Native SDMMC clock/continuous-clock/raw-R1 diagnostics are disabled in SPI mode.
+The generic `sd-file /audio/...` and `sd-stdio /audio/...` read-only audits work
+through either transport. No transport change is accepted as a fix until hashes,
+throughput, full flow, idle/reboot recovery and runtime resources are verified.
+See the story for active image/profile and hardware qualification. Printer UART
+completion is not physical-paper proof; its power is currently unplugged by owner.
+
+The optional `DEATH_SD_REGISTER_CAPTURE=ON` diagnostic uses generated copies of
+the pinned ESP-IDF 5.5.4 native SDMMC driver. It leaves the installed SDK unchanged
+and refuses unexpected source hashes. It records full controller status before
+interrupt clearing, then emits `SDCAP` records in task context. The option defaults
+OFF and requires native SDMMC. This adds observability; it does not change CRC
+checking or retry/recovery behavior. See
+`docs/research/2026-10-26-sdmmc-first-error-observability.md` for interpretation limits.

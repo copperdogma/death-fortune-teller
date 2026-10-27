@@ -1,0 +1,47 @@
+{
+  "firmware_sha256": "5b2d61fb7a498f5c80552c5415aff7e997e6ecd725c33fc777e2f2407db83f11",
+  "method": "Passive GPIO23 MCPWM hardware capture, separate rising/falling channels",
+  "resolution_hz": 80000000,
+  "window_seconds": 8,
+  "hold": {
+    "edges": 802,
+    "valid_periods": 400,
+    "period_ticks_min": 1600000,
+    "period_ticks_max": 1600000,
+    "high_ticks_min": 167530,
+    "high_ticks_max": 167530,
+    "high_us": 2094.125,
+    "max_adjacent_high_step_ticks": 0,
+    "max_command_step_duty": 0,
+    "ring_drops": 0,
+    "capture_gaps": 0,
+    "output_configuration_unchanged": true
+  },
+  "breathing": {
+    "edges": 801,
+    "valid_periods": 399,
+    "period_ticks_min": 1600000,
+    "period_ticks_max": 1600000,
+    "high_ticks_min": 163281,
+    "high_ticks_max": 167530,
+    "high_us_min": 2041.0125,
+    "high_us_max": 2094.125,
+    "max_adjacent_high_step_ticks": 245,
+    "max_adjacent_high_step_us": 3.0625,
+    "max_command_step_duty": 10,
+    "max_command_step_us": 3.0517578125,
+    "ring_drops": 0,
+    "capture_gaps": 0,
+    "initial_or_unpaired_edge_count": 1,
+    "invalid_widths": 0,
+    "output_configuration_unchanged": true
+  },
+  "conclusion": "No malformed pulse widths or extra pulse/frame jitter observed in these windows. Movement steps are consistent with commanded positions; control trajectory/cadence is not ruled out as a contributor to audible movement noise.",
+  "limits": [
+    "LEDC and capture share APB; common-mode clock drift is not independently measured",
+    "Digital ESP32-pad timing does not measure signal amplitude/noise at servo connector, supply droop, current or mechanical load",
+    "Single-latch capture channels can lose events during long ISR delays; no gaps or ring drops were observed here",
+    "Two eight-second windows are not a long-duration qualification"
+  ],
+  "final_mode": "normal breathing enabled"
+}

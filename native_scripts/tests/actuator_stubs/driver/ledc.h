@@ -27,3 +27,4 @@ esp_err_t ledc_timer_config(const ledc_timer_config_t *);
 esp_err_t ledc_channel_config(const ledc_channel_config_t *);
 esp_err_t ledc_set_duty(ledc_mode_t, ledc_channel_t, uint32_t);
 esp_err_t ledc_update_duty(ledc_mode_t, ledc_channel_t);
+esp_err_t ledc_stop(ledc_mode_t, ledc_channel_t, uint32_t);

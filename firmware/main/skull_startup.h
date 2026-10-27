@@ -12,6 +12,13 @@ struct ProbeResult {
 // Read-only task-context SD probe. Hash/statistics are computed directly
 // from the file through internal DMA memory, before any PSRAM copy.
 ProbeResult probe_file(bool single_sector = false);
+// Read-only task-context probe for any full WAV path, up to 8 MiB of PCM.
+// Uses aligned 4096-byte internal DMA reads and does not compare against the
+// initialized.wav reference chunks.
+ProbeResult probe_asset_file(const char *full_path);
+// Read-only stdio-path comparison for any WAV path, up to 8 MiB of PCM.
+// Uses an 8192-byte PSRAM stdio buffer and 882-frame PSRAM reads.
+ProbeResult probe_asset_stdio(const char *full_path);
 // Idle task only: two separately retained internal buffers versus fixed reference.
 bool probe_window(bool single_sector = false);
 // Boot/task context only. Retains immutable PCM in PSRAM for this boot.

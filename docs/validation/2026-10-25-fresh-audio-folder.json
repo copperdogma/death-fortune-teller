@@ -1,0 +1,76 @@
+{
+  "story": "017",
+  "card_operation": {
+    "approved_by_user": true,
+    "fresh_assets": 9,
+    "fresh_bytes": 21865236,
+    "computer_uncached_verification_passes": 2,
+    "post_switch_verification": true,
+    "original_archive": "/audio-original-20261025",
+    "original_file_count": 42,
+    "original_data_rewritten": false,
+    "original_reads_stable": false,
+    "original_wavs_unstable_in_computer_reader": 7,
+    "physical_root_cause": "Unresolved card/reader interaction; corruption now reproduced outside ESP32"
+  },
+  "device_stream_checks": [
+    {
+      "path": "/audio/welcome/welcome2.wav",
+      "frames": 540540,
+      "expected_fnv1a": "f5800043",
+      "actual_fnv1a": "f5800043",
+      "underruns": 0,
+      "human_listening": "Cam: Clean"
+    },
+    {
+      "path": "/audio/fortune_preamble/fortune_2_typewriter.wav",
+      "frames": 746337,
+      "expected_fnv1a": "db38260b",
+      "actual_fnv1a": "db38260b",
+      "underruns": 0,
+      "human_listening": "pending"
+    },
+    {
+      "path": "/audio/goodbye/goodbye_2.wav",
+      "frames": 887196,
+      "expected_fnv1a": "6a740064",
+      "actual_fnv1a": "6a740064",
+      "underruns": 0,
+      "jaw_mode": "hold",
+      "human_listening": "Initially Clean, corrected to approximately six minor clicks across the clip"
+    }
+  ],
+  "reader_configuration": "Unchanged qualified TwoSkulls 8-block, 882-frame, 8192-byte PSRAM stdio baseline",
+  "source_assessment": "Subsequent comparison found sparse bit damage already baked into six backup WAVs. These hashes verify faithful playback of that backup, not pristine original recordings. Original project Goodbye FNV is 487245a5.",
+  "printer_exercised_during_these_tests": false,
+  "replacement_card": {
+    "name": "H-DEATH",
+    "filesystem": "FAT32",
+    "partition_scheme": "MBR",
+    "clean_project_audio": true,
+    "death_files_verified": 12,
+    "uncached_verification_passes": 3,
+    "first_post_flash_sd_init": "success",
+    "startup_pcm_fnv1a": "d6d8b5d5"
+  },
+  "pristine_device_stream_checks": [
+    {
+      "path": "/audio/goodbye/goodbye_2.wav",
+      "frames": 887196,
+      "expected_fnv1a": "487245a5",
+      "actual_fnv1a": "487245a5",
+      "peak": 19552,
+      "underruns": 0,
+      "human_listening": "Cam: Clicks are gone"
+    }
+  ],
+  "servo": {
+    "hold": "Cam: Quiet now",
+    "breathing": "Noisy during movement, quiet between breaths",
+    "fractional_eased_trial": "Cam: About the same",
+    "user_preference": "Retain breathing animation",
+    "mounting": "Cam reports O-rings already installed",
+    "control_timing_fault_ruled_out": false
+  },
+  "remaining": ["Passive PWM timing measurement", "Repeated boot and full flow"]
+}

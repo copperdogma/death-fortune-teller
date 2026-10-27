@@ -7,6 +7,8 @@
 #include <cstring>
 #include <cmath>
 #include <unistd.h>
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 #include "esp_heap_caps.h"
 #include "esp_log.h"
 
@@ -18,6 +20,7 @@ namespace skull::startup {
 namespace {
 constexpr char tag[] = "skull_startup";
 constexpr uint32_t max_bytes = 1024 * 1024;
+constexpr uint32_t max_probe_asset_bytes = 8 * 1024 * 1024;
 // Death's Flip 5 clipped the first word at the TwoSkulls 800 ms preroll.
 // Allow two seconds of stream silence for the sink to unmute before speech.
 constexpr uint32_t preroll_frames = 88200;
@@ -34,19 +37,19 @@ uint32_t fnv1a_update(uint32_t hash, const uint8_t *data, size_t length) {
     for (size_t i = 0; i < length; ++i) hash = (hash ^ data[i]) * 16777619u;
     return hash;
 }
-}
 
-ProbeResult probe_file(bool single_sector) {
+ProbeResult probe_path(const char *path, size_t chunk_size, uint32_t max_data_bytes,
+                       bool compare_reference_chunks) {
     ProbeResult result{};
-    FILE *file = std::fopen(SKULL_STARTUP_PATH, "rb");
+    if (!path || !*path || !chunk_size) return result;
+    FILE *file = std::fopen(path, "rb");
     if (!file) return result;
     std::setvbuf(file, nullptr, _IONBF, 0);
     wave::Info info{};
-    if (!wave::inspect(file, info) || info.data_bytes > max_bytes) {
+    if (!wave::inspect(file, info) || info.data_bytes > max_data_bytes) {
         std::fclose(file);
         return result;
     }
-    const size_t chunk_size = single_sector ? 512 : 4096;
     auto *buffer = static_cast<uint8_t *>(heap_caps_malloc(chunk_size, MALLOC_CAP_INTERNAL | MALLOC_CAP_DMA));
     if (!buffer) {
         std::fclose(file);
@@ -72,7 +75,7 @@ ProbeResult probe_file(bool single_sector) {
         if (!ok) break;
         const uint32_t chunk_hash = fnv1a_update(2166136261u, buffer, received);
         const unsigned chunk_index = offset / chunk_size;
-        if (!single_sector && chunk_index < sizeof(reference_chunk_hashes) / sizeof(reference_chunk_hashes[0]) &&
+        if (compare_reference_chunks && chunk_index < sizeof(reference_chunk_hashes) / sizeof(reference_chunk_hashes[0]) &&
             chunk_hash != reference_chunk_hashes[chunk_index]) {
             if (++bad_chunks <= 4) ESP_LOGI(tag, "SDCHUNK offset=%lu got=%08lx expected=%08lx bytes=%u",
                 static_cast<unsigned long>(offset), static_cast<unsigned long>(chunk_hash),
@@ -99,12 +102,104 @@ ProbeResult probe_file(bool single_sector) {
         }
         offset += received;
     }
-    ESP_LOGI(tag, "SDCHUNK bad_chunks=%u", bad_chunks);
+    if (compare_reference_chunks) ESP_LOGI(tag, "SDCHUNK bad_chunks=%u", bad_chunks);
     heap_caps_free(buffer);
     std::fclose(file);
     result.ok = ok && result.bytes == info.data_bytes;
     result.hash = result.ok ? hash : 0;
     if (!result.ok) result = {};
+    return result;
+}
+}
+
+ProbeResult probe_file(bool single_sector) {
+    return probe_path(SKULL_STARTUP_PATH, single_sector ? 512 : 4096,
+                      max_bytes, !single_sector);
+}
+
+ProbeResult probe_asset_file(const char *full_path) {
+    const ProbeResult result = probe_path(full_path, 4096, max_probe_asset_bytes, false);
+    ESP_LOGI(tag, "Read-only WAV probe path=%s ok=%d bytes=%lu fnv1a=%08lx nonzero=%lu peak=%u",
+             full_path ? full_path : "(null)", result.ok,
+             static_cast<unsigned long>(result.bytes), static_cast<unsigned long>(result.hash),
+             static_cast<unsigned long>(result.nonzero_samples), static_cast<unsigned>(result.peak));
+    return result;
+}
+
+ProbeResult probe_asset_stdio(const char *full_path) {
+    ProbeResult result{};
+    if (!full_path || !*full_path) {
+        ESP_LOGI(tag, "SDSTDIO invalid path");
+        return result;
+    }
+    FILE *file = std::fopen(full_path, "rb");
+    if (!file) {
+        ESP_LOGI(tag, "SDSTDIO path=%s result=open-failed", full_path);
+        return result;
+    }
+
+    constexpr size_t stdio_buffer_bytes = 8192;
+    constexpr size_t frames_per_read = 882;
+    constexpr size_t pcm_buffer_bytes = frames_per_read * 4;
+    auto *stdio_buffer = static_cast<char *>(heap_caps_malloc(
+        stdio_buffer_bytes, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
+    if (!stdio_buffer) {
+        std::fclose(file);
+        ESP_LOGI(tag, "SDSTDIO path=%s result=stdio-buffer-allocation-failed", full_path);
+        return result;
+    }
+    if (std::setvbuf(file, stdio_buffer, _IOFBF, stdio_buffer_bytes) != 0) {
+        std::fclose(file);
+        heap_caps_free(stdio_buffer);
+        ESP_LOGI(tag, "SDSTDIO path=%s result=stdio-buffer-setup-failed", full_path);
+        return result;
+    }
+    auto *pcm_buffer = static_cast<uint8_t *>(heap_caps_malloc(
+        pcm_buffer_bytes, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
+    if (!pcm_buffer) {
+        std::fclose(file);
+        heap_caps_free(stdio_buffer);
+        ESP_LOGI(tag, "SDSTDIO path=%s result=pcm-buffer-allocation-failed", full_path);
+        return result;
+    }
+
+    wave::Info info{};
+    bool ok = wave::inspect(file, info) && info.data_bytes <= max_probe_asset_bytes;
+    if (ok) {
+        uint32_t hash = 2166136261u;
+        uint32_t bytes_read = 0;
+        unsigned blocks = 0;
+        while (bytes_read < info.data_bytes) {
+            const size_t frames = std::min<size_t>(frames_per_read,
+                (info.data_bytes - bytes_read) / 4);
+            const size_t received = std::fread(pcm_buffer, 4, frames, file);
+            if (received != frames || std::ferror(file)) { ok = false; break; }
+            const size_t block_bytes = received * 4;
+            hash = fnv1a_update(hash, pcm_buffer, block_bytes);
+            for (size_t i = 0; i < block_bytes; i += 2) {
+                int16_t sample;
+                std::memcpy(&sample, pcm_buffer + i, sizeof(sample));
+                const uint16_t magnitude = sample == INT16_MIN ? 32768u :
+                    static_cast<uint16_t>(sample < 0 ? -sample : sample);
+                if (sample) ++result.nonzero_samples;
+                result.peak = std::max(result.peak, magnitude);
+            }
+            bytes_read += static_cast<uint32_t>(block_bytes);
+            if (++blocks % 2 == 0) vTaskDelay(1);
+        }
+        result.bytes = bytes_read;
+        result.hash = ok && bytes_read == info.data_bytes ? hash : 0;
+        result.ok = ok && bytes_read == info.data_bytes;
+    }
+    const int close_result = std::fclose(file);
+    heap_caps_free(pcm_buffer);
+    heap_caps_free(stdio_buffer);
+    if (close_result != 0) result.ok = false;
+    if (!result.ok) result = {};
+    ESP_LOGI(tag, "SDSTDIO path=%s ok=%d bytes=%lu fnv1a=%08lx nonzero=%lu peak=%u",
+             full_path, result.ok, static_cast<unsigned long>(result.bytes),
+             static_cast<unsigned long>(result.hash), static_cast<unsigned long>(result.nonzero_samples),
+             static_cast<unsigned>(result.peak));
     return result;
 }
 

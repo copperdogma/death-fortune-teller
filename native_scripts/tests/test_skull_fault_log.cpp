@@ -98,6 +98,8 @@ void test_selection_and_bounds() {
     assert(fault);
     assert(std::strstr(output, "\033") == nullptr);
     assert(std::strstr(output, "audio read failed") != nullptr);
+    assert(select_line("E (4) sdspi_host: data CRC mismatch", output, sizeof(output), fault));
+    assert(fault);
     assert(select_line("W (4) death: Interrupted reason=Dead Stop", output, sizeof(output), fault));
     assert(!fault);
     assert(select_line("W (5) death: Interrupted reason=audio failure", output, sizeof(output), fault));

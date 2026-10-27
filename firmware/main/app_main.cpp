@@ -23,6 +23,7 @@
 #include "skull_storage.h"
 #include "skull_startup.h"
 #include "skull_actuators.h"
+#include "skull_pwm_probe.h"
 #include "skull_audio.h"
 #include "skull_catalog.h"
 #include "death_show.h"
@@ -275,7 +276,7 @@ void diagnostic_task(void *) {
         skull::radio::Config config{card_config.speaker_name, "", true};
         ESP_ERROR_CHECK(skull::radio::start(config));
     }
-    ESP_LOGI(tag, "Death ready. Commands: status, fault-log, fault-test, asset /audio/<file>.wav, heap-start, heap-stop, printer-health, print-test, tone, start, stop, waiting, cancel, jaw-test, retry, pairing, reboot, factory-reset CONFIRM. Matter controls: Start, Dead Stop, Waiting.");
+    ESP_LOGI(tag, "Death ready. Commands: status, fault-log, fault-test, asset /audio/<file>.wav, heap-start, heap-stop, printer-health, print-test, tone, start, stop, waiting, cancel, jaw-test, jaw-mode normal|hold|off, jaw-pwm, retry, pairing, reboot, factory-reset CONFIRM. Matter controls: Start, Dead Stop, Waiting.");
     char line[256]{};
     size_t used = 0;
     bool overflow = false;
@@ -291,6 +292,9 @@ void diagnostic_task(void *) {
             (skull::startup::playing() || tone_active || skull::death::busy() || skull::audio::busy());
         skull::actuators::tick(startup_animation.rms ? startup_animation.rms : show_animation.rms,
                               startup_animation.speaking || show_animation.speaking, audio_active, close_jaw_requested.exchange(false) ? 0 : skull::death::jaw_override());
+        skull::pwm_probe::poll(skull::actuators::commanded_jaw_duty(),
+            !skull::death::busy() && skull::audio::quiescent() && !skull::startup::busy() &&
+            !skull::printer::busy() && tone_frames.load() == 0);
         skull::faultlog::poll(
             !skull::death::busy() && skull::audio::quiescent() && !skull::startup::busy() &&
             !skull::printer::busy() && tone_frames.load() == 0,
@@ -302,6 +306,36 @@ void diagnostic_task(void *) {
                 line[used] = '\0';
                 if (!std::strcmp(line, "status")) status();
                 else if (!std::strcmp(line, "fault-log")) skull::faultlog::dump();
+                else if ((!std::strncmp(line,"sd-file ",8) || !std::strncmp(line,"sd-stdio ",9)) && assets && !skull::death::busy() &&
+                         skull::audio::quiescent() && !skull::startup::playing() && !skull::printer::busy() && tone_frames.load()==0) {
+                    const bool stdio=!std::strncmp(line,"sd-stdio ",9);
+                    const char *path=line+(stdio?9:8);
+                    bool found=false;
+                    for(size_t i=0;i<assets->count;++i)if(!std::strcmp(path,assets->assets[i].path)) {
+                        found=true;char full_path[160];
+                        std::snprintf(full_path,sizeof(full_path),"/sdcard%s",assets->assets[i].path);
+                        const auto result=stdio?skull::startup::probe_asset_stdio(full_path):skull::startup::probe_asset_file(full_path);
+                        ESP_LOGI(tag,"SDFILE mode=%s path=%s ok=%d bytes=%lu fnv1a=%08lx peak=%lu",stdio?"stdio":"dma",assets->assets[i].path,result.ok,
+                            static_cast<unsigned long>(result.bytes),static_cast<unsigned long>(result.hash),static_cast<unsigned long>(result.peak));
+                        break;
+                    }
+                    if(!found)ESP_LOGW(tag,"SD file audit requires a catalogued audio asset");
+                }
+                else if ((!std::strcmp(line,"sd-continuous 0") || !std::strcmp(line,"sd-continuous 1")) &&
+                         !skull::storage::spi_mode() && skull::storage::mounted() && !skull::death::busy() && skull::audio::quiescent() &&
+                         !skull::startup::busy() && !skull::printer::busy() && tone_frames.load()==0) {
+                    const bool enabled=line[14]=='1';
+                    ESP_LOGI(tag,"SDCONTINUOUS enabled=%d result=%s (diagnostic, reset by clock change/reboot)",enabled,
+                        esp_err_to_name(sdmmc_host_set_cclk_always_on(SDMMC_HOST_SLOT_1,enabled)));
+                }
+                else if (!std::strncmp(line, "sd-clock ", 9)) {
+                    unsigned khz=0,actual=0;char extra=0;
+                    const bool idle=!skull::death::busy() && skull::audio::quiescent() &&
+                        !skull::startup::busy() && !skull::printer::busy() && tone_frames.load()==0;
+                    const bool parsed=std::sscanf(line+9,"%u %c",&khz,&extra)==1;
+                    const esp_err_t result=idle&&parsed?skull::storage::set_card_clock(khz,actual):ESP_ERR_INVALID_STATE;
+                    ESP_LOGI(tag,"SD clock diagnostic result=%s actual_khz=%u",esp_err_to_name(result),actual);
+                }
                 else if (!std::strcmp(line, "fault-test") && !skull::death::busy() && skull::audio::quiescent() &&
                          !skull::startup::busy() && !skull::printer::busy() && tone_frames.load() == 0) skull::faultlog::test_fault();
                 else if (!std::strncmp(line, "asset ", 6) && !skull::death::busy()) inspect_asset(line + 6);
@@ -351,13 +385,6 @@ void diagnostic_task(void *) {
                                  static_cast<unsigned long>(result.nonzero_samples), static_cast<unsigned long>(result.peak));
                     }
                 }
-                else if (!std::strncmp(line, "sd-clock ", 9) && skull::storage::mounted() && !skull::death::busy() && skull::audio::quiescent() && !skull::startup::playing()) {
-                    char *end = nullptr;
-                    const unsigned long khz = std::strtoul(line + 9, &end, 10);
-                    if (end && !*end && (khz == 400 || khz == 4000 || khz == 10000 || khz == 20000))
-                        ESP_LOGI(tag, "SDCLOCK khz=%lu result=%s (diagnostic, resets on reboot)", khz,
-                                 esp_err_to_name(sdmmc_host_set_card_clk(SDMMC_HOST_SLOT_1, khz)));
-                }
                 else if (!std::strncmp(line, "gain ", 5)) {
                     char *end = nullptr;
                     const unsigned long value = std::strtoul(line + 5, &end, 10);
@@ -365,7 +392,30 @@ void diagnostic_task(void *) {
                         !skull::startup::playing() && !skull::death::busy() && skull::audio::set_gain_percent(static_cast<unsigned>(value));
                     ESP_LOGI(tag, "Diagnostic PCM gain %s; current=%u%%", accepted ? "accepted" : "ignored (idle and 0..100 required)", skull::audio::gain_percent());
                 }
-                else if (!std::strcmp(line, "jaw-test") && !skull::startup::busy() && !skull::death::busy() && !skull::audio::busy()) skull::actuators::test();
+                else if (!std::strcmp(line, "jaw-pwm")) {
+                    const bool idle = !skull::death::busy() && skull::audio::quiescent() &&
+                        !skull::startup::busy() && !skull::printer::busy() && tone_frames.load() == 0;
+                    if (idle && skull::actuators::jaw_mode() != skull::actuators::JawMode::off)
+                        ESP_LOGI(tag, "Passive jaw PWM probe: %s", esp_err_to_name(
+                            skull::pwm_probe::start(skull::actuators::commanded_jaw_duty())));
+                    else ESP_LOGW(tag, "Jaw PWM probe ignored: idle with pulses enabled required");
+                }
+                else if (!std::strncmp(line, "jaw-mode ", 9)) {
+                    const char *value = line + 9;
+                    const bool valid = !std::strcmp(value, "normal") || !std::strcmp(value, "hold") || !std::strcmp(value, "off");
+                    const bool idle = !skull::death::busy() && skull::audio::quiescent() &&
+                        !skull::startup::busy() && !skull::printer::busy() && tone_frames.load() == 0;
+                    if (valid && idle) {
+                        const auto selected = !std::strcmp(value, "normal") ? skull::actuators::JawMode::normal :
+                            (!std::strcmp(value, "hold") ? skull::actuators::JawMode::hold : skull::actuators::JawMode::off);
+                        ESP_LOGI(tag, "Jaw mode selection: %s", esp_err_to_name(skull::actuators::set_jaw_mode(selected)));
+                    } else ESP_LOGW(tag, "Jaw mode ignored: idle/quiescent and normal|hold|off required");
+                    ESP_LOGI(tag, "Jaw mode=%s", skull::actuators::jaw_mode_name());
+                }
+                else if (!std::strcmp(line, "jaw-test") && !skull::startup::busy() && !skull::death::busy() && !skull::audio::busy()) {
+                    if (skull::actuators::jaw_mode() == skull::actuators::JawMode::normal) skull::actuators::test();
+                    else ESP_LOGW(tag, "Jaw test ignored: restore jaw-mode normal first");
+                }
                 else if (!std::strcmp(line, "retry") && tone_frames.load() == 0 && !(skull::startup::busy() && skull::radio::stream_ready()) && ((!skull::death::busy() && !skull::audio::busy()) ||
                          (skull::audio::stats().cancel_waiting && !skull::radio::stream_ready()))) skull::radio::retry_connections();
                 else if (!std::strcmp(line, "pairing")) chip::DeviceLayer::SystemLayer().ScheduleLambda([]() { pairing(); });
@@ -401,6 +451,7 @@ extern "C" void app_main() {
     ESP_ERROR_CHECK(skull::actuators::init_lights());
     ESP_ERROR_CHECK(nvs_flash_init()); // Never erase fabric/NVS automatically.
     skull::faultlog::init();
+    esp_log_level_set("sdmmc_req", ESP_LOG_DEBUG);
     ESP_LOGI(tag, "Boot reset_reason=%d (fault logger active)", static_cast<int>(esp_reset_reason()));
     ESP_LOGI(tag, "PSRAM initialized=%d size=%u", esp_psram_is_initialized(), static_cast<unsigned>(esp_psram_get_size()));
     // Configure PWM only after validated SD calibration is available. During

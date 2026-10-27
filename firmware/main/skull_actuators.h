@@ -12,6 +12,16 @@ struct Stats {
 };
 // Same diagnostic-task owner as tick(); no cross-task synchronization.
 Stats stats();
+// Last successfully programmed jaw duty (16-bit, 50 Hz); zero with pulses off.
+// Same control-task owner as tick(), for passive PWM diagnostics.
+uint32_t commanded_jaw_duty();
+enum class JawMode { normal, hold, off };
+// Reversible diagnostics, owned by the diagnostic task and selected only idle.
+// hold sends calibrated closed pulses; off stops pulses and lets the elastic
+// return close the jaw. Both suppress ALL automatic motion until normal.
+esp_err_t set_jaw_mode(JawMode mode);
+JawMode jaw_mode();
+const char *jaw_mode_name();
 // Boot storage diagnostics only: initializes GPIO32/33 lights without touching
 // the jaw timer/channel/GPIO. Idempotent; later init() retains the active lights.
 esp_err_t init_lights();
