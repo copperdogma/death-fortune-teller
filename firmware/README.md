@@ -80,6 +80,10 @@ or paper-status contract yet.
 
 ## Runtime and diagnostics
 
+Start with the [debugging workflow](../README.md#debugging-the-native-firmware)
+for collecting serial/SD evidence before rebooting, finding the card’s
+`diagnostics` folder on a computer, and isolating a failure.
+
 Three Home-compatible On/Off controls implement the demo flow:
 
 - **Start (endpoint1):** Welcome → fortune preamble/generation and one print →

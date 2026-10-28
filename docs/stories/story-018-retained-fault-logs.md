@@ -47,3 +47,14 @@ Cam authorizes implementing the proposed rolling RAM log, compact internal-flash
 - Logger status at~339s: pending1, coalesced4, SD attempts2, NVS attempts2, SD errno5/EIO, NVS ESP_OK, nextSD~32.5seconds. Report recoverable via fault-log without the card; full dump copied to private `story018-user-cutoff.log`. This is actual failed-card RAM retention and compact flash persistence, not merely the earlier synthetic test. SD export not yet successful at this checkpoint. Waiting for scheduled retry, without reboot or card removal.
 
 - Scheduled retry succeeded at371561ms: SD archive slot2 saved/readback-verified, then flash acknowledgement succeeded and pending cleared. Status379371ms shows sameID, SD attempts3, NVS attempts2, SDerrno0, pending0, nextattempt~52s. This demonstrates real failed export followed by cadence-driven recovery without restarting the board; file `/sdcard/diagnostics/fault-2.log`. No code/firmware/card-content changes other than the authorized rolling report.
+
+### 2026-10-27 — Discoverable debugging workflow
+
+- Cam requested a general troubleshooting process and an obvious explanation of
+  automatic SD error logs. Existing firmware details were present but buried.
+- Added root README workflow, agent pointer and native README backlink. Covers
+  board-vs-computer paths, eight-slot rotation, staging files, no-reset serial
+  capture, pending/retry status, compact fallback limits, evidence preservation,
+  bounded experiments and separate host/device/human verification. Commands and
+  paths checked against the actual console, logger and serial helper sources.
+- Documentation only; no device actions or firmware behavior changes.
