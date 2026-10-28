@@ -62,14 +62,13 @@ bool closing{};
 bool peer_discovery_enabled{}, scan_starting{}, scan_stopping{};
 int64_t scan_retry_at{};
 unsigned scan_failures{};
-bool known_speaker{}, saved_speaker{}, direct_fallback{};
+bool known_speaker{}, saved_speaker{};
 unsigned reconnect_attempts{};
 int64_t reconnect_at{};
-bool speaker_acl_up{}, await_acl_down{}, acl_wait_expired{};
+bool speaker_acl_up{}, await_acl_down{};
 uint16_t speaker_acl_handle{};
 int64_t acl_wait_deadline{};
 int64_t speaker_connect_deadline{};
-bool reconnect_stopped{};
 int64_t close_deadline{}, media_retry_at{};
 unsigned media_attempts{};
 uint16_t connection{}, service_start{}, service_end{}, characteristic{}, descriptor{}, mtu{23};
@@ -190,21 +189,25 @@ void seek_peer() {
         failed("BLE scan", error);
     }
 }
+// Retry forever, but serialize attempts using stack-confirmed connection/ACL
+// state. Each episode tries the cached address three times, then name discovery.
+void schedule_speaker_retry(bool fresh_episode = false) {
+    if (fresh_episode) reconnect_attempts = 0;
+    reconnect_at = now() + 5000000;
+}
 void seek() {
     if (faulted.load() || !attached.load() || (primary_role && iface() == ESP_GATT_IF_NONE)) return;
     // BLE discovery is application-gated; Classic speaker discovery/reconnect
     // remains independent so the initialization WAV can play first.
     seek_peer();
     if (speaker_name[0] && !speaker_up.load() && !speaker_connecting && !inquiry) {
-        if (await_acl_down || reconnect_stopped) return;
+        if (await_acl_down || speaker_acl_up || (reconnect_at && now() < reconnect_at)) return;
         if (known_speaker && reconnect_attempts < 3) {
-            if (reconnect_at && now() < reconnect_at) return;
             ++reconnect_attempts;
             reconnect_at = 0;
             const esp_err_t error = esp_a2d_source_connect(speaker_address);
             speaker_connecting = error == ESP_OK;
             if (speaker_connecting) speaker_connect_deadline = now() + 75000000;
-            direct_fallback = speaker_connecting;
             failed("configured speaker reconnect", error);
             if (speaker_connecting) {
                 ESP_LOGI(TAG, "Remembered configured speaker reconnect attempt %u/3", reconnect_attempts);
@@ -217,6 +220,7 @@ void seek() {
         inquiry = e == ESP_OK;
         failed("speaker inquiry", e);
         if (e == ESP_OK) ESP_LOGI(TAG, "Speaker inquiry requested for '%s' (10.24 seconds)", speaker_name);
+        else schedule_speaker_retry(true);
     }
 }
 void app_ble_gap(esp_gap_ble_cb_event_t event, esp_ble_gap_cb_param_t *p) {
@@ -473,8 +477,7 @@ void handle_classic(const Event &e) {
         speaker_acl_up = false;
         if (await_acl_down) {
             await_acl_down = false; acl_wait_deadline = 0;
-            if (acl_wait_expired) ESP_LOGW(TAG, "Late ACL teardown complete; explicit retry required");
-            else reconnect_at = now() + 5000000;
+            schedule_speaker_retry();
         }
         break;
     case ESP_BT_GAP_DISC_RES_EVT:
@@ -491,11 +494,16 @@ void handle_classic(const Event &e) {
     case ESP_BT_GAP_DISC_STATE_CHANGED_EVT:
         inquiry = e.a == ESP_BT_GAP_DISCOVERY_STARTED;
         ESP_LOGI(TAG, "Speaker inquiry %s; configured match=%d", inquiry ? "started" : "stopped", found_speaker);
-        if (!inquiry && found_speaker && !speaker_up.load() && !speaker_connecting) {
-            direct_fallback = false;
+        if (!inquiry && found_speaker && !speaker_up.load() && !speaker_connecting &&
+            !speaker_acl_up && !await_acl_down) {
+            reconnect_attempts = 0;
             esp_err_t error = esp_a2d_source_connect(speaker_address);
             speaker_connecting = error == ESP_OK; failed("speaker connect", error);
             if (speaker_connecting) speaker_connect_deadline = now() + 75000000;
+            else schedule_speaker_retry(true);
+        } else if (!inquiry && !speaker_up.load() && !speaker_connecting) {
+            schedule_speaker_retry(true);
+            ESP_LOGI(TAG, "Speaker unavailable; next connection episode in 5 seconds (keeps retrying)");
         }
         break;
     case ESP_BT_GAP_PIN_REQ_EVT: {
@@ -517,14 +525,9 @@ void handle_classic(const Event &e) {
 }
 void try_media_start() {
     if (!speaker_up.load() || media_ready.load()) { media_retry_at = 0; return; }
-    if (media_attempts >= 3) {
-        ESP_LOGE(TAG, "A2DP media start failed after three attempts; explicit retry required");
-        media_retry_at = 0;
-        return;
-    }
-    ++media_attempts;
+    media_attempts = std::min(media_attempts + 1, 3u);
     failed("A2DP readiness", esp_a2d_media_ctrl(ESP_A2D_MEDIA_CTRL_CHECK_SRC_RDY));
-    media_retry_at = now() + 2000000;
+    media_retry_at = now() + (media_attempts >= 3 ? 5000000 : 2000000);
 }
 void handle_a2dp(const Event &e) {
     if (e.code == ESP_A2D_CONNECTION_STATE_EVT) {
@@ -540,11 +543,10 @@ void handle_a2dp(const Event &e) {
         ESP_LOGI(TAG, "A2DP connection state=%d", e.a);
         if (e.a == ESP_A2D_CONNECTION_STATE_CONNECTING) {
             speaker_connecting = true;
-            if (!speaker_connect_deadline && !reconnect_stopped) speaker_connect_deadline = now() + 75000000;
+            if (!speaker_connect_deadline) speaker_connect_deadline = now() + 75000000;
         } else if (e.a == ESP_A2D_CONNECTION_STATE_CONNECTED) {
-            speaker_connect_deadline = 0; reconnect_stopped = false;
-            await_acl_down = false; acl_wait_deadline = 0; acl_wait_expired = false;
-            direct_fallback = false;
+            speaker_connect_deadline = 0;
+            await_acl_down = false; acl_wait_deadline = 0;
             reconnect_attempts = 0; // A successful session starts a fresh recovery budget.
             reconnect_at = 0;
             speaker_connecting = false; speaker_up.store(true);
@@ -552,23 +554,18 @@ void handle_a2dp(const Event &e) {
             media_attempts = 0; try_media_start();
         } else if (e.a == ESP_A2D_CONNECTION_STATE_DISCONNECTED) {
             speaker_connect_deadline = 0;
-            const bool lost_session = speaker_up.load();
-            const bool failed_direct = speaker_connecting && direct_fallback;
-            direct_fallback = false;
             speaker_up.store(false); speaker_connecting = streaming = false;
             media_ready.store(false); media_retry_at = 0;
-            // Established-session loss is distinct from a failed initial open.
-            // Recover it using the same bounded cached-address episode, without
-            // resetting the budget on every failed retry or overlapping an ACL.
-            if ((lost_session || failed_direct) && !reconnect_stopped) {
-                if (speaker_acl_up) {
-                    await_acl_down = true; acl_wait_expired = false;
-                    acl_wait_deadline = now() + 60000000;
-                    ESP_LOGI(TAG, "Waiting for selected speaker ACL teardown before retry/fallback (60-second bound)");
-                } else if (reconnect_attempts < 3) {
-                    reconnect_at = now() + 5000000;
-                    ESP_LOGI(TAG, "Remembered speaker attempt ended; retry in 5 seconds");
-                } else seek(); // After three attempts, one finite name inquiry.
+            if (speaker_acl_up) {
+                await_acl_down = true;
+                acl_wait_deadline = now() + 60000000;
+                ESP_LOGI(TAG, "Waiting for selected speaker ACL teardown before retry");
+            } else {
+                await_acl_down = false; acl_wait_deadline = 0;
+                // A failed discovery connection starts another complete episode;
+                // cached failures advance to inquiry after the third attempt.
+                schedule_speaker_retry();
+                ESP_LOGI(TAG, "Speaker disconnected; retry in 5 seconds");
             }
         }
     } else if (e.code == ESP_A2D_MEDIA_CTRL_ACK_EVT) {
@@ -621,11 +618,11 @@ void worker(void *) {
             case Kind::retry:
                 ESP_LOGI(TAG, "Explicit idle discovery/media retry");
                 if (speaker_acl_up && !speaker_up.load() && !speaker_connecting && !await_acl_down) {
-                    await_acl_down = true; acl_wait_expired = false; acl_wait_deadline = now() + 60000000;
+                    await_acl_down = true; acl_wait_deadline = now() + 60000000;
                 }
                 if (!speaker_connecting && !await_acl_down && !reconnect_at) {
-                    reconnect_attempts = 0; reconnect_at = 0; acl_wait_expired = false; reconnect_stopped = false;
-                } else if (reconnect_stopped || await_acl_down || reconnect_at) {
+                    reconnect_attempts = 0; reconnect_at = 0;
+                } else if (speaker_connecting || await_acl_down || reconnect_at) {
                     ESP_LOGW(TAG, "Retry held for prior connection/ACL teardown or active backoff");
                 }
                 if (speaker_up.load() && !media_ready.load()) { media_attempts = 0; try_media_start(); }
@@ -698,12 +695,14 @@ void worker(void *) {
         if (faulted.load()) continue;
         const int64_t time = now();
         if (speaker_connect_deadline && time >= speaker_connect_deadline) {
-            speaker_connect_deadline = 0; reconnect_at = 0; reconnect_stopped = true;
-            ESP_LOGE(TAG, "Speaker connection attempt exceeded 75 seconds; no overlapping automatic attempt allowed");
+            // The pinned SDK does not support cancelling A2DP while OPENING.
+            // Keep observing until completion; never start an overlapping open.
+            speaker_connect_deadline = time + 75000000;
+            ESP_LOGW(TAG, "Speaker connection still pending; waiting for stack completion before retry");
         }
         if (acl_wait_deadline && time >= acl_wait_deadline) {
-            acl_wait_deadline = 0; acl_wait_expired = true; reconnect_stopped = true;
-            ESP_LOGE(TAG, "Speaker ACL teardown wait expired; no more automatic attempts");
+            acl_wait_deadline = time + 60000000;
+            ESP_LOGW(TAG, "Speaker ACL teardown still pending; automatic retry resumes when released");
         }
         if (reconnect_at && time >= reconnect_at) { reconnect_at = 0; seek(); }
         if (close_deadline && time >= close_deadline) {
@@ -711,8 +710,8 @@ void worker(void *) {
             faulted.store(true); peer_up.store(false); media_ready.store(false);
             continue;
         }
-        // Only restart BLE here: calling seek() would alter the deliberately
-        // bounded Classic speaker inquiry/reconnect policy.
+        // Classic retries run only from their deadline or completion events;
+        // polling BLE must not bypass the speaker backoff.
         if (!peer_discovery_enabled && scanning && !scan_stopping &&
             (!scan_retry_at || time >= scan_retry_at)) stop_scan();
         seek_peer();

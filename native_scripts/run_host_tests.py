@@ -21,6 +21,7 @@ def run(args):
 def main():
     run([sys.executable, "-m", "unittest", "discover", "-s", "native_scripts/tests", "-v"])
     suites = [
+        ("radio", [], "radio_stubs"),
         ("wave", ["skull_wave"], None),
         ("catalog", ["skull_catalog", "skull_wave"], None),
         ("config", ["skull_config"], None),

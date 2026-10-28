@@ -121,7 +121,7 @@ part of this firmware.
   Dead Stop retains the selected diagnostic mode. Normal is the boot default.
 - `gain 0..100`: diagnostic gain for future streamed files, accepted only idle;
   does not change the card, NVS or the already-preloaded startup clip.
-- `retry`: bounded remembered-speaker reconnect/discovery episode.
+- `retry`: request a speaker reconnect/media check; normal recovery also retries automatically forever with paced attempts.
 - `heap-start`, `heap-stop`: bounded resource observation window.
 - `pairing`: onboarding codes/window for an uncommissioned Death only.
 - `reboot`: refused while files/show/audio/printer are active.
@@ -146,9 +146,10 @@ fabric data. Identify/name the Start, Dead Stop and Waiting outlets using boot
 endpoint IDs and bind the Home button automation to Start On. The SDK uses prototype/test attestation.
 
 The first native migration starts with an empty speaker-address cache. Put the
-configured speaker in Bluetooth pairing mode once and use console `retry` if
-initial discovery already ended. After successful connection, firmware saves its
-address for later reconnects. Merely powering on a previously paired speaker may
+configured speaker in Bluetooth pairing mode once. Discovery and saved-address
+connection episodes repeat automatically with5second backoff until connected,
+including when the speaker is powered on late. After successful connection, firmware
+saves its address for later reconnects. Merely powering on a previously paired speaker may
 not make it discoverable to this fresh firmware. Cam confirmed the first native
 connection and audible diagnostic tone on2026-10-25; see the
 [speaker investigation](../docs/research/2026-10-25-speaker-first-pairing.md).

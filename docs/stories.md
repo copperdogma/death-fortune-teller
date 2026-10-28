@@ -45,6 +45,8 @@ Death, the Fortune Telling Skeleton
 
 | 021 | Fortune Sentence Spacing | Medium | Done | /docs/stories/story-021-fortune-sentence-spacing.md |
 
+| 022 | Continuous Bluetooth Speaker Reconnect | High | Done | /docs/stories/story-022-continuous-speaker-reconnect.md |
+
 ## Notes
 - Story IDs map to future files in `/docs/stories/`; create each file as work begins.
 - Update priorities and statuses as planning evolves and milestones complete.
